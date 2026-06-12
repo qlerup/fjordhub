@@ -94,11 +94,18 @@ a { color: inherit; text-decoration: none; }
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: space-between;
   padding: 16px 0;
-  gap: 4px;
   position: sticky;
   top: 64px;
   height: calc(100vh - 64px);
+}
+
+.sidebar-top, .sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 
 .sidebar-item {

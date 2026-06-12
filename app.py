@@ -65,6 +65,11 @@ def settings():
     return render_template("settings.html", active_page="settings")
 
 
+@app.route("/profile")
+def profile():
+    return render_template("profile.html", active_page="profile")
+
+
 # ── App status & control ─────────────────────────────────────────────────────
 
 @app.route("/api/apps-status")
