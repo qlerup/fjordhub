@@ -34,7 +34,7 @@ a { color: inherit; text-decoration: none; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 56px;
+  height: 64px;
   padding: 0 24px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
