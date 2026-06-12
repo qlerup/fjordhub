@@ -31,6 +31,8 @@ function applyStatus(card, status) {
     + (state === 'running' ? ' running' : state === 'error' ? ' error' : '');
   uptime.textContent = (state === 'running' && status.uptime) ? status.uptime : '';
 
+  const delBtn = card.querySelector('.btn-delete');
+
   if (state === 'running') {
     open.href = getAppUrl(port);
     open.style.opacity = '';
@@ -38,6 +40,7 @@ function applyStatus(card, status) {
     btn.textContent    = 'Stop';
     btn.dataset.action = 'stop';
     btn.disabled       = false;
+    if (delBtn) delBtn.style.display = '';
   } else if (state === 'not_installed') {
     const id = card.dataset.appId;
     open.href = '#';
@@ -47,6 +50,7 @@ function applyStatus(card, status) {
     btn.dataset.action = 'install';
     btn.disabled       = false;
     btn.dataset.wizardUrl = `/apps/${id}/wizard`;
+    if (delBtn) delBtn.style.display = 'none';
   } else {
     open.href = getAppUrl(port);
     open.style.opacity = '0.5';
@@ -54,6 +58,7 @@ function applyStatus(card, status) {
     btn.textContent    = 'Start';
     btn.dataset.action = 'start';
     btn.disabled       = false;
+    if (delBtn) delBtn.style.display = '';
   }
 }
 
@@ -166,7 +171,38 @@ document.getElementById('app-grid')?.addEventListener('click', e => {
   const action = btn.dataset.action;
   if (action === 'start' || action === 'stop') toggleApp(card, action);
   if (action === 'install') window.location.href = btn.dataset.wizardUrl;
+  if (action === 'delete') confirmUninstall(card);
 });
+
+// ── Uninstall ─────────────────────────────────────────────────────────────
+
+async function confirmUninstall(card) {
+  const id   = card.dataset.appId;
+  const name = card.querySelector('.card-name')?.textContent || id;
+  if (!confirm(`Afinstallér ${name}?\n\nDette stopper og fjerner containere og app-filer.\nDine data-mapper berøres ikke.`)) return;
+
+  const delBtn = card.querySelector('.btn-delete');
+  const btn    = card.querySelector('.btn-toggle');
+  if (delBtn) delBtn.disabled = true;
+  if (btn)    btn.disabled    = true;
+
+  try {
+    const res  = await fetch(`/apps/${id}/uninstall`, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`✓ ${name} afinstalleret`, 'ok');
+      setTimeout(fetchStatuses, 1500);
+    } else {
+      showToast(`✗ Fejl: ${(data.errors || []).join(', ')}`, 'err');
+      if (delBtn) delBtn.disabled = false;
+      if (btn)    btn.disabled    = false;
+    }
+  } catch (_) {
+    showToast('✗ Netværksfejl', 'err');
+    if (delBtn) delBtn.disabled = false;
+    if (btn)    btn.disabled    = false;
+  }
+}
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 

@@ -1,4 +1,6 @@
 import os
+import shutil
+import subprocess
 from pathlib import Path
 from flask import Flask, render_template, jsonify, request, redirect, url_for
 
@@ -59,12 +61,20 @@ def api_apps_status():
     return jsonify({a["id"]: docker_mgr.get_status(a) for a in _get_apps()})
 
 
+def _with_compose_dir(app_def: dict, app_id: str) -> dict:
+    """Inject compose_dir from install_state for wizard-installed apps."""
+    install_dir = _install_state.get_install_dir(app_id)
+    if install_dir:
+        return {**app_def, "compose_dir": install_dir}
+    return app_def
+
+
 @app.route("/apps/<app_id>/start", methods=["POST"])
 def start_app(app_id):
     a = _get_app(app_id)
     if not a:
         return jsonify({"error": "Unknown app"}), 404
-    ok, msg = docker_mgr.start(a)
+    ok, msg = docker_mgr.start(_with_compose_dir(a, app_id))
     return jsonify({"ok": ok, "message": msg})
 
 
@@ -73,8 +83,40 @@ def stop_app(app_id):
     a = _get_app(app_id)
     if not a:
         return jsonify({"error": "Unknown app"}), 404
-    ok, msg = docker_mgr.stop(a)
+    ok, msg = docker_mgr.stop(_with_compose_dir(a, app_id))
     return jsonify({"ok": ok, "message": msg})
+
+
+@app.route("/apps/<app_id>/uninstall", methods=["POST"])
+def uninstall_app(app_id):
+    a = _get_app(app_id)
+    if not a:
+        return jsonify({"error": "Unknown app"}), 404
+    install_dir = _install_state.get_install_dir(app_id)
+    errors = []
+
+    # 1. docker compose down (stop + remove containers)
+    compose_dir = install_dir or str(_with_compose_dir(a, app_id).get("compose_dir", ""))
+    if compose_dir and Path(compose_dir).exists():
+        try:
+            subprocess.run(
+                ["docker", "compose", "down", "--remove-orphans"],
+                cwd=compose_dir, capture_output=True, timeout=60,
+            )
+        except Exception as e:
+            errors.append(f"compose down: {e}")
+
+    # 2. Remove app directory
+    if install_dir and Path(install_dir).exists():
+        try:
+            shutil.rmtree(install_dir)
+        except Exception as e:
+            errors.append(f"rm dir: {e}")
+
+    # 3. Clear install state
+    _install_state.clear(app_id)
+
+    return jsonify({"ok": not errors, "errors": errors})
 
 
 # ── Install wizard ───────────────────────────────────────────────────────────

@@ -538,6 +538,24 @@ a { color: inherit; text-decoration: none; }
 }
 .log-line { white-space: pre-wrap; word-break: break-all; }
 
+/* Delete button on card */
+.btn-delete {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #ef4444 40%, var(--border));
+  border-radius: var(--radius-sm);
+  color: #ef4444;
+  padding: 6px 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: background .15s, border-color .15s;
+}
+.btn-delete:hover {
+  background: color-mix(in srgb, #ef4444 15%, transparent);
+  border-color: #ef4444;
+}
+.btn-delete:disabled { opacity: .4; cursor: not-allowed; }
+
 /* Install button */
 .btn-install {
   background: var(--accent);

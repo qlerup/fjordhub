@@ -39,6 +39,11 @@ class InstallState:
             "finished_at": datetime.now(timezone.utc).isoformat(),
         })
 
+    def clear(self, app_id: str):
+        with self._lock:
+            self._state.pop(app_id, None)
+            self._save()
+
     def set_failed(self, app_id: str, error: str):
         self._update(app_id, {
             "state": "failed",
