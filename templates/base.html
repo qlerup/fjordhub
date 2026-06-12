@@ -21,10 +21,7 @@
 <body>
   <header class="topbar">
     <a href="{{ url_for('dashboard') }}" class="topbar-brand">
-      <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-        <polyline points="9 22 9 12 15 12 15 22"/>
-      </svg>
+      <img src="{{ url_for('static', filename='logos/web/android-chrome-192x192.png') }}" alt="FjordHub" class="brand-icon" width="22" height="22">
       <span class="brand-name">FjordHub</span>
     </a>
     <nav class="topbar-nav">
