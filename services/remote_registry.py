@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
+import random
 
 CACHE_FILE = "registry_cache.json"
 REFRESH_INTERVAL_SEC = 3600  # 1 hour
@@ -76,7 +77,8 @@ class RemoteRegistry:
             if not manifest_url:
                 continue
             try:
-                m = requests.get(manifest_url, timeout=REQUEST_TIMEOUT_SEC, headers=FETCH_HEADERS)
+                bust = f"?t={int(time.time())}{random.randint(0,9999)}"
+                m = requests.get(manifest_url + bust, timeout=REQUEST_TIMEOUT_SEC, headers=FETCH_HEADERS)
                 m.raise_for_status()
                 app_data = m.json()
                 app_data.setdefault("source_url", entry.get("source_url", ""))
