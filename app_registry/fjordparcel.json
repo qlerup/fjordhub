@@ -1,0 +1,14 @@
+{
+  "id": "fjordparcel",
+  "name": "FjordParcel",
+  "tagline": "Pakkesporing samlet ét sted",
+  "description": "Spor pakker fra PostNord, GLS, DAO og andre fragtfirmaer via 17TRACK API.",
+  "icon": "package",
+  "accent": "#f97316",
+  "container_name": "fjordparcel",
+  "default_port": 8096,
+  "health_path": "/api/health",
+  "traefik_prefix": "/parcel",
+  "compose_dir_env": "FJORDPARCEL_DIR",
+  "sort_order": 3
+}

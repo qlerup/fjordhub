@@ -1,0 +1,14 @@
+{
+  "id": "fjordlens",
+  "name": "FjordLens",
+  "tagline": "AI-drevet fotobibliotek",
+  "description": "Organiser og søg i dine fotos med AI-beskrivelser, ansigtsgenkendelse og automatisk tagging.",
+  "icon": "camera",
+  "accent": "#3b82f6",
+  "container_name": "fjordlens",
+  "default_port": 9080,
+  "health_path": "/api/health",
+  "traefik_prefix": "/lens",
+  "compose_dir_env": "FJORDLENS_DIR",
+  "sort_order": 1
+}

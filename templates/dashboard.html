@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}FjordHub — Dashboard{% endblock %}
+
+{% block topbar_right %}
+  <button class="btn-refresh" id="refresh-btn" onclick="refreshRegistry()" title="Opdatér app-liste fra GitHub">
+    <svg id="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="23 4 23 10 17 10"/>
+      <polyline points="1 20 1 14 7 14"/>
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+    </svg>
+    <span class="refresh-label">Opdatér</span>
+  </button>
+  <span class="topbar-status" id="hub-docker-status" title="Docker-forbindelse"></span>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+  <div class="dashboard-header">
+    <div class="dashboard-header-top">
+      <h1>Apps</h1>
+      <div class="registry-meta" id="registry-meta">
+        {% if reg_status.configured %}
+          {% if reg_status.last_refresh %}
+            <span class="reg-ok">● Registry synkroniseret</span>
+            <span class="reg-time" id="reg-time" data-seconds="{{ reg_status.last_refresh_ago }}"></span>
+          {% elif reg_status.error %}
+            <span class="reg-err" title="{{ reg_status.error }}">● Registry fejl</span>
+          {% else %}
+            <span class="reg-pending">● Henter registry…</span>
+          {% endif %}
+        {% else %}
+          <span class="reg-warn" title="Sæt REGISTRY_URL miljøvariablen">⚠ Registry ikke konfigureret — viser lokale apps</span>
+        {% endif %}
+      </div>
+    </div>
+    <p class="dashboard-sub">Klik på en app for at åbne den, eller styr den herunder.</p>
+  </div>
+
+  <div id="toast" class="toast" aria-live="polite"></div>
+
+  <div class="app-grid" id="app-grid">
+    {% for app in apps %}
+    <div class="app-card" id="card-{{ app.id }}" data-app-id="{{ app.id }}" data-default-port="{{ app.default_port }}">
+      <div class="card-accent" style="--accent: {{ app.accent }};"></div>
+      <div class="card-body">
+        <div class="card-icon-wrap" style="--accent: {{ app.accent }};">
+          {% if app.icon == "camera" %}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+          {% elif app.icon == "share" %}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+          </svg>
+          {% elif app.icon == "package" %}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/>
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
+          </svg>
+          {% else %}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2"/>
+          </svg>
+          {% endif %}
+        </div>
+
+        <div class="card-info">
+          <div class="card-name-row">
+            <span class="card-name">{{ app.name }}</span>
+            {% if app.source_url %}
+            <a class="card-gh-link" href="{{ app.source_url }}" target="_blank" rel="noopener" title="GitHub">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17 5.1 18 5.4 18 5.4c.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/>
+              </svg>
+            </a>
+            {% endif %}
+          </div>
+          <div class="card-tagline">{{ app.tagline }}</div>
+          <div class="card-status-row">
+            <span class="status-dot" data-status="loading"></span>
+            <span class="status-label">Henter status…</span>
+            <span class="uptime-label"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-actions">
+        <a class="btn btn-open" href="#" target="_blank" rel="noopener">
+          Åbn
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="btn-icon">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+        </a>
+        <button class="btn btn-toggle" data-action="start">Start</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const APP_PORTS = {};
+  {% for app in apps %}APP_PORTS["{{ app.id }}"] = {{ app.default_port }};
+  {% endfor %}
+</script>
+{% endblock %}

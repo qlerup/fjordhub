@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}FjordHub{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('static', filename='logos/favicon.ico') }}" sizes="any">
+  <meta name="theme-color" content="#0f1115">
+  <meta name="application-name" content="FjordHub">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <header class="topbar">
+    <a href="{{ url_for('dashboard') }}" class="topbar-brand">
+      <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+        <polyline points="9 22 9 12 15 12 15 22"/>
+      </svg>
+      <span class="brand-name">FjordHub</span>
+    </a>
+    <nav class="topbar-nav">
+      {% block topbar_right %}{% endblock %}
+    </nav>
+  </header>
+
+  <main class="page-content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

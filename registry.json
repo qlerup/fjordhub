@@ -1,0 +1,17 @@
+{
+  "schema": "fjordhub-registry/v1",
+  "apps": [
+    {
+      "id": "fjordlens",
+      "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordlens/main/fjordhub.json"
+    },
+    {
+      "id": "fjordshare",
+      "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordshare/main/fjordhub.json"
+    },
+    {
+      "id": "fjordparcel",
+      "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordparcel/main/fjordhub.json"
+    }
+  ]
+}

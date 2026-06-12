@@ -1,0 +1,14 @@
+{
+  "id": "fjordshare",
+  "name": "FjordShare",
+  "tagline": "Fildeling og print-hub",
+  "description": "Del filer, administrer 3D-prints og integrer med Bambu Studio direkte fra browseren.",
+  "icon": "share",
+  "accent": "#8b5cf6",
+  "container_name": "fjordshare",
+  "default_port": 9090,
+  "health_path": "/api/health",
+  "traefik_prefix": "/share",
+  "compose_dir_env": "FJORDSHARE_DIR",
+  "sort_order": 2
+}
