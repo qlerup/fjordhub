@@ -68,15 +68,23 @@ class Installer:
             # ── 3. docker compose up ────────────────────────────────────────
             log("→ Starter docker compose up -d --build ...")
             log("  (dette kan tage flere minutter første gang)")
-            r = subprocess.run(
+            proc = subprocess.Popen(
                 ["docker", "compose", "up", "-d", "--build"],
                 cwd=str(install_dir),
-                capture_output=True, text=True, timeout=900,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
             )
-            for line in (r.stdout + r.stderr).splitlines():
-                if line.strip():
-                    log(f"  {line}")
-            if r.returncode != 0:
+            try:
+                for line in proc.stdout:
+                    line = line.rstrip()
+                    if line:
+                        log(f"  {line}")
+                proc.wait(timeout=900)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                raise
+            if proc.returncode != 0:
                 log("✗ docker compose fejlede")
                 self.state.set_failed(app_id, "docker compose returncode != 0")
                 return
