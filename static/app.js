@@ -39,12 +39,14 @@ function applyStatus(card, status) {
     btn.dataset.action = 'stop';
     btn.disabled       = false;
   } else if (state === 'not_installed') {
+    const id = card.dataset.appId;
     open.href = '#';
     open.style.opacity = '0.4';
     open.style.pointerEvents = 'none';
     btn.textContent    = 'Installer';
     btn.dataset.action = 'install';
-    btn.disabled       = true;
+    btn.disabled       = false;
+    btn.dataset.wizardUrl = `/apps/${id}/wizard`;
   } else {
     open.href = getAppUrl(port);
     open.style.opacity = '0.5';
@@ -163,6 +165,7 @@ document.getElementById('app-grid')?.addEventListener('click', e => {
   const card   = btn.closest('.app-card');
   const action = btn.dataset.action;
   if (action === 'start' || action === 'stop') toggleApp(card, action);
+  if (action === 'install') window.location.href = btn.dataset.wizardUrl;
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────

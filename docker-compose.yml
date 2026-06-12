@@ -26,12 +26,14 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - "${DATA_DIR:-./data}:/data"
+      - "${APPS_DIR:-./apps}:/apps"
     environment:
       DATA_DIR: /data
       TZ: ${TZ:-Europe/Copenhagen}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       # URL to registry.json in FjordHub's GitHub repo (raw content URL)
       REGISTRY_URL: ${REGISTRY_URL:-https://raw.githubusercontent.com/qlerup/fjordhub/main/registry.json}
+      APPS_DIR: /apps
       # Paths to each app's docker-compose directory on the host
       FJORDLENS_DIR: ${FJORDLENS_DIR:-}
       FJORDSHARE_DIR: ${FJORDSHARE_DIR:-}

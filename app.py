@@ -1,17 +1,17 @@
 import os
 from pathlib import Path
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, redirect, url_for
 
 from services.docker_manager import DockerManager
 from services.registry import AppRegistry
 from services.remote_registry import RemoteRegistry
+from services.install_state import InstallState
+from services.installer import Installer, generate_secret
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-# URL to the registry.json in FjordHub's own GitHub repo (raw content).
-# Override with REGISTRY_URL env var once the repo is live.
 REGISTRY_URL = os.environ.get(
     "REGISTRY_URL",
     "https://raw.githubusercontent.com/qlerup/fjordhub/main/registry.json",
@@ -20,14 +20,15 @@ REGISTRY_URL = os.environ.get(
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 
-_local_registry = AppRegistry(Path(__file__).parent / "app_registry")
+_local_registry  = AppRegistry(Path(__file__).parent / "app_registry")
 _remote_registry = RemoteRegistry(DATA_DIR, REGISTRY_URL)
-docker_mgr = DockerManager()
+_install_state   = InstallState(DATA_DIR)
+_installer       = Installer(_install_state)
+docker_mgr       = DockerManager()
 
 
 def _get_apps() -> list[dict]:
     apps = _remote_registry.get_apps()
-    # Fall back to bundled local definitions when remote hasn't loaded yet
     return apps if apps else _local_registry.get_all()
 
 
@@ -40,6 +41,8 @@ def inject_globals():
     return {"app_name": "FjordHub"}
 
 
+# ── Dashboard ────────────────────────────────────────────────────────────────
+
 @app.route("/")
 def dashboard():
     return render_template(
@@ -49,20 +52,11 @@ def dashboard():
     )
 
 
+# ── App status & control ─────────────────────────────────────────────────────
+
 @app.route("/api/apps-status")
 def api_apps_status():
     return jsonify({a["id"]: docker_mgr.get_status(a) for a in _get_apps()})
-
-
-@app.route("/api/registry/refresh", methods=["POST"])
-def api_registry_refresh():
-    ok, msg = _remote_registry.refresh()
-    return jsonify({"ok": ok, "message": msg, "app_count": len(_remote_registry.get_apps())})
-
-
-@app.route("/api/registry/status")
-def api_registry_status():
-    return jsonify(_remote_registry.get_status())
 
 
 @app.route("/apps/<app_id>/start", methods=["POST"])
@@ -82,6 +76,65 @@ def stop_app(app_id):
     ok, msg = docker_mgr.stop(a)
     return jsonify({"ok": ok, "message": msg})
 
+
+# ── Install wizard ───────────────────────────────────────────────────────────
+
+@app.route("/apps/<app_id>/wizard")
+def install_wizard(app_id):
+    a = _get_app(app_id)
+    if not a:
+        return redirect(url_for("dashboard"))
+    # Pre-generate secrets for auto_secret fields so the page loads ready
+    pregenerated = {}
+    for step in a.get("setup_steps", []):
+        for field in step.get("fields", []):
+            if field.get("type") == "auto_secret":
+                pregenerated[field["key"]] = generate_secret()
+    return render_template("wizard.html", app=a, pregenerated=pregenerated)
+
+
+@app.route("/apps/<app_id>/install", methods=["POST"])
+def install_app(app_id):
+    a = _get_app(app_id)
+    if not a:
+        return jsonify({"error": "Unknown app"}), 404
+    body = request.get_json(silent=True) or {}
+    env_values = body.get("env", {})
+    if not isinstance(env_values, dict):
+        return jsonify({"error": "env must be an object"}), 400
+    _installer.start_install(a, env_values)
+    return jsonify({"ok": True, "message": "Installation startet"})
+
+
+@app.route("/apps/<app_id>/install/status")
+def install_status(app_id):
+    s = _install_state.get(app_id)
+    return jsonify({
+        "state":   s.get("state", "idle"),
+        "log":     s.get("log", []),
+        "error":   s.get("error"),
+    })
+
+
+@app.route("/api/generate-secret")
+def api_generate_secret():
+    return jsonify({"secret": generate_secret()})
+
+
+# ── Registry ─────────────────────────────────────────────────────────────────
+
+@app.route("/api/registry/refresh", methods=["POST"])
+def api_registry_refresh():
+    ok, msg = _remote_registry.refresh()
+    return jsonify({"ok": ok, "message": msg, "app_count": len(_remote_registry.get_apps())})
+
+
+@app.route("/api/registry/status")
+def api_registry_status():
+    return jsonify(_remote_registry.get_status())
+
+
+# ── Health ───────────────────────────────────────────────────────────────────
 
 @app.route("/api/health")
 def health():

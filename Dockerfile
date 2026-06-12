@@ -6,7 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apk add --no-cache \
     docker-cli \
     docker-cli-compose \
-    curl
+    curl \
+    git
 
 WORKDIR /app
 

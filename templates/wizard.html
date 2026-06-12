@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block title %}Installer {{ app.name }} — FjordHub{% endblock %}
+
+{% block content %}
+<div class="wizard-page">
+
+  {# ── Breadcrumb ── #}
+  <div class="wizard-breadcrumb">
+    <a href="{{ url_for('dashboard') }}">← Dashboard</a>
+    <span>/ Installer {{ app.name }}</span>
+  </div>
+
+  {# ── Header ── #}
+  <div class="wizard-header">
+    <div class="wizard-app-icon" style="--accent: {{ app.accent }};">
+      {% if app.icon == "camera" %}
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      {% elif app.icon == "share" %}
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      {% elif app.icon == "package" %}
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+      {% endif %}
+    </div>
+    <div>
+      <h1>Installer {{ app.name }}</h1>
+      <p class="wizard-desc">{{ app.description }}</p>
+    </div>
+  </div>
+
+  {# ── Step indicator ── #}
+  {% set steps = app.setup_steps %}
+  {% set total = steps | length + 2 %}{# +2 for intro + summary #}
+  <div class="wizard-step-indicator" id="step-indicator">
+    <div class="step-pill active" data-step="0">Intro</div>
+    {% for step in steps %}
+    <div class="step-pill" data-step="{{ loop.index }}">{{ step.title }}</div>
+    {% endfor %}
+    <div class="step-pill" data-step="{{ steps | length + 1 }}">Bekræft</div>
+  </div>
+
+  {# ── Panels ── #}
+  <div class="wizard-panels">
+
+    {# Panel 0: Intro #}
+    <div class="wizard-panel active" id="panel-0">
+      <h2>Hvad installeres?</h2>
+      <div class="info-grid">
+        <div class="info-row"><span>App</span><strong>{{ app.name }}</strong></div>
+        <div class="info-row"><span>Kildekode</span><a href="{{ app.source_url }}" target="_blank" rel="noopener">{{ app.source_url }}</a></div>
+        <div class="info-row"><span>Standardport</span><strong>{{ app.default_port }}</strong></div>
+        <div class="info-row"><span>Installationsmappe</span><code>/apps/{{ app.id }}</code></div>
+      </div>
+      <div class="info-note">
+        Kildekoden klones til <code>/apps/{{ app.id }}</code> inde i FjordHub-containeren.<br>
+        På din host svarer det til <code>APPS_DIR/{{ app.id }}</code> (standard: <code>./apps/{{ app.id }}</code>).<br>
+        Data-mapperne (database, uploads osv.) konfigurerer du i næste trin.
+      </div>
+    </div>
+
+    {# Dynamic step panels #}
+    {% for step in steps %}
+    <div class="wizard-panel" id="panel-{{ loop.index }}">
+      <h2>{{ step.title }}</h2>
+      {% for field in step.fields %}
+      <div class="form-field {% if field.show_if %}conditional{% endif %}"
+           {% if field.show_if %}
+           data-show-key="{{ field.show_if.key }}"
+           data-show-val="{{ field.show_if.value }}"
+           {% endif %}
+           id="ff-{{ field.key }}">
+        <label for="f-{{ field.key }}">{{ field.label }}</label>
+
+        {% if field.type == "select" %}
+        <select id="f-{{ field.key }}" name="{{ field.key }}" onchange="onFieldChange('{{ field.key }}', this.value)">
+          {% for opt in field.options %}
+          <option value="{{ opt.value }}" {% if opt.value == field.default %}selected{% endif %}>{{ opt.label }}</option>
+          {% endfor %}
+        </select>
+
+        {% elif field.type == "toggle" %}
+        <label class="toggle-switch">
+          <input type="checkbox" id="f-{{ field.key }}" name="{{ field.key }}"
+                 {% if field.default == "1" %}checked{% endif %}
+                 onchange="onFieldChange('{{ field.key }}', this.checked ? '1' : '0')">
+          <span class="toggle-track"></span>
+          <span class="toggle-knob"></span>
+        </label>
+
+        {% elif field.type == "auto_secret" %}
+        <div class="secret-row">
+          <input type="text" id="f-{{ field.key }}" name="{{ field.key }}"
+                 value="{{ pregenerated.get(field.key, '') }}"
+                 class="secret-input" readonly>
+          <button type="button" class="btn-gen" onclick="regenSecret('{{ field.key }}')">↻ Ny</button>
+        </div>
+
+        {% else %}
+        <input type="{{ 'number' if field.type == 'number' else 'url' if field.type == 'url' else 'text' }}"
+               id="f-{{ field.key }}" name="{{ field.key }}"
+               value="{{ field.default }}"
+               onchange="onFieldChange('{{ field.key }}', this.value)"
+               oninput="onFieldChange('{{ field.key }}', this.value)">
+        {% endif %}
+
+        {% if field.hint %}
+        <p class="field-hint">{{ field.hint }}</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+
+    {# Summary panel #}
+    <div class="wizard-panel" id="panel-{{ steps | length + 1 }}">
+      <h2>Bekræft installation</h2>
+      <p class="wizard-desc">Gennemse dine valg. Klik <strong>Installer</strong> for at starte.</p>
+      <div id="summary-list" class="summary-list"></div>
+    </div>
+
+    {# Progress panel (shown after install starts) #}
+    <div class="wizard-panel" id="panel-progress" style="display:none;">
+      <h2 id="progress-title">Installerer…</h2>
+      <div class="install-log" id="install-log"></div>
+      <div id="progress-done" style="display:none;">
+        <a href="{{ url_for('dashboard') }}" class="btn btn-open" style="display:inline-flex;margin-top:16px;">
+          ← Tilbage til dashboard
+        </a>
+      </div>
+    </div>
+
+  </div>{# /.wizard-panels #}
+
+  {# ── Navigation ── #}
+  <div class="wizard-nav" id="wizard-nav">
+    <button class="btn btn-toggle" id="btn-back" onclick="wizardBack()" style="display:none;">← Tilbage</button>
+    <div style="flex:1"></div>
+    <button class="btn btn-open" id="btn-next" onclick="wizardNext()">Næste →</button>
+    <button class="btn btn-install" id="btn-install" onclick="startInstall()" style="display:none;">
+      ⬇ Installer {{ app.name }}
+    </button>
+  </div>
+
+</div>{# /.wizard-page #}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const APP_ID    = {{ app.id | tojson }};
+const APP_NAME  = {{ app.name | tojson }};
+const TOTAL_STEPS = {{ steps | length + 2 }};  // intro + steps + summary
+
+// Field values store
+const VALUES = {};
+// Initialise from rendered defaults
+{% for step in steps %}
+{% for field in step.fields %}
+{% if field.type == "toggle" %}
+VALUES[{{ field.key | tojson }}] = {{ '1' if field.default == '1' else '0' | tojson }};
+{% elif field.type == "auto_secret" %}
+VALUES[{{ field.key | tojson }}] = document.getElementById('f-{{ field.key }}')?.value || '';
+{% else %}
+VALUES[{{ field.key | tojson }}] = {{ (field.default or '') | tojson }};
+{% endif %}
+{% endfor %}
+{% endfor %}
+// Sync secret values after DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  {% for step in steps %}
+  {% for field in step.fields %}
+  {% if field.type == "auto_secret" %}
+  VALUES[{{ field.key | tojson }}] = document.getElementById('f-{{ field.key }}')?.value || '';
+  {% endif %}
+  {% endfor %}
+  {% endfor %}
+  updateConditionals();
+});
+
+let currentStep = 0;
+
+function showPanel(step) {
+  document.querySelectorAll('.wizard-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.step-pill').forEach(p => p.classList.remove('active', 'done'));
+
+  const panel = document.getElementById(`panel-${step}`);
+  if (panel) panel.classList.add('active');
+
+  document.querySelectorAll('.step-pill').forEach(p => {
+    const s = parseInt(p.dataset.step);
+    if (s < step) p.classList.add('done');
+    if (s === step) p.classList.add('active');
+  });
+
+  // Back button
+  document.getElementById('btn-back').style.display  = step > 0 ? '' : 'none';
+  // Next vs Install button
+  const isLast = step === TOTAL_STEPS - 1;
+  document.getElementById('btn-next').style.display    = isLast ? 'none' : '';
+  document.getElementById('btn-install').style.display = isLast ? '' : 'none';
+
+  if (isLast) buildSummary();
+}
+
+function wizardNext() {
+  if (currentStep < TOTAL_STEPS - 1) {
+    currentStep++;
+    showPanel(currentStep);
+  }
+}
+
+function wizardBack() {
+  if (currentStep > 0) {
+    currentStep--;
+    showPanel(currentStep);
+  }
+}
+
+function onFieldChange(key, value) {
+  VALUES[key] = value;
+  updateConditionals();
+}
+
+function updateConditionals() {
+  document.querySelectorAll('.form-field.conditional').forEach(el => {
+    const key = el.dataset.showKey;
+    const val = el.dataset.showVal;
+    el.style.display = (VALUES[key] === val) ? '' : 'none';
+  });
+}
+
+async function regenSecret(key) {
+  const res = await fetch('/api/generate-secret');
+  const data = await res.json();
+  document.getElementById(`f-${key}`).value = data.secret;
+  VALUES[key] = data.secret;
+}
+
+function buildSummary() {
+  const list = document.getElementById('summary-list');
+  const rows = Object.entries(VALUES)
+    .filter(([k, v]) => v !== '' && v !== null)
+    .map(([k, v]) => {
+      const isSecret = k.toLowerCase().includes('key') || k.toLowerCase().includes('secret');
+      const display = isSecret ? '••••••••' : v;
+      return `<div class="summary-row"><span>${k}</span><code>${display}</code></div>`;
+    });
+  list.innerHTML = rows.join('');
+}
+
+async function startInstall() {
+  // Collect all values including secrets
+  {% for step in steps %}
+  {% for field in step.fields %}
+  {% if field.type == "toggle" %}
+  VALUES[{{ field.key | tojson }}] = document.getElementById('f-{{ field.key }}')?.checked ? '1' : '0';
+  {% elif field.type != "auto_secret" %}
+  VALUES[{{ field.key | tojson }}] = document.getElementById('f-{{ field.key }}')?.value || '';
+  {% else %}
+  VALUES[{{ field.key | tojson }}] = document.getElementById('f-{{ field.key }}')?.value || '';
+  {% endif %}
+  {% endfor %}
+  {% endfor %}
+
+  // Switch to progress view
+  document.getElementById('wizard-nav').style.display = 'none';
+  document.getElementById('step-indicator').style.display = 'none';
+  document.querySelectorAll('.wizard-panel').forEach(p => { p.classList.remove('active'); p.style.display = 'none'; });
+  const progress = document.getElementById('panel-progress');
+  progress.style.display = '';
+  progress.classList.add('active');
+
+  // POST install
+  const res = await fetch(`/apps/${APP_ID}/install`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ env: VALUES }),
+  });
+  const data = await res.json();
+  if (!data.ok) {
+    appendLog(`✗ ${data.error || data.message}`);
+    return;
+  }
+
+  // Poll status
+  pollInstall();
+}
+
+let _logLines = 0;
+async function pollInstall() {
+  const res  = await fetch(`/apps/${APP_ID}/install/status`);
+  const data = await res.json();
+
+  // Append new log lines
+  const lines = data.log || [];
+  for (let i = _logLines; i < lines.length; i++) appendLog(lines[i]);
+  _logLines = lines.length;
+
+  if (data.state === 'installing') {
+    setTimeout(pollInstall, 1500);
+  } else if (data.state === 'installed') {
+    document.getElementById('progress-title').textContent = `✓ ${APP_NAME} er installeret!`;
+    document.getElementById('progress-done').style.display = '';
+  } else if (data.state === 'failed') {
+    document.getElementById('progress-title').textContent = '✗ Installation fejlede';
+    appendLog(`Fejl: ${data.error || 'ukendt'}`);
+    document.getElementById('progress-done').style.display = '';
+  }
+}
+
+function appendLog(line) {
+  const box = document.getElementById('install-log');
+  const el = document.createElement('div');
+  el.className = 'log-line';
+  el.textContent = line;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
+// Init
+showPanel(0);
+</script>
+{% endblock %}
