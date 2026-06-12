@@ -10,6 +10,7 @@ from services.remote_registry import RemoteRegistry
 from services.install_state import InstallState
 from services.installer import Installer, generate_secret
 from services.compose_env import build_compose_env
+from services.update_manager import UpdateManager
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
@@ -27,6 +28,7 @@ _local_registry  = AppRegistry(Path(__file__).parent / "app_registry")
 _remote_registry = RemoteRegistry(DATA_DIR, REGISTRY_URL)
 _install_state   = InstallState(DATA_DIR)
 _installer       = Installer(_install_state)
+_update_manager  = UpdateManager(_install_state)
 docker_mgr       = DockerManager()
 
 
@@ -62,6 +64,11 @@ def api_apps_status():
     return jsonify({a["id"]: docker_mgr.get_status(a) for a in _get_apps()})
 
 
+@app.route("/api/apps-updates")
+def api_apps_updates():
+    return jsonify(_update_manager.get_all_statuses(_get_apps()))
+
+
 def _with_compose_dir(app_def: dict, app_id: str) -> dict:
     """Inject compose_dir from install_state for wizard-installed apps."""
     install_dir = _install_state.get_install_dir(app_id)
@@ -86,6 +93,23 @@ def stop_app(app_id):
         return jsonify({"error": "Unknown app"}), 404
     ok, msg = docker_mgr.stop(_with_compose_dir(a, app_id))
     return jsonify({"ok": ok, "message": msg})
+
+
+@app.route("/apps/<app_id>/update/check", methods=["POST"])
+def check_app_update(app_id):
+    a = _get_app(app_id)
+    if not a:
+        return jsonify({"error": "Unknown app"}), 404
+    return jsonify(_update_manager.check_now(a))
+
+
+@app.route("/apps/<app_id>/update/start", methods=["POST"])
+def start_app_update(app_id):
+    a = _get_app(app_id)
+    if not a:
+        return jsonify({"error": "Unknown app"}), 404
+    payload, status = _update_manager.start_update(a)
+    return jsonify(payload), status
 
 
 @app.route("/apps/<app_id>/uninstall", methods=["POST"])

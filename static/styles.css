@@ -118,19 +118,53 @@ a { color: inherit; text-decoration: none; }
 }
 
 .card-icon-wrap {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 28% 18%, rgba(255,255,255,.18), transparent 34%),
+    linear-gradient(145deg, #2b3242 0%, #161b26 52%, #0c1018 100%);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow:
+    0 14px 28px rgba(0,0,0,.34),
+    0 4px 10px rgba(0,0,0,.22),
+    inset 0 1px 0 rgba(255,255,255,.16),
+    inset 0 -12px 22px rgba(0,0,0,.22);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--accent);
+  color: #dce6f6;
+  overflow: hidden;
+  position: relative;
 }
 
-.card-icon-wrap svg { width: 24px; height: 24px; }
-.card-icon-img { width: 32px; height: 32px; object-fit: contain; display: block; }
+.card-icon-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(160deg, rgba(255,255,255,.16), transparent 42%);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.card-icon-wrap svg {
+  width: 100%;
+  height: 100%;
+  padding: 13px;
+  position: relative;
+  z-index: 1;
+}
+
+.card-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  position: relative;
+  z-index: 1;
+}
 
 .card-info { flex: 1; min-width: 0; }
 
@@ -182,6 +216,49 @@ a { color: inherit; text-decoration: none; }
 .status-label { font-size: .8rem; color: var(--text-muted); }
 .status-label.running { color: var(--green); }
 .status-label.error   { color: var(--red); }
+
+.card-update-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  min-height: 26px;
+}
+
+.update-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+.update-dot[data-update-status="up_to_date"] { background: var(--green); }
+.update-dot[data-update-status="update_available"] { background: var(--yellow); }
+.update-dot[data-update-status="updating"] { background: var(--accent); animation: pulse 1.4s infinite; }
+.update-dot[data-update-status="failed"],
+.update-dot[data-update-status="error"] { background: var(--red); }
+
+.update-label {
+  color: var(--text-muted);
+  font-size: .78rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-update {
+  margin-left: auto;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--yellow) 45%, var(--border));
+  color: var(--yellow);
+  background: color-mix(in srgb, var(--yellow) 8%, var(--surface-2));
+  font-size: .76rem;
+}
+.btn-update:hover {
+  background: color-mix(in srgb, var(--yellow) 16%, var(--surface-2));
+}
+.btn-update:disabled { opacity: .5; cursor: not-allowed; }
 
 .uptime-label {
   font-size: .78rem;
@@ -349,17 +426,42 @@ a { color: inherit; text-decoration: none; }
 }
 
 .wizard-app-icon {
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   flex-shrink: 0;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 28% 18%, rgba(255,255,255,.18), transparent 34%),
+    linear-gradient(145deg, #2b3242 0%, #161b26 52%, #0c1018 100%);
+  border: 1px solid rgba(255,255,255,.08);
+  box-shadow:
+    0 14px 28px rgba(0,0,0,.34),
+    0 4px 10px rgba(0,0,0,.22),
+    inset 0 1px 0 rgba(255,255,255,.16),
+    inset 0 -12px 22px rgba(0,0,0,.22);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent);
+  color: #dce6f6;
+  overflow: hidden;
+  position: relative;
 }
-.wizard-app-icon svg { width: 28px; height: 28px; }
+.wizard-app-icon::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(160deg, rgba(255,255,255,.16), transparent 42%);
+  z-index: 2;
+  pointer-events: none;
+}
+.wizard-app-icon svg {
+  width: 100%;
+  height: 100%;
+  padding: 15px;
+  position: relative;
+  z-index: 1;
+}
 
 .wizard-header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -.02em; }
 .wizard-desc { color: var(--text-muted); font-size: .9rem; margin-top: 4px; }

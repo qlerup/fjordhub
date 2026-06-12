@@ -10,6 +10,15 @@ const STATUS_LABELS = {
   unknown:       'Ukendt',
 };
 
+const UPDATE_LABELS = {
+  update_available: 'Ny opdatering klar',
+  up_to_date:       'Ingen opdatering',
+  updating:         'Opdaterer...',
+  failed:           'Opdatering fejlede',
+  error:            'Kunne ikke tjekke',
+  not_installed:    '',
+};
+
 function getAppUrl(port) {
   return `${location.protocol}//${location.hostname}:${port}`;
 }
@@ -51,6 +60,7 @@ function applyStatus(card, status) {
     btn.disabled       = false;
     btn.dataset.wizardUrl = `/apps/${id}/wizard`;
     if (delBtn) delBtn.style.display = 'none';
+    hideUpdateRow(card);
   } else {
     open.href = getAppUrl(port);
     open.style.opacity = '0.5';
@@ -71,6 +81,53 @@ async function fetchStatuses() {
       const id = card.dataset.appId;
       if (data[id]) applyStatus(card, data[id]);
     });
+  } catch (_) {}
+}
+
+function hideUpdateRow(card) {
+  const row = card.querySelector('.card-update-row');
+  if (!row) return;
+  row.style.display = 'none';
+}
+
+function applyUpdateStatus(card, status) {
+  const row = card.querySelector('.card-update-row');
+  if (!row) return;
+
+  const state = status.state || 'error';
+  if (state === 'not_installed') {
+    hideUpdateRow(card);
+    return;
+  }
+
+  const label = row.querySelector('.update-label');
+  const dot = row.querySelector('.update-dot');
+  const btn = row.querySelector('.btn-update');
+  row.style.display = '';
+  dot.dataset.updateStatus = state;
+  label.textContent = status.label || UPDATE_LABELS[state] || state;
+
+  const canUpdate = state === 'update_available';
+  const isRunning = state === 'updating' || status.running;
+  btn.style.display = canUpdate || isRunning ? '' : 'none';
+  btn.disabled = isRunning;
+  btn.textContent = isRunning ? 'Opdaterer...' : 'Opdater';
+}
+
+async function fetchUpdateStatuses() {
+  try {
+    const res = await fetch('/api/apps-updates');
+    if (!res.ok) return;
+    const data = await res.json();
+    let hasRunningUpdate = false;
+    document.querySelectorAll('.app-card').forEach(card => {
+      const id = card.dataset.appId;
+      if (data[id]) {
+        applyUpdateStatus(card, data[id]);
+        hasRunningUpdate ||= Boolean(data[id].running || data[id].state === 'updating');
+      }
+    });
+    if (hasRunningUpdate) setTimeout(fetchUpdateStatuses, 2500);
   } catch (_) {}
 }
 
@@ -164,7 +221,38 @@ async function toggleApp(card, action) {
   setTimeout(fetchStatuses, 4500);
 }
 
+async function startUpdate(card) {
+  const id = card.dataset.appId;
+  const name = card.querySelector('.card-name')?.textContent || id;
+  const btn = card.querySelector('.btn-update');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Starter...';
+  }
+  try {
+    const res = await fetch(`/apps/${id}/update/start`, { method: 'POST' });
+    const data = await res.json();
+    if (!data.ok && res.status !== 202) {
+      showToast(`âœ— ${data.error || 'Kunne ikke starte opdatering'}`, 'err');
+      if (btn) btn.disabled = false;
+      return;
+    }
+    showToast(`${name} opdaterer`, 'ok');
+    applyUpdateStatus(card, { ...data, state: 'updating', running: true, label: 'Opdaterer...' });
+    setTimeout(fetchUpdateStatuses, 1200);
+    setTimeout(fetchStatuses, 4500);
+  } catch (_) {
+    showToast('âœ— NetvÃ¦rksfejl', 'err');
+    if (btn) btn.disabled = false;
+  }
+}
+
 document.getElementById('app-grid')?.addEventListener('click', e => {
+  const updateBtn = e.target.closest('.btn-update');
+  if (updateBtn && !updateBtn.disabled) {
+    startUpdate(updateBtn.closest('.app-card'));
+    return;
+  }
   const delBtn = e.target.closest('.btn-delete');
   if (delBtn && !delBtn.disabled) {
     confirmUninstall(delBtn.closest('.app-card'));
@@ -212,7 +300,9 @@ async function confirmUninstall(card) {
 
 checkDockerHealth();
 fetchStatuses();
+fetchUpdateStatuses();
 tickRelativeTime();
 
 setInterval(fetchStatuses,    8000);
+setInterval(fetchUpdateStatuses, 60000);
 setInterval(checkDockerHealth, 30000);
