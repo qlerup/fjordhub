@@ -65,7 +65,25 @@ class Installer:
             (install_dir / ".env").write_text("\n".join(lines) + "\n", encoding="utf-8")
             log("✓ .env skrevet")
 
-            # ── 3. docker compose up ────────────────────────────────────────
+            # ── 3. Pre-create data directories with open permissions ───────
+            data_dir = env_values.get("DATA_DIR", "").strip()
+            if data_dir:
+                log(f"→ Opretter data-mappe {data_dir} ...")
+                r = subprocess.run(
+                    [
+                        "docker", "run", "--rm",
+                        f"--volume={data_dir}:/d",
+                        "alpine",
+                        "sh", "-c", "mkdir -p /d && chmod 777 /d",
+                    ],
+                    capture_output=True, text=True, timeout=60,
+                )
+                if r.returncode == 0:
+                    log(f"✓ Data-mappe klar")
+                else:
+                    log(f"⚠ Kunne ikke pre-oprette data-mappe: {r.stderr[:200]}")
+
+            # ── 4. docker compose up ────────────────────────────────────────
             log("→ Starter docker compose up -d --build ...")
             log("  (dette kan tage flere minutter første gang)")
             proc = subprocess.Popen(
