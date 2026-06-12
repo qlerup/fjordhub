@@ -2,6 +2,8 @@ import os
 import subprocess
 from datetime import datetime, timezone, timedelta
 
+from services.compose_env import build_compose_env
+
 try:
     import docker
     _docker_available = True
@@ -74,6 +76,7 @@ class DockerManager:
             result = subprocess.run(
                 ["docker", "compose", "up", "-d"],
                 cwd=compose_dir,
+                env=build_compose_env(),
                 capture_output=True,
                 text=True,
                 timeout=60,
@@ -94,6 +97,7 @@ class DockerManager:
             result = subprocess.run(
                 ["docker", "compose", "stop"],
                 cwd=compose_dir,
+                env=build_compose_env(),
                 capture_output=True,
                 text=True,
                 timeout=60,
