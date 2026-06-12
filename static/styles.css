@@ -130,6 +130,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 .card-icon-wrap svg { width: 24px; height: 24px; }
+.card-icon-img { width: 32px; height: 32px; object-fit: contain; display: block; }
 
 .card-info { flex: 1; min-width: 0; }
 
