@@ -80,8 +80,43 @@ a { color: inherit; text-decoration: none; }
 .topbar-status.ok  { background: var(--green); }
 .topbar-status.err { background: var(--red); }
 
+/* ── App body + sidebar ── */
+.app-body {
+  display: flex;
+  min-height: calc(100vh - 64px);
+}
+
+.sidebar {
+  width: 56px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0;
+  gap: 4px;
+  position: sticky;
+  top: 64px;
+  height: calc(100vh - 64px);
+}
+
+.sidebar-item {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: background .15s, color .15s;
+}
+.sidebar-item svg { width: 20px; height: 20px; }
+.sidebar-item:hover { background: var(--surface-raised); color: var(--text); }
+.sidebar-item.active { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+
 /* ── Dashboard layout ── */
-.page-content { padding: 32px 24px; max-width: 1100px; margin: 0 auto; }
+.page-content { padding: 32px 24px; max-width: 1100px; margin: 0 auto; width: 100%; }
 
 .dashboard-header { margin-bottom: 28px; }
 .dashboard-header h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -.02em; }
@@ -726,12 +761,17 @@ a { color: inherit; text-decoration: none; }
   border-top: 1px solid var(--border);
 }
 
+/* ── Settings ── */
+.settings-page { max-width: 640px; }
+
 /* ── Responsive ── */
 @media (max-width: 480px) {
   .page-content { padding: 20px 16px; }
   .app-grid { grid-template-columns: 1fr; }
   .topbar { padding: 0 16px; }
   .refresh-label { display: none; }
+  .sidebar { width: 48px; }
+  .sidebar-item { width: 36px; height: 36px; }
   .wizard-page { padding: 20px 16px 40px; }
   .info-row { flex-wrap: wrap; }
   .info-row span { min-width: unset; }

@@ -43,7 +43,7 @@ def _get_app(app_id: str) -> dict | None:
 
 @app.context_processor
 def inject_globals():
-    return {"app_name": "FjordHub"}
+    return {"app_name": "FjordHub", "active_page": ""}
 
 
 # ── Dashboard ────────────────────────────────────────────────────────────────
@@ -54,7 +54,15 @@ def dashboard():
         "dashboard.html",
         apps=_get_apps(),
         reg_status=_remote_registry.get_status(),
+        active_page="apps",
     )
+
+
+# ── Settings ─────────────────────────────────────────────────────────────────
+
+@app.route("/settings")
+def settings():
+    return render_template("settings.html", active_page="settings")
 
 
 # ── App status & control ─────────────────────────────────────────────────────
