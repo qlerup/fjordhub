@@ -9,6 +9,7 @@ import requests
 CACHE_FILE = "registry_cache.json"
 REFRESH_INTERVAL_SEC = 3600  # 1 hour
 REQUEST_TIMEOUT_SEC = 10
+FETCH_HEADERS = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
 
 
 class RemoteRegistry:
@@ -60,7 +61,7 @@ class RemoteRegistry:
             return False, "REGISTRY_URL er ikke konfigureret. Sæt miljøvariablen."
 
         try:
-            resp = requests.get(self.registry_url, timeout=REQUEST_TIMEOUT_SEC)
+            resp = requests.get(self.registry_url, timeout=REQUEST_TIMEOUT_SEC, headers=FETCH_HEADERS)
             resp.raise_for_status()
             registry = resp.json()
         except requests.RequestException as e:
@@ -75,7 +76,7 @@ class RemoteRegistry:
             if not manifest_url:
                 continue
             try:
-                m = requests.get(manifest_url, timeout=REQUEST_TIMEOUT_SEC)
+                m = requests.get(manifest_url, timeout=REQUEST_TIMEOUT_SEC, headers=FETCH_HEADERS)
                 m.raise_for_status()
                 app_data = m.json()
                 app_data.setdefault("source_url", entry.get("source_url", ""))
