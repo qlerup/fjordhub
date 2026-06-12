@@ -165,13 +165,17 @@ async function toggleApp(card, action) {
 }
 
 document.getElementById('app-grid')?.addEventListener('click', e => {
+  const delBtn = e.target.closest('.btn-delete');
+  if (delBtn && !delBtn.disabled) {
+    confirmUninstall(delBtn.closest('.app-card'));
+    return;
+  }
   const btn = e.target.closest('.btn-toggle');
   if (!btn || btn.disabled) return;
   const card   = btn.closest('.app-card');
   const action = btn.dataset.action;
   if (action === 'start' || action === 'stop') toggleApp(card, action);
   if (action === 'install') window.location.href = btn.dataset.wizardUrl;
-  if (action === 'delete') confirmUninstall(card);
 });
 
 // ── Uninstall ─────────────────────────────────────────────────────────────
