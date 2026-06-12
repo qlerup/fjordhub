@@ -19,6 +19,8 @@ const UPDATE_LABELS = {
   not_installed:    '',
 };
 
+const INSTALLED_STATES = new Set(['running', 'exited', 'paused', 'restarting', 'error']);
+
 function getAppUrl(port) {
   return `${location.protocol}//${location.hostname}:${port}`;
 }
@@ -81,7 +83,39 @@ async function fetchStatuses() {
       const id = card.dataset.appId;
       if (data[id]) applyStatus(card, data[id]);
     });
+    organizeAppSections(data);
   } catch (_) {}
+}
+
+function organizeAppSections(statuses) {
+  const installedGrid = document.getElementById('installed-grid');
+  const availableGrid = document.getElementById('available-grid');
+  const installedSection = document.getElementById('installed-section');
+  const availableSection = document.getElementById('available-section');
+  const installedCount = document.getElementById('installed-count');
+  const availableCount = document.getElementById('available-count');
+  if (!installedGrid || !availableGrid) return;
+
+  let installed = 0;
+  let available = 0;
+  const cards = Array.from(document.querySelectorAll('.app-card'))
+    .sort((a, b) => Number(a.dataset.sortOrder || 0) - Number(b.dataset.sortOrder || 0));
+
+  cards.forEach(card => {
+    const state = statuses?.[card.dataset.appId]?.state || 'unknown';
+    if (INSTALLED_STATES.has(state)) {
+      installedGrid.appendChild(card);
+      installed += 1;
+    } else {
+      availableGrid.appendChild(card);
+      available += 1;
+    }
+  });
+
+  if (installedSection) installedSection.style.display = installed ? '' : 'none';
+  if (availableSection) availableSection.style.display = available ? '' : 'none';
+  if (installedCount) installedCount.textContent = `${installed}`;
+  if (availableCount) availableCount.textContent = `${available}`;
 }
 
 function hideUpdateRow(card) {
@@ -247,7 +281,7 @@ async function startUpdate(card) {
   }
 }
 
-document.getElementById('app-grid')?.addEventListener('click', e => {
+document.getElementById('app-sections')?.addEventListener('click', e => {
   const updateBtn = e.target.closest('.btn-update');
   if (updateBtn && !updateBtn.disabled) {
     startUpdate(updateBtn.closest('.app-card'));

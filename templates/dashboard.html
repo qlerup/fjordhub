@@ -39,9 +39,23 @@
 
   <div id="toast" class="toast" aria-live="polite"></div>
 
-  <div class="app-grid" id="app-grid">
+  <div class="app-sections" id="app-sections">
+    <section class="app-section" id="installed-section" style="display:none;">
+      <div class="app-section-header">
+        <h2>Installeret</h2>
+        <span class="section-count" id="installed-count"></span>
+      </div>
+      <div class="app-grid" id="installed-grid"></div>
+    </section>
+
+    <section class="app-section" id="available-section">
+      <div class="app-section-header">
+        <h2>Ikke installeret</h2>
+        <span class="section-count" id="available-count"></span>
+      </div>
+      <div class="app-grid" id="available-grid">
     {% for app in apps %}
-    <div class="app-card" id="card-{{ app.id }}" data-app-id="{{ app.id }}" data-default-port="{{ app.default_port }}">
+    <div class="app-card" id="card-{{ app.id }}" data-app-id="{{ app.id }}" data-default-port="{{ app.default_port }}" data-sort-order="{{ loop.index0 }}">
       <div class="card-accent" style="--accent: {{ app.accent }};"></div>
       <div class="card-body">
         <div class="card-icon-wrap" style="--accent: {{ app.accent }};">
@@ -112,6 +126,8 @@
       </div>
     </div>
     {% endfor %}
+      </div>
+    </section>
   </div>
 </div>
 {% endblock %}
