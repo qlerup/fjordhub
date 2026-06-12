@@ -183,7 +183,7 @@ document.getElementById('app-grid')?.addEventListener('click', e => {
 async function confirmUninstall(card) {
   const id   = card.dataset.appId;
   const name = card.querySelector('.card-name')?.textContent || id;
-  if (!confirm(`Afinstallér ${name}?\n\nDette stopper og fjerner containere og app-filer.\nDine data-mapper berøres ikke.`)) return;
+  if (!confirm(`Afinstallér ${name}?\n\nDette stopper og fjerner containere, Docker images og app-filer.\nDine data-mapper berøres ikke.`)) return;
 
   const delBtn = card.querySelector('.btn-delete');
   const btn    = card.querySelector('.btn-toggle');

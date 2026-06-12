@@ -9,6 +9,7 @@ from services.registry import AppRegistry
 from services.remote_registry import RemoteRegistry
 from services.install_state import InstallState
 from services.installer import Installer, generate_secret
+from services.compose_env import build_compose_env
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
@@ -95,14 +96,21 @@ def uninstall_app(app_id):
     install_dir = _install_state.get_install_dir(app_id)
     errors = []
 
-    # 1. docker compose down (stop + remove containers)
+    # 1. docker compose down (stop + remove containers and app images)
     compose_dir = install_dir or str(_with_compose_dir(a, app_id).get("compose_dir", ""))
     if compose_dir and Path(compose_dir).exists():
         try:
-            subprocess.run(
-                ["docker", "compose", "down", "--remove-orphans"],
-                cwd=compose_dir, capture_output=True, timeout=60,
+            result = subprocess.run(
+                ["docker", "compose", "down", "--remove-orphans", "--rmi", "all"],
+                cwd=compose_dir,
+                env=build_compose_env(),
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
+            if result.returncode != 0:
+                msg = result.stderr.strip() or result.stdout.strip() or "docker compose down failed"
+                errors.append(f"compose down: {msg[:400]}")
         except Exception as e:
             errors.append(f"compose down: {e}")
 
