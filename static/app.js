@@ -405,6 +405,33 @@ async function confirmUninstall(card) {
   }
 }
 
+// ── SSO open ─────────────────────────────────────────────────────────────
+
+document.getElementById('app-sections')?.addEventListener('click', e => {
+  const openBtn = e.target.closest('.btn-open');
+  if (!openBtn) return;
+  const card  = openBtn.closest('.app-card');
+  const appId = card?.dataset.appId;
+  const href  = openBtn.getAttribute('href');
+  if (!href || href === '#' || !appId) return;
+  e.preventDefault();
+  openWithSso(appId, href);
+});
+
+async function openWithSso(appId, appUrl) {
+  try {
+    const res  = await fetch(`/api/hub/sso-token?app_id=${encodeURIComponent(appId)}`);
+    const data = await res.json();
+    if (data.ok && data.token) {
+      const url = new URL('/hub-login', appUrl);
+      url.searchParams.set('token', data.token);
+      window.open(url.toString(), '_blank', 'noopener');
+      return;
+    }
+  } catch (_) {}
+  window.open(appUrl, '_blank', 'noopener');
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────
 
 document.getElementById('update-log-modal')?.addEventListener('click', e => {

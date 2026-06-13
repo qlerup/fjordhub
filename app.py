@@ -66,7 +66,10 @@ _AUTH_EXEMPT = {
     "api_hub_app_authenticate",
     "api_hub_app_users",
     "api_hub_app_user",
+    "api_hub_sso_verify",
 }
+
+_sso_tokens: dict = {}
 
 
 def _install_state_exists() -> bool:
@@ -397,6 +400,42 @@ def api_hub_app_user(user_id: int):
     if not user:
         return jsonify({"ok": False, "error": "Brugeren har ikke adgang til appen"}), 404
     return jsonify({"ok": True, "user": user, "item": user})
+
+
+@app.route("/api/hub/sso-token")
+@login_required
+def api_hub_sso_token():
+    app_id = request.args.get("app_id", "").strip()
+    if not app_id or not _auth.get_hub_key(app_id):
+        return jsonify({"ok": False, "error": "App ikke installeret"}), 400
+    token = generate_secret(32)
+    _sso_tokens[token] = {
+        "username": current_user.username,
+        "id": current_user.id,
+        "role": "admin",
+        "app_id": app_id,
+        "expires_at": time.time() + 60,
+    }
+    return jsonify({"ok": True, "token": token})
+
+
+@app.route("/api/hub/sso-verify")
+def api_hub_sso_verify():
+    app_id = request.args.get("app_id", "").strip()
+    token = request.args.get("token", "").strip()
+    hub_key = request.headers.get("X-Hub-Key", "")
+    if not app_id or not token or not hub_key:
+        return jsonify({"ok": False, "error": "app_id, token og X-Hub-Key påkrævet"}), 400
+    if not _auth.verify_hub_key(app_id, hub_key):
+        return jsonify({"ok": False, "error": "Uautoriseret"}), 401
+    entry = _sso_tokens.pop(token, None)
+    if not entry:
+        return jsonify({"ok": False, "error": "Ugyldigt token"}), 401
+    if entry["app_id"] != app_id:
+        return jsonify({"ok": False, "error": "Token tilhører en anden app"}), 401
+    if time.time() > entry["expires_at"]:
+        return jsonify({"ok": False, "error": "Token er udløbet"}), 401
+    return jsonify({"ok": True, "username": entry["username"], "id": entry["id"], "role": entry["role"]})
 
 
 @app.route("/api/apps-status")
