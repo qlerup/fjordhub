@@ -1,10 +1,6 @@
-import json
 import os
 import shutil
 import subprocess
-import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from flask import Flask, render_template, jsonify, request, redirect, url_for
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
@@ -61,7 +57,16 @@ def _unauthorized():
     return redirect(url_for("login", next=request.path))
 
 
-_AUTH_EXEMPT = {"static", "setup", "login", "health", "hub_user_sync"}
+_AUTH_EXEMPT = {
+    "static",
+    "setup",
+    "login",
+    "health",
+    "hub_user_sync",
+    "api_hub_app_authenticate",
+    "api_hub_app_users",
+    "api_hub_app_user",
+}
 
 
 def _install_state_exists() -> bool:
@@ -243,49 +248,6 @@ def _installed_hub_apps() -> list[dict]:
     return [a for a in _get_apps() if a.get("id") in managed_ids]
 
 
-def _read_app_port(app_id: str) -> str | None:
-    install_dir = _install_state.get_install_dir(app_id)
-    if not install_dir:
-        return None
-    env_path = Path(install_dir) / ".env"
-    if not env_path.exists():
-        return None
-    for line in env_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line.startswith("APP_PORT="):
-            return line[len("APP_PORT="):].strip()
-    return None
-
-
-def _sync_user_to_app(app_id: str, username: str, password: str, role: str) -> bool:
-    hub_key = _auth.get_hub_key(app_id)
-    app_port = _read_app_port(app_id)
-    if not hub_key or not app_port:
-        return False
-    url = f"http://host.docker.internal:{app_port}/api/hub/users"
-    payload = json.dumps({"username": username, "password": password, "role": role, "name": username}).encode()
-    req = urllib.request.Request(url, data=payload, method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("X-Hub-Key", hub_key)
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            return resp.status in (200, 201, 409)
-    except Exception:
-        return False
-
-
-def _post_install_provision(app_id: str, username: str, password: str, user_id: int) -> None:
-    """Background: retry syncing admin user to newly installed app until container is ready."""
-    for _ in range(12):
-        time.sleep(5)
-        if _sync_user_to_app(app_id, username, password, "admin"):
-            try:
-                _auth.set_user_app_access(user_id, app_id, "admin")
-            except Exception:
-                pass
-            return
-
-
 @app.route("/users")
 def users():
     if not current_user.is_admin:
@@ -317,7 +279,6 @@ def create_user():
             if app_role not in ("admin", "user"):
                 app_role = "user"
             _auth.set_user_app_access(user_id, aid, app_role)
-            _sync_user_to_app(aid, username, password, app_role)
         return redirect(url_for("users", msg="1"))
     except ValueError as exc:
         return render_template(
@@ -347,6 +308,7 @@ def delete_user(user_id: int):
 
 @app.route("/api/hub/user-sync", methods=["POST"])
 def hub_user_sync():
+    """Backward-compatible grant endpoint for older app builds."""
     data = request.get_json(silent=True) or {}
     app_id = str(data.get("app_id") or "")
     key = request.headers.get("X-Hub-Key") or str(data.get("hub_key") or "")
@@ -361,17 +323,81 @@ def hub_user_sync():
         role = "user"
     if not username:
         return jsonify({"ok": False, "error": "username påkrævet"}), 400
-    user = _auth.get_by_username(username)
-    if user:
-        user_id = user.id
-    else:
-        effective_pw = password if len(password) >= 6 else generate_secret(16)
-        user_id = _auth.create_user(username, effective_pw, role="user")
-    _auth.set_user_app_access(user_id, app_id, role)
-    return jsonify({"ok": True, "user_id": user_id})
+    try:
+        user = _auth.create_or_grant_app_user(app_id, username, password, role)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, "user": user, "user_id": user["id"]})
 
 
 # ── App status & control ─────────────────────────────────────────────────────
+
+def _require_app_key(data: dict) -> tuple[str, tuple | None]:
+    app_id = str(data.get("app_id") or "").strip()
+    key = request.headers.get("X-Hub-Key") or str(data.get("hub_key") or "")
+    if not app_id or not key:
+        return "", (jsonify({"ok": False, "error": "app_id og hub_key påkrævet"}), 400)
+    if not _auth.verify_hub_key(app_id, key):
+        return "", (jsonify({"ok": False, "error": "Uautoriseret"}), 401)
+    return app_id, None
+
+
+@app.route("/api/hub/apps/authenticate", methods=["POST"])
+def api_hub_app_authenticate():
+    data = request.get_json(silent=True) or {}
+    app_id, error_response = _require_app_key(data)
+    if error_response:
+        return error_response
+    username = str(data.get("username") or "").strip()
+    password = str(data.get("password") or "")
+    if not username or not password:
+        return jsonify({"ok": False, "error": "Brugernavn og adgangskode påkrævet"}), 400
+    user = _auth.authenticate_app_user(app_id, username, password)
+    if not user:
+        return jsonify({"ok": False, "error": "Forkert login eller ingen adgang til appen"}), 401
+    return jsonify({"ok": True, "user": user})
+
+
+@app.route("/api/hub/apps/users", methods=["GET", "POST"])
+def api_hub_app_users():
+    data = request.get_json(silent=True) or {}
+    if request.method == "GET":
+        data = {"app_id": request.args.get("app_id", "")}
+    app_id, error_response = _require_app_key(data)
+    if error_response:
+        return error_response
+    if request.method == "GET":
+        return jsonify({"ok": True, "items": _auth.list_app_users(app_id)})
+    username = str(data.get("username") or "").strip()
+    password = str(data.get("password") or "")
+    role = str(data.get("role") or "user").strip()
+    try:
+        user = _auth.create_or_grant_app_user(app_id, username, password, role)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True, "user": user, "item": user}), 201
+
+
+@app.route("/api/hub/apps/users/<int:user_id>", methods=["PATCH", "DELETE"])
+def api_hub_app_user(user_id: int):
+    data = request.get_json(silent=True) or {}
+    if request.method == "DELETE" and not data:
+        data = {"app_id": request.args.get("app_id", "")}
+    app_id, error_response = _require_app_key(data)
+    if error_response:
+        return error_response
+    if request.method == "DELETE":
+        _auth.remove_user_app_access(user_id, app_id)
+        return jsonify({"ok": True})
+    role = str(data.get("role") or "user").strip()
+    try:
+        user = _auth.update_app_user_role(user_id, app_id, role)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if not user:
+        return jsonify({"ok": False, "error": "Brugeren har ikke adgang til appen"}), 404
+    return jsonify({"ok": True, "user": user, "item": user})
+
 
 @app.route("/api/apps-status")
 def api_apps_status():
@@ -499,16 +525,8 @@ def install_app(app_id):
     env_values["FJORDHUB_APP_ID"] = app_id
     env_values["FJORDHUB_URL"] = f"http://host.docker.internal:{APP_PORT}"
 
-    # Post-install: auto-provision the hub admin user in the new app
-    on_success = None
-    hub_admin = body.get("hub_admin", {}) if isinstance(body.get("hub_admin"), dict) else {}
-    hub_admin_user = str(hub_admin.get("username") or "").strip()
-    hub_admin_pass = str(hub_admin.get("password") or "").strip()
-    if hub_admin_user and hub_admin_pass:
-        admin_obj = _auth.get_by_username(hub_admin_user)
-        if admin_obj:
-            uid = admin_obj.id
-            on_success = lambda: _post_install_provision(app_id, hub_admin_user, hub_admin_pass, uid)
+    installer_user_id = int(current_user.id)
+    on_success = lambda: _auth.set_user_app_access(installer_user_id, app_id, "admin")
 
     _installer.start_install(a, env_values, on_success=on_success)
     return jsonify({"ok": True, "message": "Installation startet"})

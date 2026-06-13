@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 import sqlite3
 from contextlib import closing
 from datetime import datetime
@@ -31,6 +33,20 @@ def _row_to_user(row) -> Optional[User]:
     )
 
 
+def _hash_api_key(key: str) -> str:
+    return hashlib.sha256(str(key or "").encode("utf-8")).hexdigest()
+
+
+def _user_access_dict(row) -> dict:
+    return {
+        "id": int(row["id"]),
+        "username": str(row["username"]),
+        "hub_role": str(row["hub_role"] or "user"),
+        "role": str(row["app_role"] or "user"),
+        "created_at": str(row["created_at"] or ""),
+    }
+
+
 class AuthService:
     def __init__(self, db_path: Path):
         self._db_path = db_path
@@ -54,6 +70,7 @@ class AuthService:
                 CREATE TABLE IF NOT EXISTS app_hub_keys (
                     app_id TEXT PRIMARY KEY,
                     api_key TEXT NOT NULL,
+                    api_key_hash TEXT,
                     created_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS user_app_access (
@@ -65,6 +82,9 @@ class AuthService:
                     UNIQUE(user_id, app_id)
                 );
             """)
+            cols = {r["name"] for r in conn.execute("PRAGMA table_info(app_hub_keys)").fetchall()}
+            if "api_key_hash" not in cols:
+                conn.execute("ALTER TABLE app_hub_keys ADD COLUMN api_key_hash TEXT")
             conn.commit()
 
     # ── Users ────────────────────────────────────────────────────────────────
@@ -166,8 +186,8 @@ class AuthService:
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
         with closing(self._conn()) as conn:
             conn.execute(
-                "INSERT OR REPLACE INTO app_hub_keys (app_id, api_key, created_at) VALUES (?, ?, ?)",
-                (app_id, key, now),
+                "INSERT OR REPLACE INTO app_hub_keys (app_id, api_key, api_key_hash, created_at) VALUES (?, ?, ?, ?)",
+                (app_id, "", _hash_api_key(key), now),
             )
             conn.commit()
 
@@ -179,8 +199,26 @@ class AuthService:
             return str(row["api_key"]) if row else None
 
     def verify_hub_key(self, app_id: str, key: str) -> bool:
-        stored = self.get_hub_key(app_id)
-        return bool(stored and stored == key)
+        if not app_id or not key:
+            return False
+        with closing(self._conn()) as conn:
+            row = conn.execute(
+                "SELECT api_key, api_key_hash FROM app_hub_keys WHERE app_id=?", (app_id,)
+            ).fetchone()
+            if not row:
+                return False
+            stored_hash = str(row["api_key_hash"] or "")
+            if stored_hash:
+                return secrets.compare_digest(stored_hash, _hash_api_key(key))
+            stored_plain = str(row["api_key"] or "")
+            ok = bool(stored_plain and secrets.compare_digest(stored_plain, key))
+            if ok:
+                conn.execute(
+                    "UPDATE app_hub_keys SET api_key='', api_key_hash=? WHERE app_id=?",
+                    (_hash_api_key(key), app_id),
+                )
+                conn.commit()
+            return ok
 
     def delete_hub_key(self, app_id: str) -> None:
         with closing(self._conn()) as conn:
@@ -229,3 +267,85 @@ class AuthService:
                 {"app_id": r["app_id"], "role": r["role"], "synced_at": r["synced_at"]}
                 for r in rows
             ]
+
+    def get_user_app_role(self, user_id: int, app_id: str) -> Optional[str]:
+        with closing(self._conn()) as conn:
+            row = conn.execute(
+                "SELECT role FROM user_app_access WHERE user_id=? AND app_id=?",
+                (int(user_id), str(app_id)),
+            ).fetchone()
+            return str(row["role"]) if row else None
+
+    def authenticate_app_user(self, app_id: str, username: str, password: str) -> Optional[dict]:
+        user = self.check_password(username, password)
+        if not user:
+            return None
+        role = self.get_user_app_role(user.id, app_id)
+        if not role:
+            return None
+        return {
+            "id": user.id,
+            "username": user.username,
+            "hub_role": user.role,
+            "role": role,
+            "created_at": user.created_at,
+        }
+
+    def list_app_users(self, app_id: str) -> list[dict]:
+        with closing(self._conn()) as conn:
+            rows = conn.execute(
+                """
+                SELECT u.id, u.username, u.role AS hub_role, u.created_at,
+                       a.role AS app_role
+                FROM user_app_access a
+                JOIN users u ON u.id = a.user_id
+                WHERE a.app_id=?
+                ORDER BY u.username COLLATE NOCASE
+                """,
+                (str(app_id),),
+            ).fetchall()
+            return [_user_access_dict(r) for r in rows]
+
+    def create_or_grant_app_user(
+        self,
+        app_id: str,
+        username: str,
+        password: str = "",
+        role: str = "user",
+    ) -> dict:
+        username = username.strip()
+        if not username:
+            raise ValueError("Brugernavn er påkrævet.")
+        if role not in ("admin", "user"):
+            role = "user"
+        user = self.get_by_username(username)
+        if user:
+            user_id = user.id
+        else:
+            user_id = self.create_user(username, password, role="user")
+            user = self.get_by_id(user_id)
+        self.set_user_app_access(user_id, app_id, role)
+        return {
+            "id": int(user_id),
+            "username": username if user is None else user.username,
+            "hub_role": "user" if user is None else user.role,
+            "role": role,
+            "created_at": "" if user is None else user.created_at,
+        }
+
+    def update_app_user_role(self, user_id: int, app_id: str, role: str) -> Optional[dict]:
+        if role not in ("admin", "user"):
+            raise ValueError("Ugyldig rolle.")
+        user = self.get_by_id(int(user_id))
+        if not user:
+            return None
+        if not self.get_user_app_role(user.id, app_id):
+            return None
+        self.set_user_app_access(user.id, app_id, role)
+        return {
+            "id": user.id,
+            "username": user.username,
+            "hub_role": user.role,
+            "role": role,
+            "created_at": user.created_at,
+        }

@@ -35,8 +35,7 @@
     {% for step in steps %}
     <div class="step-pill" data-step="{{ loop.index }}">{{ step.title }}</div>
     {% endfor %}
-    <div class="step-pill" data-step="{{ steps | length + 1 }}">Administrator</div>
-    <div class="step-pill" data-step="{{ steps | length + 2 }}">Bekræft</div>
+    <div class="step-pill" data-step="{{ steps | length + 1 }}">Bekræft</div>
   </div>
 
   {# ── Panels ── #}
@@ -112,23 +111,8 @@
     </div>
     {% endfor %}
 
-    {# Hub Admin panel #}
-    <div class="wizard-panel" id="panel-{{ steps | length + 1 }}">
-      <h2>Hub-administrator</h2>
-      <p class="wizard-desc">
-        Din FjordHub-konto (<strong>{{ current_user.username }}</strong>) oprettes automatisk
-        som administrator i <strong>{{ app.name }}</strong>. Du logger ind med samme brugernavn og adgangskode som her.
-      </p>
-      <div class="form-field">
-        <label for="hub-admin-password">Bekræft din FjordHub-adgangskode</label>
-        <input type="password" id="hub-admin-password" autocomplete="current-password" placeholder="Din adgangskode">
-        <p class="field-hint">Bruges til at oprette din konto i {{ app.name }}. Samme kode som du logger ind med her.</p>
-      </div>
-      <input type="hidden" id="hub-admin-username" value="{{ current_user.username }}">
-    </div>
-
     {# Summary panel #}
-    <div class="wizard-panel" id="panel-{{ steps | length + 2 }}">
+    <div class="wizard-panel" id="panel-{{ steps | length + 1 }}">
       <h2>Bekræft installation</h2>
       <p class="wizard-desc">Gennemse dine valg. Klik <strong>Installer</strong> for at starte.</p>
       <div id="summary-list" class="summary-list"></div>
@@ -164,7 +148,7 @@
 <script>
 const APP_ID    = {{ app.id | tojson }};
 const APP_NAME  = {{ app.name | tojson }};
-const TOTAL_STEPS = {{ steps | length + 3 }};  // intro + steps + hub-admin + summary
+const TOTAL_STEPS = {{ steps | length + 2 }};  // intro + steps + summary
 
 // Field values store
 const VALUES = {};
@@ -218,17 +202,6 @@ function showPanel(step) {
 }
 
 function wizardNext() {
-  // Validate hub admin password before leaving that step
-  const hubAdminStep = TOTAL_STEPS - 2;
-  if (currentStep === hubAdminStep) {
-    const pw = document.getElementById('hub-admin-password')?.value || '';
-    if (!pw) {
-      document.getElementById('hub-admin-password').focus();
-      document.getElementById('hub-admin-password').style.outline = '2px solid #f87171';
-      return;
-    }
-    document.getElementById('hub-admin-password').style.outline = '';
-  }
   if (currentStep < TOTAL_STEPS - 1) {
     currentStep++;
     showPanel(currentStep);
@@ -271,10 +244,7 @@ function buildSummary() {
       const display = isSecret ? '••••••••' : v;
       return `<div class="summary-row"><span>${k}</span><code>${display}</code></div>`;
     });
-  const hubUser = document.getElementById('hub-admin-username')?.value || '';
-  if (hubUser) {
-    rows.push(`<div class="summary-row"><span>Hub-admin konto</span><code>${hubUser} (samme adgangskode som FjordHub)</code></div>`);
-  }
+  rows.push(`<div class="summary-row"><span>Adgangsstyring</span><code>FjordHub styrer login og app-adgang</code></div>`);
   list.innerHTML = rows.join('');
 }
 
@@ -301,14 +271,11 @@ async function startInstall() {
   progress.classList.add('active');
 
   // POST install
-  const hubAdminUser = document.getElementById('hub-admin-username')?.value || '';
-  const hubAdminPass = document.getElementById('hub-admin-password')?.value || '';
   const res = await fetch(`/apps/${APP_ID}/install`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       env: VALUES,
-      hub_admin: { username: hubAdminUser, password: hubAdminPass },
     }),
   });
   const data = await res.json();
