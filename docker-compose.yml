@@ -25,10 +25,12 @@ services:
       - "${APP_PORT:-8091}:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys/fs/cgroup:/host/sys/fs/cgroup:ro
       - "${DATA_DIR:-./data}:/data"
       - "${APPS_DIR:-./apps}:/apps"
     environment:
       DATA_DIR: /data
+      HOST_CGROUP_ROOT: /host/sys/fs/cgroup
       APP_PORT: ${APP_PORT:-8091}
       TZ: ${TZ:-Europe/Copenhagen}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}

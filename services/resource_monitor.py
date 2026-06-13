@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
+import threading
+import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 
 def _safe_float(value, default: float = 0.0) -> float:
@@ -143,6 +147,8 @@ def _block_io_totals(stats: dict) -> tuple[int, int]:
 class ResourceMonitor:
     def __init__(self, docker_manager):
         self.docker_manager = docker_manager
+        self._system_lock = threading.Lock()
+        self._system_cpu_prev: tuple[int, float] | None = None
 
     @property
     def client(self):
@@ -155,6 +161,12 @@ class ResourceMonitor:
                 "error": "Docker er ikke tilgaengelig",
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "capacity": self._empty_capacity(),
+                "system": self._empty_system("Docker er ikke tilgaengelig"),
+                "overhead": self._overhead_summary(
+                    self._empty_system("Docker er ikke tilgaengelig"),
+                    self._empty_group("FjordHub"),
+                    self._empty_capacity(),
+                ),
                 "hub": self._empty_group("FjordHub"),
                 "core": self._empty_group("FjordHub core"),
                 "apps": [],
@@ -168,12 +180,22 @@ class ResourceMonitor:
                 "error": str(exc),
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "capacity": self._empty_capacity(),
+                "system": self._empty_system("Kunne ikke hente Docker-containere"),
+                "overhead": self._overhead_summary(
+                    self._empty_system("Kunne ikke hente Docker-containere"),
+                    self._empty_group("FjordHub"),
+                    self._empty_capacity(),
+                ),
                 "hub": self._empty_group("FjordHub"),
                 "core": self._empty_group("FjordHub core"),
                 "apps": [],
             }
 
         capacity = self._capacity()
+        system = self._system_summary(capacity)
+        if system.get("available") and system.get("memory_limit"):
+            capacity["memory_total"] = system["memory_limit"]
+            capacity["memory_total_label"] = _format_bytes(system["memory_limit"])
         stats_by_id = self._stats_by_container(containers)
 
         app_groups = []
@@ -206,12 +228,17 @@ class ResourceMonitor:
             if container.id in used_container_ids and container not in core_containers
         ]
 
+        hub = self._group_summary("FjordHub", hub_containers, stats_by_id, capacity)
+        core = self._group_summary("FjordHub core", core_containers, stats_by_id, capacity)
+
         return {
             "ok": True,
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "capacity": capacity,
-            "hub": self._group_summary("FjordHub", hub_containers, stats_by_id, capacity),
-            "core": self._group_summary("FjordHub core", core_containers, stats_by_id, capacity),
+            "system": system,
+            "overhead": self._overhead_summary(system, hub, capacity),
+            "hub": hub,
+            "core": core,
             "apps": app_groups,
         }
 
@@ -230,6 +257,141 @@ class ResourceMonitor:
 
     def _empty_capacity(self) -> dict:
         return {"cpus": 1, "memory_total": 0, "memory_total_label": "Ukendt"}
+
+    def _system_summary(self, capacity: dict) -> dict:
+        root = Path(os.environ.get("HOST_CGROUP_ROOT", "/host/sys/fs/cgroup"))
+        if not root.exists():
+            return self._empty_system("Cgroup er ikke monteret")
+
+        memory_usage = self._read_cgroup_memory_usage(root)
+        memory_limit = self._read_cgroup_memory_limit(root)
+        cpu_usage = self._read_cgroup_cpu_usage(root)
+        if memory_usage is None and cpu_usage is None:
+            return self._empty_system("Kunne ikke laese cgroup-tal")
+
+        cpus = _safe_int(capacity.get("cpus"), 1) or 1
+        now = time.monotonic()
+        cpu_percent = 0.0
+        if cpu_usage is not None:
+            with self._system_lock:
+                previous = self._system_cpu_prev
+                self._system_cpu_prev = (cpu_usage, now)
+            if previous:
+                previous_usage, previous_time = previous
+                elapsed = max(now - previous_time, 0.001)
+                delta = max(cpu_usage - previous_usage, 0)
+                cpu_percent = (delta / 1_000_000_000.0) / elapsed * 100.0
+
+        if not memory_limit or memory_limit <= 0:
+            memory_limit = _safe_int(capacity.get("memory_total"))
+        memory_percent = (memory_usage / memory_limit * 100.0) if memory_usage and memory_limit else 0.0
+        cpu_capacity_percent = min(100.0, cpu_percent / cpus) if cpus else min(100.0, cpu_percent)
+
+        return {
+            "available": True,
+            "cpu_percent": round(cpu_percent, 2),
+            "cpu_percent_label": f"{cpu_percent:.1f}%",
+            "cpu_capacity_percent": round(cpu_capacity_percent, 2),
+            "cpu_capacity_percent_label": f"{cpu_capacity_percent:.1f}%",
+            "memory_usage": memory_usage or 0,
+            "memory_usage_label": _format_bytes(memory_usage or 0),
+            "memory_limit": memory_limit or 0,
+            "memory_limit_label": _format_bytes(memory_limit or 0) if memory_limit else "Ukendt",
+            "memory_percent": round(memory_percent, 2),
+            "memory_percent_label": f"{memory_percent:.1f}%",
+            "message": "",
+        }
+
+    def _overhead_summary(self, system: dict, hub: dict, capacity: dict) -> dict:
+        if not system.get("available"):
+            return {
+                "available": False,
+                "cpu_percent": 0.0,
+                "cpu_percent_label": "0.0%",
+                "cpu_capacity_percent": 0.0,
+                "cpu_capacity_percent_label": "0.0%",
+                "memory_usage": 0,
+                "memory_usage_label": "0 B",
+                "memory_percent": 0.0,
+                "memory_percent_label": "0.0%",
+                "message": system.get("message") or "Ikke tilgaengelig",
+            }
+
+        cpus = _safe_int(capacity.get("cpus"), 1) or 1
+        memory_total = _safe_int(capacity.get("memory_total"))
+        memory_usage = max(_safe_int(system.get("memory_usage")) - _safe_int(hub.get("memory_usage")), 0)
+        cpu_percent = max(_safe_float(system.get("cpu_percent")) - _safe_float(hub.get("cpu_percent")), 0.0)
+        memory_percent = (memory_usage / memory_total * 100.0) if memory_total else 0.0
+        cpu_capacity_percent = min(100.0, cpu_percent / cpus) if cpus else min(100.0, cpu_percent)
+        return {
+            "available": True,
+            "cpu_percent": round(cpu_percent, 2),
+            "cpu_percent_label": f"{cpu_percent:.1f}%",
+            "cpu_capacity_percent": round(cpu_capacity_percent, 2),
+            "cpu_capacity_percent_label": f"{cpu_capacity_percent:.1f}%",
+            "memory_usage": memory_usage,
+            "memory_usage_label": _format_bytes(memory_usage),
+            "memory_percent": round(memory_percent, 2),
+            "memory_percent_label": f"{memory_percent:.1f}%",
+            "message": "",
+        }
+
+    def _empty_system(self, message: str) -> dict:
+        return {
+            "available": False,
+            "cpu_percent": 0.0,
+            "cpu_percent_label": "0.0%",
+            "cpu_capacity_percent": 0.0,
+            "cpu_capacity_percent_label": "0.0%",
+            "memory_usage": 0,
+            "memory_usage_label": "0 B",
+            "memory_limit": 0,
+            "memory_limit_label": "Ukendt",
+            "memory_percent": 0.0,
+            "memory_percent_label": "0.0%",
+            "message": message,
+        }
+
+    def _read_cgroup_memory_usage(self, root: Path) -> int | None:
+        for path in (root / "memory.current", root / "memory" / "memory.usage_in_bytes"):
+            value = self._read_int_file(path)
+            if value is not None:
+                return value
+        return None
+
+    def _read_cgroup_memory_limit(self, root: Path) -> int | None:
+        for path in (root / "memory.max", root / "memory" / "memory.limit_in_bytes"):
+            if not path.exists():
+                continue
+            raw = path.read_text(encoding="utf-8", errors="ignore").strip()
+            if raw == "max":
+                return None
+            value = _safe_int(raw)
+            # Ignore cgroup v1's "effectively unlimited" sentinel values.
+            if value > 0 and value < 1 << 60:
+                return value
+        return None
+
+    def _read_cgroup_cpu_usage(self, root: Path) -> int | None:
+        cpu_stat = root / "cpu.stat"
+        if cpu_stat.exists():
+            try:
+                for line in cpu_stat.read_text(encoding="utf-8", errors="ignore").splitlines():
+                    key, _, value = line.partition(" ")
+                    if key == "usage_usec":
+                        return _safe_int(value) * 1000
+            except Exception:
+                return None
+
+        return self._read_int_file(root / "cpuacct" / "cpuacct.usage")
+
+    def _read_int_file(self, path: Path) -> int | None:
+        try:
+            if path.exists():
+                return _safe_int(path.read_text(encoding="utf-8", errors="ignore").strip())
+        except Exception:
+            return None
+        return None
 
     def _stats_by_container(self, containers: list) -> dict[str, dict]:
         stats = {}

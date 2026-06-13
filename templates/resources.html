@@ -31,21 +31,27 @@
 
   <section class="resource-overview" aria-label="Samlet ressourceforbrug">
     <article class="resource-summary-card resource-summary-primary">
-      <span class="resource-card-label">Hele hubben</span>
+      <span class="resource-card-label">Containere</span>
       <strong id="hub-containers">-</strong>
       <span class="resource-muted">aktive containere</span>
     </article>
     <article class="resource-summary-card">
-      <span class="resource-card-label">CPU</span>
-      <strong id="hub-cpu">-</strong>
-      <div class="resource-bar"><span id="hub-cpu-bar"></span></div>
-      <span class="resource-muted" id="host-cpus">-</span>
+      <span class="resource-card-label">LXC total</span>
+      <strong id="system-memory">-</strong>
+      <div class="resource-bar"><span id="system-memory-bar"></span></div>
+      <span class="resource-muted" id="system-cpu">-</span>
     </article>
     <article class="resource-summary-card">
-      <span class="resource-card-label">RAM</span>
+      <span class="resource-card-label">Docker-containere</span>
       <strong id="hub-memory">-</strong>
       <div class="resource-bar"><span id="hub-memory-bar"></span></div>
-      <span class="resource-muted" id="host-memory">-</span>
+      <span class="resource-muted" id="hub-cpu">-</span>
+    </article>
+    <article class="resource-summary-card">
+      <span class="resource-card-label">System-overhead</span>
+      <strong id="overhead-memory">-</strong>
+      <div class="resource-bar"><span id="overhead-memory-bar"></span></div>
+      <span class="resource-muted" id="overhead-cpu">-</span>
     </article>
     <article class="resource-summary-card">
       <span class="resource-card-label">Netværk</span>
@@ -121,15 +127,36 @@ function ioPair(left, right) {
 
 function renderSummary(data) {
   const hub = data.hub || {};
+  const system = data.system || {};
+  const overhead = data.overhead || {};
   const capacity = data.capacity || {};
   setText('hub-containers', `${hub.running_count || 0}/${hub.container_count || 0}`);
-  setText('hub-cpu', hub.cpu_percent_label || '0.0%');
+
+  if (system.available) {
+    setText('system-memory', `${system.memory_usage_label || '0 B'} (${system.memory_percent_label || '0.0%'})`);
+    setText('system-cpu', `${system.cpu_capacity_percent_label || '0.0%'} CPU af ${capacity.cpus || 1} tråde`);
+    setBar('system-memory-bar', system.memory_percent);
+  } else {
+    setText('system-memory', 'Ikke tilgængelig');
+    setText('system-cpu', system.message || 'Cgroup ikke monteret');
+    setBar('system-memory-bar', 0);
+  }
+
   setText('hub-memory', `${hub.memory_usage_label || '0 B'} (${hub.memory_percent_label || '0.0%'})`);
+  setText('hub-cpu', `${hub.cpu_percent_label || '0.0%'} CPU i Docker`);
   setText('hub-network', ioPair(hub.net_rx_label, hub.net_tx_label));
   setText('hub-disk', ioPair(hub.block_read_label, hub.block_write_label));
-  setText('host-cpus', `${capacity.cpus || 1} CPU-tråde`);
-  setText('host-memory', `af ${capacity.memory_total_label || 'ukendt'}`);
-  setBar('hub-cpu-bar', hub.cpu_capacity_percent);
+
+  if (overhead.available) {
+    setText('overhead-memory', `${overhead.memory_usage_label || '0 B'} (${overhead.memory_percent_label || '0.0%'})`);
+    setText('overhead-cpu', `${overhead.cpu_capacity_percent_label || '0.0%'} CPU uden for Docker`);
+    setBar('overhead-memory-bar', overhead.memory_percent);
+  } else {
+    setText('overhead-memory', 'Ikke tilgængelig');
+    setText('overhead-cpu', overhead.message || 'Kræver LXC total');
+    setBar('overhead-memory-bar', 0);
+  }
+
   setBar('hub-memory-bar', hub.memory_percent);
 }
 
