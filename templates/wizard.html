@@ -117,21 +117,15 @@
     <div class="wizard-panel" id="panel-{{ steps | length + 1 }}">
       <h2>Hub-administrator</h2>
       <p class="wizard-desc">
-        Denne konto oprettes automatisk i <strong>{{ app.name }}</strong> som administrator,
-        så du kan logge direkte ind uden manuel opsætning.
+        Din FjordHub-konto (<strong>{{ current_user.username }}</strong>) oprettes automatisk
+        som administrator i <strong>{{ app.name }}</strong>. Du logger ind med samme brugernavn og adgangskode som her.
       </p>
       <div class="form-field">
-        <label for="hub-admin-username">Brugernavn</label>
-        <input type="text" id="hub-admin-username" value="{{ current_user.username }}" readonly style="opacity:.7;cursor:default;">
+        <label for="hub-admin-password">Bekræft din FjordHub-adgangskode</label>
+        <input type="password" id="hub-admin-password" autocomplete="current-password" placeholder="Din adgangskode">
+        <p class="field-hint">Bruges til at oprette din konto i {{ app.name }}. Samme kode som du logger ind med her.</p>
       </div>
-      <div class="form-field">
-        <label for="hub-admin-password">Adgangskode til {{ app.name }}</label>
-        <div class="secret-row">
-          <input type="text" id="hub-admin-password" class="secret-input" placeholder="Genererer…">
-          <button type="button" class="btn-gen" onclick="regenHubAdminPassword()">↻ Ny</button>
-        </div>
-        <p class="field-hint">Brug denne adgangskode første gang du logger ind i {{ app.name }}.</p>
-      </div>
+      <input type="hidden" id="hub-admin-username" value="{{ current_user.username }}">
     </div>
 
     {# Summary panel #}
@@ -187,8 +181,8 @@ VALUES[{{ field.key | tojson }}] = {{ (field.default or '') | tojson }};
 {% endif %}
 {% endfor %}
 {% endfor %}
-// Sync secret values and pre-generate hub admin password after DOM is ready
-document.addEventListener('DOMContentLoaded', async () => {
+// Sync secret values after DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
   {% for step in steps %}
   {% for field in step.fields %}
   {% if field.type == "auto_secret" %}
@@ -197,7 +191,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   {% endfor %}
   {% endfor %}
   updateConditionals();
-  await regenHubAdminPassword();
 });
 
 let currentStep = 0;
@@ -259,12 +252,6 @@ async function regenSecret(key) {
   VALUES[key] = data.secret;
 }
 
-async function regenHubAdminPassword() {
-  const res = await fetch('/api/generate-secret');
-  const data = await res.json();
-  document.getElementById('hub-admin-password').value = data.secret.slice(0, 20);
-}
-
 function buildSummary() {
   const list = document.getElementById('summary-list');
   const rows = Object.entries(VALUES)
@@ -275,10 +262,8 @@ function buildSummary() {
       return `<div class="summary-row"><span>${k}</span><code>${display}</code></div>`;
     });
   const hubUser = document.getElementById('hub-admin-username')?.value || '';
-  const hubPw   = document.getElementById('hub-admin-password')?.value || '';
   if (hubUser) {
-    rows.push(`<div class="summary-row"><span>Hub-admin bruger</span><code>${hubUser}</code></div>`);
-    rows.push(`<div class="summary-row"><span>Hub-admin adgangskode</span><code>${hubPw ? '••••••••' : '—'}</code></div>`);
+    rows.push(`<div class="summary-row"><span>Hub-admin konto</span><code>${hubUser} (samme adgangskode som FjordHub)</code></div>`);
   }
   list.innerHTML = rows.join('');
 }
