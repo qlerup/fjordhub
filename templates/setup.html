@@ -1,0 +1,30 @@
+{% extends "base_auth.html" %}
+{% block title %}Første opsætning — FjordHub{% endblock %}
+{% block content %}
+<div class="auth-card">
+  <img class="auth-logo" src="{{ url_for('static', filename='logos/logos/fjordhub-logo-horizontal-transparent.png') }}" alt="FjordHub">
+  <h1>Første opsætning</h1>
+  <p class="auth-subtitle">Opret den første admin-konto for at komme i gang.</p>
+
+  {% if error %}
+    <div class="auth-error">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" autocomplete="off">
+    <div class="auth-field">
+      <label for="username">Brugernavn</label>
+      <input id="username" name="username" type="text" autocomplete="username" required
+             value="{{ username or '' }}">
+    </div>
+    <div class="auth-field">
+      <label for="password">Adgangskode</label>
+      <input id="password" name="password" type="password" autocomplete="new-password" required>
+    </div>
+    <div class="auth-field">
+      <label for="password2">Gentag adgangskode</label>
+      <input id="password2" name="password2" type="password" autocomplete="new-password" required>
+    </div>
+    <button type="submit" class="auth-btn">Opret admin-konto</button>
+  </form>
+</div>
+{% endblock %}

@@ -2,8 +2,10 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
-from flask import Flask, render_template, jsonify, request, redirect, url_for
+from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 
+from services.auth import AuthService
 from services.docker_manager import DockerManager
 from services.registry import AppRegistry
 from services.remote_registry import RemoteRegistry
@@ -24,12 +26,51 @@ REGISTRY_URL = os.environ.get(
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 
+_auth            = AuthService(DATA_DIR / "hub.db")
 _local_registry  = AppRegistry(Path(__file__).parent / "app_registry")
 _remote_registry = RemoteRegistry(DATA_DIR, REGISTRY_URL)
 _install_state   = InstallState(DATA_DIR)
 _installer       = Installer(_install_state)
 _update_manager  = UpdateManager(_install_state)
 docker_mgr       = DockerManager()
+
+# ── Auth setup ───────────────────────────────────────────────────────────────
+
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
+
+
+@login_manager.user_loader
+def _load_user(user_id: str):
+    try:
+        return _auth.get_by_id(int(user_id))
+    except Exception:
+        return None
+
+
+@login_manager.unauthorized_handler
+def _unauthorized():
+    if request.path.startswith("/api/"):
+        return jsonify({"ok": False, "error": "Kræver login."}), 401
+    return redirect(url_for("login", next=request.path))
+
+
+_AUTH_EXEMPT = {"static", "setup", "login", "health"}
+
+
+@app.before_request
+def _auth_gate():
+    if request.endpoint in _AUTH_EXEMPT:
+        return None
+    if _auth.users_count() == 0:
+        if request.path.startswith("/api/"):
+            return jsonify({"ok": False, "error": "Opsætning kræves."}), 503
+        return redirect(url_for("setup"))
+    if not current_user.is_authenticated:
+        if request.path.startswith("/api/"):
+            return jsonify({"ok": False, "error": "Kræver login."}), 401
+        return redirect(url_for("login", next=request.path))
+    return None
 
 
 def _get_apps() -> list[dict]:
@@ -44,6 +85,60 @@ def _get_app(app_id: str) -> dict | None:
 @app.context_processor
 def inject_globals():
     return {"app_name": "FjordHub", "active_page": ""}
+
+
+# ── Auth routes ──────────────────────────────────────────────────────────────
+
+@app.route("/setup", methods=["GET", "POST"])
+def setup():
+    if _auth.users_count() > 0:
+        return redirect(url_for("login"))
+    error = ""
+    username = ""
+    if request.method == "POST":
+        username = str(request.form.get("username") or "").strip()
+        password = str(request.form.get("password") or "")
+        password2 = str(request.form.get("password2") or "")
+        if not username or not password:
+            error = "Brugernavn og adgangskode er påkrævet."
+        elif password != password2:
+            error = "Adgangskoderne matcher ikke."
+        else:
+            try:
+                _auth.create_user(username, password, role="admin")
+                return redirect(url_for("login", created="1"))
+            except ValueError as exc:
+                error = str(exc)
+    return render_template("setup.html", error=error, username=username)
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if _auth.users_count() == 0:
+        return redirect(url_for("setup"))
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard"))
+    error = ""
+    created = str(request.args.get("created") or "") == "1"
+    if request.method == "POST":
+        username = str(request.form.get("username") or "").strip()
+        password = str(request.form.get("password") or "")
+        user = _auth.check_password(username, password)
+        if user is None:
+            error = "Forkert brugernavn eller adgangskode."
+        else:
+            login_user(user, remember=True)
+            next_url = str(request.args.get("next") or "") or url_for("dashboard")
+            if not next_url.startswith("/"):
+                next_url = url_for("dashboard")
+            return redirect(next_url)
+    return render_template("login.html", error=error, created=created)
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
 
 
 # ── Dashboard ────────────────────────────────────────────────────────────────
@@ -65,9 +160,73 @@ def settings():
     return render_template("settings.html", active_page="settings")
 
 
-@app.route("/profile")
+@app.route("/profile", methods=["GET", "POST"])
 def profile():
-    return render_template("profile.html", active_page="profile")
+    pw_error = ""
+    pw_ok = False
+    if request.method == "POST":
+        current_pw = str(request.form.get("current_password") or "")
+        new_pw = str(request.form.get("new_password") or "")
+        new_pw2 = str(request.form.get("new_password2") or "")
+        user = _auth.check_password(current_user.username, current_pw)
+        if user is None:
+            pw_error = "Nuværende adgangskode er forkert."
+        elif new_pw != new_pw2:
+            pw_error = "De nye adgangskoder matcher ikke."
+        else:
+            try:
+                _auth.change_password(current_user.id, new_pw)
+                pw_ok = True
+            except ValueError as exc:
+                pw_error = str(exc)
+    return render_template("profile.html", active_page="profile", pw_error=pw_error, pw_ok=pw_ok)
+
+
+@app.route("/users")
+def users():
+    if not current_user.is_admin:
+        return redirect(url_for("dashboard"))
+    msg = "Bruger oprettet." if str(request.args.get("msg") or "") == "1" else ""
+    return render_template(
+        "users.html",
+        active_page="users",
+        users=_auth.get_all_users(),
+        admin_count=_auth.admin_count(),
+        msg=msg,
+    )
+
+
+@app.route("/users/create", methods=["POST"])
+def create_user():
+    if not current_user.is_admin:
+        return redirect(url_for("dashboard"))
+    username = str(request.form.get("username") or "").strip()
+    password = str(request.form.get("password") or "")
+    role = str(request.form.get("role") or "user")
+    try:
+        _auth.create_user(username, password, role=role)
+        return redirect(url_for("users", msg="1"))
+    except ValueError as exc:
+        return render_template(
+            "users.html",
+            active_page="users",
+            users=_auth.get_all_users(),
+            admin_count=_auth.admin_count(),
+            modal_error=str(exc),
+        )
+
+
+@app.route("/users/<int:user_id>/delete", methods=["POST"])
+def delete_user(user_id: int):
+    if not current_user.is_admin:
+        return redirect(url_for("dashboard"))
+    if user_id == current_user.id:
+        return redirect(url_for("users"))
+    target = _auth.get_by_id(user_id)
+    if target and target.is_admin and _auth.admin_count() <= 1:
+        return redirect(url_for("users"))
+    _auth.delete_user(user_id)
+    return redirect(url_for("users", msg="1"))
 
 
 # ── App status & control ─────────────────────────────────────────────────────

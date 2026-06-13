@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}Brugere — FjordHub{% endblock %}
+
+{% block topbar_right %}
+  <span class="topbar-status" id="hub-docker-status" title="Docker-forbindelse"></span>
+{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+  <div class="dashboard-header" style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+    <div>
+      <h1>Brugere</h1>
+      <p class="dashboard-sub">Administrer adgang til FjordHub.</p>
+    </div>
+    <button type="button" class="btn btn-open" id="open-add-modal" style="flex-shrink:0;">
+      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      Tilføj bruger
+    </button>
+  </div>
+
+  {% if msg %}
+    <div class="auth-ok" style="margin-top:16px;">{{ msg }}</div>
+  {% endif %}
+  {% if error %}
+    <div class="auth-error" style="margin-top:16px;">{{ error }}</div>
+  {% endif %}
+
+  <div class="users-table-wrap">
+    <table class="users-table">
+      <thead>
+        <tr>
+          <th>Brugernavn</th>
+          <th>Rolle</th>
+          <th>Oprettet</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>
+            <strong>{{ u.username }}</strong>
+            {% if u.id == current_user.id %}<span style="color:var(--text-muted);font-size:.75rem;margin-left:6px;">(dig)</span>{% endif %}
+          </td>
+          <td>
+            {% if u.is_admin %}
+              <span class="badge badge-admin">Admin</span>
+            {% else %}
+              <span class="badge badge-user">Bruger</span>
+            {% endif %}
+          </td>
+          <td style="color:var(--text-muted);font-size:.82rem;">{{ u.created_at }}</td>
+          <td style="text-align:right;">
+            {% set is_last_admin = (u.is_admin and admin_count <= 1) %}
+            {% set is_self = (u.id == current_user.id) %}
+            {% if is_last_admin or is_self %}
+              <button class="btn-delete" disabled title="{{ 'Kan ikke slette dig selv' if is_self else 'Kan ikke slette den eneste admin' }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                </svg>
+              </button>
+            {% else %}
+              <form method="post" action="{{ url_for('delete_user', user_id=u.id) }}" style="margin:0;" onsubmit="return confirm('Slet bruger &quot;{{ u.username }}&quot;?');">
+                <button type="submit" class="btn-delete">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                  </svg>
+                </button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Tilføj bruger modal -->
+<div class="modal-overlay" id="add-modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-header">
+      <h2 id="modal-title">Tilføj bruger</h2>
+      <button type="button" class="modal-close" id="close-add-modal" aria-label="Luk">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    {% if modal_error %}
+      <div class="auth-error">{{ modal_error }}</div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('create_user') }}" autocomplete="off">
+      <div class="auth-field">
+        <label for="new-username">Brugernavn</label>
+        <input id="new-username" name="username" type="text" autocomplete="off" required>
+      </div>
+      <div class="auth-field">
+        <label for="new-password">Adgangskode</label>
+        <input id="new-password" name="password" type="password" autocomplete="new-password" required>
+      </div>
+      <div class="auth-field">
+        <label for="new-role">Rolle</label>
+        <select id="new-role" name="role" class="auth-select">
+          <option value="user">Bruger</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;">
+        <button type="button" class="btn btn-open" id="cancel-add-modal">Annuller</button>
+        <button type="submit" class="btn-install">Opret</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const overlay = document.getElementById('add-modal');
+  const openBtn = document.getElementById('open-add-modal');
+  const closeBtn = document.getElementById('close-add-modal');
+  const cancelBtn = document.getElementById('cancel-add-modal');
+
+  function open() { overlay.hidden = false; document.getElementById('new-username').focus(); }
+  function close() { overlay.hidden = true; }
+
+  openBtn.addEventListener('click', open);
+  closeBtn.addEventListener('click', close);
+  cancelBtn.addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !overlay.hidden) close(); });
+
+  {% if modal_error %}open();{% endif %}
+})();
+</script>
+{% endblock %}

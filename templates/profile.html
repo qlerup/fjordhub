@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Bruger — FjordHub{% endblock %}
+{% block title %}Profil — FjordHub{% endblock %}
 
 {% block topbar_right %}
   <span class="topbar-status" id="hub-docker-status" title="Docker-forbindelse"></span>
@@ -9,9 +9,52 @@
 {% block content %}
 <div class="settings-page">
   <div class="dashboard-header">
-    <h1>Bruger</h1>
-    <p class="dashboard-sub">Konto og adgangskontrol.</p>
+    <h1>Profil</h1>
+    <p class="dashboard-sub">Din konto og adgangskode.</p>
   </div>
-  <p style="color: var(--text-muted); font-size: .9rem;">Kommer snart.</p>
+
+  <div class="profile-card">
+    <div class="profile-row">
+      <span class="profile-label">Brugernavn</span>
+      <strong>{{ current_user.username }}</strong>
+    </div>
+    <div class="profile-row">
+      <span class="profile-label">Rolle</span>
+      {% if current_user.is_admin %}
+        <span class="badge badge-admin">Admin</span>
+      {% else %}
+        <span class="badge badge-user">Bruger</span>
+      {% endif %}
+    </div>
+    <div class="profile-row">
+      <span class="profile-label">Oprettet</span>
+      <span style="color:var(--text-muted);">{{ current_user.created_at }}</span>
+    </div>
+  </div>
+
+  <h2 style="font-size:1rem;font-weight:700;margin:28px 0 14px;">Skift adgangskode</h2>
+
+  {% if pw_error %}
+    <div class="auth-error" style="margin-bottom:14px;">{{ pw_error }}</div>
+  {% endif %}
+  {% if pw_ok %}
+    <div class="auth-ok" style="margin-bottom:14px;">Adgangskode opdateret.</div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('profile') }}" autocomplete="off" style="max-width:360px;">
+    <div class="auth-field">
+      <label for="current-pw">Nuværende adgangskode</label>
+      <input id="current-pw" name="current_password" type="password" autocomplete="current-password" required>
+    </div>
+    <div class="auth-field">
+      <label for="new-pw">Ny adgangskode</label>
+      <input id="new-pw" name="new_password" type="password" autocomplete="new-password" required>
+    </div>
+    <div class="auth-field">
+      <label for="new-pw2">Gentag ny adgangskode</label>
+      <input id="new-pw2" name="new_password2" type="password" autocomplete="new-password" required>
+    </div>
+    <button type="submit" class="btn-install" style="margin-top:4px;">Gem adgangskode</button>
+  </form>
 </div>
 {% endblock %}

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}FjordHub{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('static', filename='logos/web/favicon.ico') }}" sizes="any">
+  <link rel="icon" href="{{ url_for('static', filename='logos/web/favicon-32x32.png') }}" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='logos/web/apple-touch-icon.png') }}">
+  <meta name="theme-color" content="#0f1115">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body class="auth-body">
+  <div class="auth-center">
+    {% block content %}{% endblock %}
+  </div>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
