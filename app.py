@@ -459,8 +459,9 @@ def uninstall_app(app_id):
         except Exception as e:
             errors.append(f"rm dir: {e}")
 
-    # 3. Clear install state
+    # 3. Clear install state and hub key
     _install_state.clear(app_id)
+    _auth.delete_hub_key(app_id)
 
     return jsonify({"ok": not errors, "errors": errors})
 

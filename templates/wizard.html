@@ -219,6 +219,17 @@ function showPanel(step) {
 }
 
 function wizardNext() {
+  // Validate hub admin password before leaving that step
+  const hubAdminStep = TOTAL_STEPS - 2;
+  if (currentStep === hubAdminStep) {
+    const pw = document.getElementById('hub-admin-password')?.value || '';
+    if (!pw) {
+      document.getElementById('hub-admin-password').focus();
+      document.getElementById('hub-admin-password').style.outline = '2px solid #f87171';
+      return;
+    }
+    document.getElementById('hub-admin-password').style.outline = '';
+  }
   if (currentStep < TOTAL_STEPS - 1) {
     currentStep++;
     showPanel(currentStep);

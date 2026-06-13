@@ -182,6 +182,12 @@ class AuthService:
         stored = self.get_hub_key(app_id)
         return bool(stored and stored == key)
 
+    def delete_hub_key(self, app_id: str) -> None:
+        with closing(self._conn()) as conn:
+            conn.execute("DELETE FROM app_hub_keys WHERE app_id=?", (app_id,))
+            conn.execute("DELETE FROM user_app_access WHERE app_id=?", (app_id,))
+            conn.commit()
+
     def get_apps_with_keys(self) -> list[str]:
         with closing(self._conn()) as conn:
             rows = conn.execute(
