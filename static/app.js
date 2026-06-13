@@ -161,8 +161,81 @@ async function fetchUpdateStatuses() {
         hasRunningUpdate ||= Boolean(data[id].running || data[id].state === 'updating');
       }
     });
+    if (_terminalAppId && data[_terminalAppId]) {
+      const s = data[_terminalAppId];
+      if (s.log && s.log.length) renderUpdateLog(s.log);
+      if (!s.running && !_terminalDone) finishUpdateModal(s.state);
+    }
     if (hasRunningUpdate) setTimeout(fetchUpdateStatuses, 2500);
   } catch (_) {}
+}
+
+// ── Update terminal modal ─────────────────────────────────────────────────
+
+let _terminalAppId = null;
+let _terminalDone  = false;
+
+const LOG_COLORS = {
+  err:  '#f87171',
+  warn: '#fbbf24',
+  ok:   '#4ade80',
+  cmd:  '#93c5fd',
+  dim:  '#6b7280',
+};
+
+function logLineClass(line) {
+  const l = line.toLowerCase();
+  if (/error|fejl|failed|✗/.test(l)) return 'err';
+  if (/warn/.test(l))                 return 'warn';
+  if (/done|færdig|opdateret|success|✓/.test(l)) return 'ok';
+  if (line.startsWith('$'))           return 'cmd';
+  if (/^#\d+/.test(line.trim()))      return 'dim';
+  return '';
+}
+
+function renderUpdateLog(lines) {
+  const pre = document.getElementById('update-log-output');
+  if (!pre) return;
+  const atBottom = pre.scrollHeight - pre.scrollTop <= pre.clientHeight + 40;
+  pre.innerHTML = '';
+  for (const line of lines) {
+    const span = document.createElement('span');
+    span.textContent = line + '\n';
+    const cls = logLineClass(line);
+    if (cls) span.style.color = LOG_COLORS[cls];
+    pre.appendChild(span);
+  }
+  if (atBottom) pre.scrollTop = pre.scrollHeight;
+}
+
+function openUpdateModal(appId, appName) {
+  _terminalAppId = appId;
+  _terminalDone  = false;
+  const overlay = document.getElementById('update-log-modal');
+  const title   = document.getElementById('update-log-title');
+  const footer  = document.getElementById('update-log-footer');
+  const pre     = document.getElementById('update-log-output');
+  if (!overlay) return;
+  if (title)  title.textContent = `Opdaterer ${appName}…`;
+  if (footer) { footer.textContent = ''; footer.className = 'terminal-footer'; }
+  if (pre)    pre.innerHTML = '';
+  overlay.classList.add('is-open');
+}
+
+function closeUpdateModal() {
+  _terminalAppId = null;
+  document.getElementById('update-log-modal')?.classList.remove('is-open');
+}
+
+function finishUpdateModal(state) {
+  _terminalDone = true;
+  const footer = document.getElementById('update-log-footer');
+  const title  = document.getElementById('update-log-title');
+  if (!footer) return;
+  const ok = state === 'up_to_date' || state === 'updated';
+  footer.textContent = ok ? '✓ Opdatering færdig' : '✗ Opdatering fejlede';
+  footer.className   = 'terminal-footer ' + (ok ? 'ok' : 'err');
+  if (title) title.textContent = title.textContent.replace('Opdaterer', ok ? 'Opdateret' : 'Fejl —');
 }
 
 // ── Docker health indicator ───────────────────────────────────────────────
@@ -271,7 +344,7 @@ async function startUpdate(card) {
       if (btn) btn.disabled = false;
       return;
     }
-    showToast(`${name} opdaterer`, 'ok');
+    openUpdateModal(id, name);
     applyUpdateStatus(card, { ...data, state: 'updating', running: true, label: 'Opdaterer...' });
     setTimeout(fetchUpdateStatuses, 1200);
     setTimeout(fetchStatuses, 4500);
@@ -331,6 +404,11 @@ async function confirmUninstall(card) {
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
+
+document.getElementById('update-log-close')?.addEventListener('click', closeUpdateModal);
+document.getElementById('update-log-modal')?.addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeUpdateModal();
+});
 
 checkDockerHealth();
 fetchStatuses();

@@ -206,6 +206,8 @@ def dashboard():
 
 @app.route("/settings")
 def settings():
+    if not current_user.is_admin:
+        return redirect(url_for("dashboard"))
     return render_template("settings.html", active_page="settings")
 
 
@@ -233,6 +235,8 @@ def profile():
 
 @app.route("/users")
 def users():
+    if not current_user.is_admin:
+        return redirect(url_for("dashboard"))
     msg = "Bruger oprettet." if str(request.args.get("msg") or "") == "1" else ""
     return render_template(
         "users.html",
