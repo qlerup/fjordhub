@@ -1010,7 +1010,7 @@ a { color: inherit; text-decoration: none; }
 .user-menu {
   position: fixed;
   left: 60px;
-  bottom: 20px;
+  top: 72px;
   width: 210px;
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -1096,5 +1096,5 @@ a { color: inherit; text-decoration: none; }
   .wizard-page { padding: 20px 16px 40px; }
   .info-row { flex-wrap: wrap; }
   .info-row span { min-width: unset; }
-  .user-menu { left: 52px; }
+  .user-menu { left: 52px; top: 72px; }
 }
