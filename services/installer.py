@@ -248,4 +248,8 @@ class Installer:
                 pass
             resolved["DATA_DIR"] = _container_path_to_host_path(app_data_dir) or str(app_data_dir)
 
+        install_dir = APPS_BASE / app_def["id"]
+        if not str(resolved.get("APP_REPO_DIR", "")).strip():
+            resolved["APP_REPO_DIR"] = _container_path_to_host_path(install_dir) or str(install_dir)
+
         return resolved
