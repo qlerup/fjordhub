@@ -182,15 +182,15 @@ function renderBreakdown(data) {
       title: 'Docker-containere',
       cpu: capacityCpuLabel(hub),
       memory: `${hub.memory_usage_label || '0 B'} (${hub.memory_percent_label || '0.0%'})`,
-      detail: `${hub.running_count || 0}/${hub.container_count || 0} korer`,
+      detail: `${hub.running_count || 0}/${hub.container_count || 0} kører`,
       cpuBar: hub.cpu_capacity_percent,
       memoryBar: hub.memory_percent,
     },
     {
       title: 'Uden for Docker',
-      cpu: overhead.available ? (overhead.cpu_capacity_percent_label || '0.0%') : 'Ikke tilgaengelig',
-      memory: overhead.available ? `${overhead.memory_usage_label || '0 B'} (${overhead.memory_percent_label || '0.0%'})` : (overhead.message || 'Ikke tilgaengelig'),
-      detail: 'LXC-system og ovrige processer',
+      cpu: overhead.available ? (overhead.cpu_capacity_percent_label || '0.0%') : 'Ikke tilgængelig',
+      memory: overhead.available ? `${overhead.memory_usage_label || '0 B'} (${overhead.memory_percent_label || '0.0%'})` : (overhead.message || 'Ikke tilgængelig'),
+      detail: 'LXC-system og øvrige processer',
       cpuBar: overhead.cpu_capacity_percent,
       memoryBar: overhead.memory_percent,
     },
@@ -265,10 +265,10 @@ function renderSummary(data) {
       setText('resource-memory-detail', `af ${system.memory_limit_label || capacity.memory_total_label || 'ukendt'}`);
       setBar('resource-memory-bar', system.memory_percent);
     } else {
-      setText('resource-cpu', 'Ikke tilgaengelig');
+      setText('resource-cpu', 'Ikke tilgængelig');
       setText('resource-cpu-detail', system.message || 'Cgroup ikke monteret');
       setBar('resource-cpu-bar', 0);
-      setText('resource-memory', 'Ikke tilgaengelig');
+      setText('resource-memory', 'Ikke tilgængelig');
       setText('resource-memory-detail', system.message || 'Cgroup ikke monteret');
       setBar('resource-memory-bar', 0);
     }
@@ -277,12 +277,12 @@ function renderSummary(data) {
     setText('resource-network', ioPair(hub.net_rx_label, hub.net_tx_label));
     setText('resource-network-detail', 'Docker ind / ud');
     setText('resource-disk', ioPair(hub.block_read_label, hub.block_write_label));
-    setText('resource-disk-detail', 'Docker laest / skrevet');
+    setText('resource-disk-detail', 'Docker læst / skrevet');
   } else {
     setText('resource-scope-title', 'Docker-containere');
     setText('resource-scope-subtitle', 'FjordHub core og apps');
     setText('resource-cpu', hub.cpu_percent_label || '0.0%');
-    setText('resource-cpu-detail', `${capacity.cpus || 1} CPU-traade i Docker`);
+    setText('resource-cpu-detail', `${capacity.cpus || 1} CPU-tråde i Docker`);
     setBar('resource-cpu-bar', hub.cpu_capacity_percent);
     setText('resource-memory', `${hub.memory_usage_label || '0 B'} (${hub.memory_percent_label || '0.0%'})`);
     setText('resource-memory-detail', `af ${capacity.memory_total_label || 'ukendt'}`);
@@ -292,7 +292,7 @@ function renderSummary(data) {
     setText('resource-network', ioPair(hub.net_rx_label, hub.net_tx_label));
     setText('resource-network-detail', 'ind / ud');
     setText('resource-disk', ioPair(hub.block_read_label, hub.block_write_label));
-    setText('resource-disk-detail', 'laest / skrevet');
+    setText('resource-disk-detail', 'læst / skrevet');
   }
   renderBreakdown(data);
 }
