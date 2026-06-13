@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import re
+import subprocess
 from datetime import datetime, timezone
 
 
@@ -27,6 +30,42 @@ def _format_bytes(value: int | float | None) -> str:
             return f"{size:.1f} {unit}"
         size /= 1024
     return "0 B"
+
+
+SIZE_RE = re.compile(r"^\s*([0-9]+(?:\.[0-9]+)?)\s*([KMGTPE]?i?B|[kMGTPE]?B|B)\s*$")
+SIZE_UNITS = {
+    "B": 1,
+    "KB": 1000,
+    "kB": 1000,
+    "MB": 1000 ** 2,
+    "GB": 1000 ** 3,
+    "TB": 1000 ** 4,
+    "PB": 1000 ** 5,
+    "EB": 1000 ** 6,
+    "KiB": 1024,
+    "MiB": 1024 ** 2,
+    "GiB": 1024 ** 3,
+    "TiB": 1024 ** 4,
+    "PiB": 1024 ** 5,
+    "EiB": 1024 ** 6,
+}
+
+
+def _parse_size(value: str) -> int:
+    match = SIZE_RE.match(str(value or ""))
+    if not match:
+        return 0
+    number, unit = match.groups()
+    return int(float(number) * SIZE_UNITS.get(unit, 1))
+
+
+def _parse_pair(value: str) -> tuple[int, int]:
+    left, _, right = str(value or "").partition("/")
+    return _parse_size(left), _parse_size(right)
+
+
+def _parse_percent(value: str) -> float:
+    return _safe_float(str(value or "").replace("%", "").strip())
 
 
 def _container_name(container) -> str:
@@ -204,7 +243,65 @@ class ResourceMonitor:
                 stats[container.id] = self._container_snapshot(container, None, str(exc))
                 continue
             stats[container.id] = self._container_snapshot(container, raw)
+        self._fill_from_docker_stats_cli(stats)
         return stats
+
+    def _fill_from_docker_stats_cli(self, stats: dict[str, dict]) -> None:
+        names_needing_stats = [
+            item["name"]
+            for item in stats.values()
+            if item.get("status") == "running" and self._is_empty_stats(item)
+        ]
+        if not names_needing_stats:
+            return
+
+        try:
+            result = subprocess.run(
+                ["docker", "stats", "--no-stream", "--format", "{{json .}}", *names_needing_stats],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except Exception:
+            return
+        if result.returncode != 0:
+            return
+
+        by_name = {item.get("name"): item for item in stats.values()}
+        for line in result.stdout.splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            name = str(row.get("Name") or row.get("Container") or "").lstrip("/")
+            item = by_name.get(name)
+            if not item:
+                continue
+            mem_usage, mem_limit = _parse_pair(row.get("MemUsage") or "")
+            net_rx, net_tx = _parse_pair(row.get("NetIO") or "")
+            block_read, block_write = _parse_pair(row.get("BlockIO") or "")
+            item.update({
+                "cpu_percent": round(_parse_percent(row.get("CPUPerc")), 2),
+                "memory_usage": mem_usage,
+                "memory_limit": mem_limit,
+                "net_rx": net_rx,
+                "net_tx": net_tx,
+                "block_read": block_read,
+                "block_write": block_write,
+                "error": None,
+            })
+
+    def _is_empty_stats(self, item: dict) -> bool:
+        return (
+            _safe_float(item.get("cpu_percent")) == 0
+            and _safe_int(item.get("memory_usage")) == 0
+            and _safe_int(item.get("net_rx")) == 0
+            and _safe_int(item.get("net_tx")) == 0
+            and _safe_int(item.get("block_read")) == 0
+            and _safe_int(item.get("block_write")) == 0
+        )
 
     def _container_snapshot(self, container, raw: dict | None, error: str | None = None) -> dict:
         status = str(getattr(container, "status", "") or "unknown")
