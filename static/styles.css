@@ -12,9 +12,10 @@
   --green:      #22c55e;
   --red:        #ef4444;
   --yellow:     #f59e0b;
-  --radius:     14px;
-  --radius-sm:  8px;
-  --shadow:     0 4px 24px rgba(0,0,0,.4);
+  --radius:        14px;
+  --radius-sm:     8px;
+  --shadow:        0 4px 24px rgba(0,0,0,.4);
+  --surface-raised: #2a2f3d;
 }
 
 html { font-size: 15px; }
