@@ -194,9 +194,11 @@ class AuthService:
     def get_hub_key(self, app_id: str) -> Optional[str]:
         with closing(self._conn()) as conn:
             row = conn.execute(
-                "SELECT api_key FROM app_hub_keys WHERE app_id=?", (app_id,)
+                "SELECT api_key, api_key_hash FROM app_hub_keys WHERE app_id=?", (app_id,)
             ).fetchone()
-            return str(row["api_key"]) if row else None
+            if not row:
+                return None
+            return str(row["api_key_hash"] or row["api_key"] or "")
 
     def verify_hub_key(self, app_id: str, key: str) -> bool:
         if not app_id or not key:
