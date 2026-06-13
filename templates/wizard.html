@@ -105,7 +105,9 @@
                  oninput="onFieldChange('{{ field.key }}', this.value)">
           {% if field.type == "path" %}
           <button type="button" class="btn-nfs-helper" title="NFS mount hjælper"
-                  onclick="openNfsHelper('{{ field.key }}', {{ field.label | tojson }})">🗄 NFS</button>
+                  data-field-key="{{ field.key }}"
+                  data-field-label="{{ field.label }}"
+                  onclick="openNfsHelper(this.dataset.fieldKey, this.dataset.fieldLabel)">🗄 NFS</button>
           {% endif %}
         </div>
         {% endif %}
@@ -432,11 +434,11 @@ async function checkNfs() {
   btn.disabled = true;
   result.style.display = 'none';
   try {
-    const res  = await fetch(`/api/check-nfs?host=${encodeURIComponent(host)}`);
+    const res  = await fetch(`/api/check-nfs?export=${encodeURIComponent(exp)}`);
     const data = await res.json();
     result.style.display = '';
     if (data.ok) {
-      result.innerHTML = `<span style="color:#22c55e">✓ NFS server svarer (${host}:2049)</span>`;
+      result.innerHTML = `<span style="color:#22c55e">✓ NFS export fundet på ${host}</span>`;
     } else {
       result.innerHTML = `<span style="color:#ef4444">✗ Ingen forbindelse til ${host}:2049 — ${data.error || ''}</span>`;
     }

@@ -443,15 +443,32 @@ def api_hub_sso_verify():
 @login_required
 def api_check_nfs():
     import socket
-    host = request.args.get("host", "").strip()
-    if not host:
-        return jsonify({"ok": False, "error": "host mangler"}), 400
+    import subprocess
+    nfs_export = request.args.get("export", "").strip()
+    if not nfs_export or ":" not in nfs_export:
+        return jsonify({"ok": False, "error": "Ugyldig NFS export (format: server:/sti)"}), 400
+    host, path = nfs_export.split(":", 1)
+    host = host.strip()
+    path = path.rstrip("/").strip()
     try:
         sock = socket.create_connection((host, 2049), timeout=4)
         sock.close()
-        return jsonify({"ok": True})
     except OSError as e:
-        return jsonify({"ok": False, "error": str(e)})
+        return jsonify({"ok": False, "error": f"Port 2049 ikke tilgængelig på {host}: {e}"})
+    try:
+        result = subprocess.run(
+            ["showmount", "-e", "--no-headers", host],
+            capture_output=True, text=True, timeout=8
+        )
+        if result.returncode == 0:
+            exports = [line.split()[0].rstrip("/") for line in result.stdout.strip().splitlines() if line.strip()]
+            if path and path not in exports:
+                return jsonify({"ok": False, "error": f"Stien '{path}' er ikke eksporteret af {host}. Tilgængelige: {', '.join(exports) or 'ingen'}"})
+    except FileNotFoundError:
+        pass  # showmount ikke installeret, TCP-tjek var OK
+    except subprocess.TimeoutExpired:
+        return jsonify({"ok": False, "error": f"showmount timeout mod {host}"})
+    return jsonify({"ok": True})
 
 
 @app.route("/api/apps-status")

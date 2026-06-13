@@ -7,7 +7,8 @@ RUN apk add --no-cache \
     docker-cli \
     docker-cli-compose \
     curl \
-    git
+    git \
+    nfs-utils
 
 WORKDIR /app
 
