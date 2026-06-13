@@ -1,6 +1,9 @@
+import json
 import os
 import shutil
 import subprocess
+import urllib.error
+import urllib.request
 from pathlib import Path
 from flask import Flask, render_template, jsonify, request, redirect, url_for
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
@@ -57,7 +60,7 @@ def _unauthorized():
     return redirect(url_for("login", next=request.path))
 
 
-_AUTH_EXEMPT = {"static", "setup", "login", "health"}
+_AUTH_EXEMPT = {"static", "setup", "login", "health", "hub_user_sync"}
 
 
 def _install_state_exists() -> bool:
@@ -233,6 +236,43 @@ def profile():
     return render_template("profile.html", active_page="profile", pw_error=pw_error, pw_ok=pw_ok)
 
 
+def _installed_hub_apps() -> list[dict]:
+    """Return app definitions for apps that were installed via FjordHub (have a hub key)."""
+    managed_ids = set(_auth.get_apps_with_keys())
+    return [a for a in _get_apps() if a.get("id") in managed_ids]
+
+
+def _read_app_port(app_id: str) -> str | None:
+    install_dir = _install_state.get_install_dir(app_id)
+    if not install_dir:
+        return None
+    env_path = Path(install_dir) / ".env"
+    if not env_path.exists():
+        return None
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("APP_PORT="):
+            return line[len("APP_PORT="):].strip()
+    return None
+
+
+def _sync_user_to_app(app_id: str, username: str, password: str, role: str) -> bool:
+    hub_key = _auth.get_hub_key(app_id)
+    app_port = _read_app_port(app_id)
+    if not hub_key or not app_port:
+        return False
+    url = f"http://host.docker.internal:{app_port}/api/hub/users"
+    payload = json.dumps({"username": username, "password": password, "role": role, "name": username}).encode()
+    req = urllib.request.Request(url, data=payload, method="POST")
+    req.add_header("Content-Type", "application/json")
+    req.add_header("X-Hub-Key", hub_key)
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.status in (200, 201, 409)
+    except Exception:
+        return False
+
+
 @app.route("/users")
 def users():
     if not current_user.is_admin:
@@ -241,8 +281,9 @@ def users():
     return render_template(
         "users.html",
         active_page="users",
-        users=_auth.get_all_users(),
+        users=_auth.get_all_users_with_access(),
         admin_count=_auth.admin_count(),
+        hub_apps=_installed_hub_apps(),
         msg=msg,
     )
 
@@ -254,15 +295,24 @@ def create_user():
     username = str(request.form.get("username") or "").strip()
     password = str(request.form.get("password") or "")
     role = str(request.form.get("role") or "user")
+    app_ids = request.form.getlist("app_access")
+    app_roles = {aid: str(request.form.get(f"app_role_{aid}") or "user") for aid in app_ids}
     try:
-        _auth.create_user(username, password, role=role)
+        user_id = _auth.create_user(username, password, role=role)
+        for aid in app_ids:
+            app_role = app_roles.get(aid, "user")
+            if app_role not in ("admin", "user"):
+                app_role = "user"
+            _auth.set_user_app_access(user_id, aid, app_role)
+            _sync_user_to_app(aid, username, password, app_role)
         return redirect(url_for("users", msg="1"))
     except ValueError as exc:
         return render_template(
             "users.html",
             active_page="users",
-            users=_auth.get_all_users(),
+            users=_auth.get_all_users_with_access(),
             admin_count=_auth.admin_count(),
+            hub_apps=_installed_hub_apps(),
             modal_error=str(exc),
         )
 
@@ -278,6 +328,34 @@ def delete_user(user_id: int):
         return redirect(url_for("users"))
     _auth.delete_user(user_id)
     return redirect(url_for("users", msg="1"))
+
+
+# ── Hub user sync (called by sub-apps when a user is created locally) ────────
+
+@app.route("/api/hub/user-sync", methods=["POST"])
+def hub_user_sync():
+    data = request.get_json(silent=True) or {}
+    app_id = str(data.get("app_id") or "")
+    key = request.headers.get("X-Hub-Key") or str(data.get("hub_key") or "")
+    if not app_id or not key:
+        return jsonify({"ok": False, "error": "app_id og hub_key påkrævet"}), 400
+    if not _auth.verify_hub_key(app_id, key):
+        return jsonify({"ok": False, "error": "Uautoriseret"}), 401
+    username = str(data.get("username") or "").strip()
+    role = str(data.get("role") or "user").strip()
+    password = str(data.get("password") or "").strip()
+    if role not in ("admin", "user"):
+        role = "user"
+    if not username:
+        return jsonify({"ok": False, "error": "username påkrævet"}), 400
+    user = _auth.get_by_username(username)
+    if user:
+        user_id = user.id
+    else:
+        effective_pw = password if len(password) >= 6 else generate_secret(16)
+        user_id = _auth.create_user(username, effective_pw, role="user")
+    _auth.set_user_app_access(user_id, app_id, role)
+    return jsonify({"ok": True, "user_id": user_id})
 
 
 # ── App status & control ─────────────────────────────────────────────────────
@@ -399,6 +477,12 @@ def install_app(app_id):
     env_values = body.get("env", {})
     if not isinstance(env_values, dict):
         return jsonify({"error": "env must be an object"}), 400
+    # Generate hub key and inject so the app can authenticate back to FjordHub
+    hub_key = generate_secret(32)
+    _auth.save_hub_key(app_id, hub_key)
+    env_values["FJORDHUB_API_KEY"] = hub_key
+    env_values["FJORDHUB_APP_ID"] = app_id
+    env_values["FJORDHUB_URL"] = f"http://host.docker.internal:{APP_PORT}"
     _installer.start_install(a, env_values)
     return jsonify({"ok": True, "message": "Installation startet"})
 

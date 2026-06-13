@@ -11,7 +11,7 @@
   <div class="dashboard-header" style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;">
     <div>
       <h1>Brugere</h1>
-      <p class="dashboard-sub">Administrer adgang til FjordHub.</p>
+      <p class="dashboard-sub">Administrer adgang til FjordHub og apps.</p>
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
       {% if current_user.is_admin %}
@@ -47,7 +47,8 @@
       <thead>
         <tr>
           <th>Brugernavn</th>
-          <th>Rolle</th>
+          <th>Hub-rolle</th>
+          <th>App-adgang</th>
           <th>Oprettet</th>
           <th></th>
         </tr>
@@ -64,6 +65,20 @@
               <span class="badge badge-admin">Admin</span>
             {% else %}
               <span class="badge badge-user">Bruger</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.app_access %}
+              <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                {% for a in u.app_access %}
+                  <span class="badge" style="background:color-mix(in srgb,var(--accent,#7c6af7) 15%,var(--surface-2));color:var(--text);font-size:.7rem;">
+                    {{ a.app_id }}
+                    <span style="opacity:.6;margin-left:2px;">{{ a.role }}</span>
+                  </span>
+                {% endfor %}
+              </div>
+            {% else %}
+              <span style="color:var(--text-muted);font-size:.8rem;">—</span>
             {% endif %}
           </td>
           <td style="color:var(--text-muted);font-size:.82rem;">{{ u.created_at }}</td>
@@ -95,7 +110,7 @@
 
 <!-- Tilføj bruger modal -->
 <div class="modal-overlay" id="add-modal">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal" style="width:460px;max-width:94vw;" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-header">
       <h2 id="modal-title">Tilføj bruger</h2>
       <button type="button" class="modal-close" id="close-add-modal" aria-label="Luk">
@@ -119,12 +134,38 @@
         <input id="new-password" name="password" type="password" autocomplete="new-password" required>
       </div>
       <div class="auth-field">
-        <label for="new-role">Rolle</label>
+        <label for="new-role">Hub-rolle</label>
         <select id="new-role" name="role" class="auth-select">
           <option value="user">Bruger</option>
           <option value="admin">Admin</option>
         </select>
       </div>
+
+      {% if hub_apps %}
+      <div class="auth-field" style="margin-top:18px;">
+        <label style="margin-bottom:8px;display:block;">App-adgang</label>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          {% for app in hub_apps %}
+          <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin:0;">
+              <input type="checkbox" name="app_access" value="{{ app.id }}" id="app_chk_{{ app.id }}"
+                     onchange="toggleAppRole('{{ app.id }}', this.checked)"
+                     style="width:16px;height:16px;flex-shrink:0;">
+              <span style="font-weight:600;font-size:.9rem;">{{ app.name }}</span>
+            </label>
+            <div id="app_role_wrap_{{ app.id }}" style="display:none;margin-top:8px;padding-left:26px;">
+              <label style="font-size:.8rem;color:var(--text-muted);margin-bottom:4px;display:block;">Rolle i {{ app.name }}</label>
+              <select name="app_role_{{ app.id }}" class="auth-select" style="font-size:.82rem;padding:5px 8px;">
+                <option value="user">Bruger</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;">
         <button type="button" class="btn btn-open" id="cancel-add-modal">Annuller</button>
         <button type="submit" class="btn-install">Opret</button>
@@ -153,5 +194,10 @@
 
   {% if modal_error %}open();{% endif %}
 })();
+
+function toggleAppRole(appId, checked) {
+  const wrap = document.getElementById('app_role_wrap_' + appId);
+  if (wrap) wrap.style.display = checked ? '' : 'none';
+}
 </script>
 {% endblock %}
