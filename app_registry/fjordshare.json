@@ -10,5 +10,103 @@
   "health_path": "/api/health",
   "traefik_prefix": "/share",
   "compose_dir_env": "FJORDSHARE_DIR",
-  "sort_order": 2
+  "source_url": "https://github.com/qlerup/fjordshare",
+  "icon_url": "https://raw.githubusercontent.com/qlerup/fjordshare/main/static/logos/icons/fjord3D-mark-transparent-512.png",
+  "sort_order": 2,
+  "setup_steps": [
+    {
+      "id": "basic",
+      "title": "Grundlæggende indstillinger",
+      "fields": [
+        {
+          "key": "APP_PORT",
+          "label": "Web-port",
+          "type": "number",
+          "default": "9090",
+          "hint": "Den port du åbner i browseren"
+        },
+        {
+          "key": "TZ",
+          "label": "Tidszone",
+          "type": "text",
+          "default": "Europe/Copenhagen",
+          "hint": "Region/By-format, f.eks. Europe/Copenhagen"
+        }
+      ]
+    },
+    {
+      "id": "storage",
+      "title": "Lagerplads",
+      "fields": [
+        {
+          "key": "DATA_DIR",
+          "label": "Data-mappe (database og app-data)",
+          "type": "path",
+          "default": "/opt/fjordshare-data/appdata",
+          "hint": "Absolut sti på serveren. Lokal disk anbefales."
+        },
+        {
+          "key": "UPLOADS_HOST_DIR",
+          "label": "Upload-mappe (delte filer)",
+          "type": "path",
+          "default": "/opt/fjordshare-data/uploads",
+          "hint": "Kan ligge på NAS/NFS."
+        },
+        {
+          "key": "THUMBS_HOST_DIR",
+          "label": "Thumbnail-mappe",
+          "type": "path",
+          "default": "/opt/fjordshare-data/thumbs",
+          "hint": "Lokal disk anbefales."
+        }
+      ]
+    },
+    {
+      "id": "slicer",
+      "title": "Bambu Studio / Slicer",
+      "fields": [
+        {
+          "key": "BAMBUSTUDIO_BIN",
+          "label": "Bambu Studio binary",
+          "type": "text",
+          "default": "bambu-studio",
+          "hint": "Navn på eller sti til Bambu Studio CLI-binary inde i containeren"
+        },
+        {
+          "key": "BAMBUSTUDIO_TIMEOUT_SEC",
+          "label": "Slice-timeout (sekunder)",
+          "type": "number",
+          "default": "1800",
+          "hint": "Maks tid for et slice-job. 1800 = 30 minutter."
+        },
+        {
+          "key": "BAMBUSTUDIO_ALLOW_PROFILE_FALLBACK",
+          "label": "Tillad profil-fallback",
+          "type": "toggle",
+          "default": "0",
+          "hint": "Aktiver automatisk fallback til nærmeste profil ved manglende match"
+        }
+      ]
+    },
+    {
+      "id": "secrets",
+      "title": "Hemmelige nøgler",
+      "fields": [
+        {
+          "key": "SMS_TOKEN_ENCRYPTION_KEY",
+          "label": "SMS-token krypteringsnøgle",
+          "type": "auto_secret",
+          "default": "",
+          "hint": "Bruges til at kryptere SMS-tokens. Genereres automatisk."
+        },
+        {
+          "key": "MAKERWORLD_CREDENTIALS_ENCRYPTION_KEY",
+          "label": "MakerWorld krypteringsnøgle",
+          "type": "auto_secret",
+          "default": "",
+          "hint": "Bruges til at kryptere MakerWorld-login. Genereres automatisk."
+        }
+      ]
+    }
+  ]
 }
