@@ -184,9 +184,11 @@
         <p style="font-size:.8rem;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Genererede kommandoer</p>
         <div id="nfs-code-block" class="nfs-code-block"><span style="color:var(--text-muted)">Udfyld felterne ovenfor…</span></div>
       </div>
+      <div id="nfs-mount-status" style="display:none;font-size:.8rem;margin-top:4px;"></div>
       <div class="nfs-modal-actions">
         <button type="button" id="nfs-copy-btn" class="btn-copy" onclick="copyNfsCommands()">Kopiér</button>
-        <button type="button" class="btn btn-open" onclick="closeNfsHelper()">Luk</button>
+        <button type="button" id="nfs-done-btn" class="btn btn-open" onclick="closeNfsHelper()" disabled style="opacity:.35;cursor:not-allowed;">✓ Færdig</button>
+        <button type="button" class="btn btn-toggle" onclick="closeNfsHelper()">Luk</button>
       </div>
     </div>
   </div>
@@ -384,6 +386,10 @@ showPanel(0);
 
 // ── NFS helper ───────────────────────────────────────────────────────────────
 
+function onNfsTypeChange() {
+  renderNfsCommands();
+}
+
 function openNfsHelper() {
   document.getElementById('nfs-fetch-result').style.display = 'none';
   document.getElementById('nfs-export-select').innerHTML = '<option value="">— Tryk Connect først —</option>';
@@ -398,6 +404,7 @@ function openNfsHelper() {
 }
 
 function closeNfsHelper() {
+  clearInterval(_nfsMountPollTimer);
   document.getElementById('nfs-modal').style.display = 'none';
 }
 
@@ -455,6 +462,36 @@ function renderNfsCommands() {
   );
 
   block.innerHTML = lines.join('\n');
+  startMountPolling(root);
+}
+
+let _nfsMountPollTimer = null;
+
+function startMountPolling(mountRoot) {
+  clearInterval(_nfsMountPollTimer);
+  if (!mountRoot) return;
+  const statusEl = document.getElementById('nfs-mount-status');
+  const doneBtn  = document.getElementById('nfs-done-btn');
+  statusEl.style.display = '';
+  statusEl.innerHTML = '<span style="color:var(--text-muted)">⏳ Afventer at mount er klar…</span>';
+  doneBtn.disabled = true;
+  doneBtn.style.opacity = '.35';
+  doneBtn.style.cursor = 'not-allowed';
+  const check = async () => {
+    try {
+      const res  = await fetch(`/api/verify-nfs-mount?path=${encodeURIComponent(mountRoot)}`);
+      const data = await res.json();
+      if (data.mounted) {
+        clearInterval(_nfsMountPollTimer);
+        statusEl.innerHTML = `<span style="color:#22c55e">✓ NFS mount bekræftet — klar til brug</span>`;
+        doneBtn.disabled = false;
+        doneBtn.style.opacity = '1';
+        doneBtn.style.cursor = 'pointer';
+      }
+    } catch(_) {}
+  };
+  check();
+  _nfsMountPollTimer = setInterval(check, 5000);
 }
 
 function _nfsSetConnected(connected) {

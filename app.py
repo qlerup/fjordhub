@@ -439,6 +439,32 @@ def api_hub_sso_verify():
     return jsonify({"ok": True, "username": entry["username"], "id": entry["id"], "role": entry["role"]})
 
 
+@app.route("/api/verify-nfs-mount")
+@login_required
+def api_verify_nfs_mount():
+    import subprocess
+    path = request.args.get("path", "").strip()
+    if not path or not path.startswith("/"):
+        return jsonify({"mounted": False, "error": "Ugyldig sti"})
+    try:
+        result = subprocess.run(
+            ["docker", "run", "--rm", f"--volume={path}:/d", "alpine",
+             "sh", "-c", "awk '$2==\"/d\"{print $3; exit}' /proc/mounts"],
+            capture_output=True, text=True, timeout=15,
+        )
+        fstype = result.stdout.strip()
+        if fstype in ("nfs", "nfs4", "nfs3"):
+            return jsonify({"mounted": True, "fstype": fstype})
+        elif fstype:
+            return jsonify({"mounted": False, "fstype": fstype, "error": f"Filsystem er '{fstype}', ikke NFS"})
+        else:
+            return jsonify({"mounted": False, "error": "Ingen NFS mount ved stien"})
+    except subprocess.TimeoutExpired:
+        return jsonify({"mounted": False, "error": "Timeout"})
+    except Exception as e:
+        return jsonify({"mounted": False, "error": str(e)})
+
+
 @app.route("/api/list-nfs-exports")
 @login_required
 def api_list_nfs_exports():
