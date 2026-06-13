@@ -61,6 +61,11 @@
     {% for step in steps %}
     <div class="wizard-panel" id="panel-{{ loop.index }}">
       <h2>{{ step.title }}</h2>
+      {% if step.fields | selectattr('type', 'equalto', 'path') | list %}
+      <div style="margin-bottom:16px;">
+        <button type="button" class="btn-nfs-helper" onclick="openNfsHelper()">🗄 NFS mount hjælper</button>
+      </div>
+      {% endif %}
       {% for field in step.fields %}
       <div class="form-field {% if field.show_if %}conditional{% endif %}"
            {% if field.show_if %}
@@ -96,20 +101,11 @@
         </div>
 
         {% else %}
-        <div style="display:flex;gap:8px;align-items:center;">
-          <input type="{{ 'number' if field.type == 'number' else 'url' if field.type == 'url' else 'text' }}"
-                 id="f-{{ field.key }}" name="{{ field.key }}"
-                 value="{{ field.default }}"
-                 style="flex:1;"
-                 onchange="onFieldChange('{{ field.key }}', this.value)"
-                 oninput="onFieldChange('{{ field.key }}', this.value)">
-          {% if field.type == "path" %}
-          <button type="button" class="btn-nfs-helper" title="NFS mount hjælper"
-                  data-field-key="{{ field.key }}"
-                  data-field-label="{{ field.label }}"
-                  onclick="openNfsHelper(this.dataset.fieldKey, this.dataset.fieldLabel)">🗄 NFS</button>
-          {% endif %}
-        </div>
+        <input type="{{ 'number' if field.type == 'number' else 'url' if field.type == 'url' else 'text' }}"
+               id="f-{{ field.key }}" name="{{ field.key }}"
+               value="{{ field.default }}"
+               onchange="onFieldChange('{{ field.key }}', this.value)"
+               oninput="onFieldChange('{{ field.key }}', this.value)">
         {% endif %}
 
         {% if field.hint %}
@@ -143,8 +139,21 @@
   {# ── NFS helper modal (outside wizard-panels) ── #}
   <div id="nfs-modal" class="nfs-modal-overlay" style="display:none;" onclick="if(event.target===this)closeNfsHelper()">
     <div class="nfs-modal">
-      <h3>🗄 NFS mount hjælper — <span id="nfs-field-label"></span></h3>
+      <h3>🗄 NFS mount hjælper — <span id="nfs-field-label">{{ app.name }}</span></h3>
       <p class="nfs-modal-desc">Generer de præcise kommandoer til at mounte dit NFS-share og skrive det til <code>/etc/fstab</code>.</p>
+      <div class="nfs-input-row">
+        <label>Opsætningstype</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <label class="nfs-type-label" id="nfs-type-label-proxmox">
+            <input type="radio" name="nfs-setup-type" id="nfs-type-proxmox" value="proxmox" checked onchange="onNfsTypeChange()">
+            Proxmox (LXC)
+          </label>
+          <label class="nfs-type-label" id="nfs-type-label-wsl2">
+            <input type="radio" name="nfs-setup-type" id="nfs-type-wsl2" value="wsl2" onchange="onNfsTypeChange()">
+            Windows (Docker Desktop)
+          </label>
+        </div>
+      </div>
       <div class="nfs-input-row">
         <label>NAS server IP</label>
         <div style="display:flex;gap:8px;">
@@ -375,14 +384,7 @@ showPanel(0);
 
 // ── NFS helper ───────────────────────────────────────────────────────────────
 
-let _nfsFieldKey = '';
-
-function openNfsHelper(fieldKey, fieldLabel) {
-  _nfsFieldKey = fieldKey;
-  document.getElementById('nfs-field-label').textContent = fieldLabel;
-  const currentPath = document.getElementById(`f-${fieldKey}`)?.value || '';
-  const sub = currentPath.replace(/\/$/, '').split('/').pop() || '';
-  document.getElementById('nfs-subdir').value = sub;
+function openNfsHelper() {
   document.getElementById('nfs-fetch-result').style.display = 'none';
   document.getElementById('nfs-export-select').innerHTML = '<option value="">— Tryk Connect først —</option>';
   _nfsSetConnected(false);
@@ -413,26 +415,42 @@ function renderNfsCommands() {
     return;
   }
 
+  const setupType = document.querySelector('input[name="nfs-setup-type"]:checked')?.value || 'proxmox';
+  const isWSL2 = setupType === 'wsl2';
+  const s = isWSL2 ? 'sudo ' : '';
+
   const finalPath = subdir ? `${root.replace(/\/$/, '')}/${subdir}` : root;
   const c = t => `<span class="nfs-code-comment">${t}</span>`;
-  const lines = [
-    c('# 1. Opret mount-punkt'),
-    `sudo mkdir -p ${root}`,
+  const lines = [];
+
+  if (isWSL2) {
+    lines.push(
+      c('# Kør disse kommandoer i WSL2-terminalen (skriv "wsl" i PowerShell)'),
+      '',
+      c('# 0. Installér NFS-klient (kun første gang)'),
+      'sudo apt install -y nfs-common',
+      '',
+    );
+  }
+
+  lines.push(
+    c(`# ${isWSL2 ? '1' : '1'}. Opret mount-punkt`),
+    `${s}mkdir -p ${root}`,
     '',
-    c('# 2. Tilføj til /etc/fstab (vedvarende montering)'),
-    `${exp} ${root} nfs ${options} 0 0`,
+    c(`# ${isWSL2 ? '2' : '2'}. Tilføj til /etc/fstab (vedvarende montering)`),
+    `echo "${exp} ${root} nfs ${options} 0 0" | ${s}tee -a /etc/fstab`,
     '',
-    c('# 3. Montér nu'),
-    'sudo mount -a',
-  ];
+    c(`# ${isWSL2 ? '3' : '3'}. Montér nu`),
+    `${s}mount -a`,
+  );
 
   if (subdir) {
-    lines.push('', c('# 4. Opret undermappe'), `sudo mkdir -p ${finalPath}`);
+    lines.push('', c(`# ${isWSL2 ? '4' : '4'}. Opret undermappe`), `${s}mkdir -p ${finalPath}`);
   }
 
   lines.push(
     '',
-    c(`# Brug denne sti i wizard-feltet "${_nfsFieldKey}":`),
+    c('# Base-sti til brug i wizard-felterne:'),
     finalPath,
   );
 

@@ -157,28 +157,31 @@ class Installer:
             (install_dir / ".env").write_text("\n".join(lines) + "\n", encoding="utf-8")
             log(".env skrevet")
 
-            data_dir = env_values.get("DATA_DIR", "").strip()
-            if data_dir:
-                log(f"Opretter data-mappe {data_dir} ...")
-                r = subprocess.run(
-                    [
-                        "docker",
-                        "run",
-                        "--rm",
-                        f"--volume={data_dir}:/d",
-                        "alpine",
-                        "sh",
-                        "-c",
-                        "mkdir -p /d && chmod 777 /d",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
-                if r.returncode == 0:
-                    log("Data-mappe klar")
-                else:
-                    log(f"Kunne ikke pre-oprette data-mappe: {r.stderr[:200]}")
+            created_paths: set[str] = set()
+            for step in app_def.get("setup_steps", []):
+                for field in step.get("fields", []):
+                    if field.get("type") != "path":
+                        continue
+                    dir_path = env_values.get(str(field.get("key", "")), "").strip()
+                    if not dir_path or dir_path in created_paths:
+                        continue
+                    created_paths.add(dir_path)
+                    log(f"Opretter mappe {dir_path} ...")
+                    r = subprocess.run(
+                        [
+                            "docker", "run", "--rm",
+                            f"--volume={dir_path}:/d",
+                            "alpine", "sh", "-c",
+                            "mkdir -p /d && chmod 777 /d",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
+                    if r.returncode == 0:
+                        log(f"Mappe klar: {dir_path}")
+                    else:
+                        log(f"Advarsel: kunne ikke oprette {dir_path}: {r.stderr[:200]}")
 
             log("Starter docker compose up -d --build ...")
             log("  (dette kan tage flere minutter foerste gang)")
