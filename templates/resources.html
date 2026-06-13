@@ -27,43 +27,49 @@
     <p class="dashboard-sub">CPU, RAM, netværk og disk I/O for FjordHub og installerede apps.</p>
   </div>
 
+  <div class="resource-view-switch" role="group" aria-label="Ressourcevisning">
+    <button type="button" class="active" data-resource-view="lxc">LXC fra Proxmox</button>
+    <button type="button" data-resource-view="docker">Docker-containere</button>
+  </div>
+
   <div id="resource-error" class="resource-error" style="display:none;"></div>
 
   <section class="resource-overview" aria-label="Samlet ressourceforbrug">
     <article class="resource-summary-card resource-summary-primary">
+      <span class="resource-card-label">Synspunkt</span>
+      <strong id="resource-scope-title">-</strong>
+      <span class="resource-muted" id="resource-scope-subtitle">-</span>
+    </article>
+    <article class="resource-summary-card">
+      <span class="resource-card-label">CPU</span>
+      <strong id="resource-cpu">-</strong>
+      <div class="resource-bar"><span id="resource-cpu-bar"></span></div>
+      <span class="resource-muted" id="resource-cpu-detail">-</span>
+    </article>
+    <article class="resource-summary-card">
+      <span class="resource-card-label">RAM</span>
+      <strong id="resource-memory">-</strong>
+      <div class="resource-bar"><span id="resource-memory-bar"></span></div>
+      <span class="resource-muted" id="resource-memory-detail">-</span>
+    </article>
+    <article class="resource-summary-card">
       <span class="resource-card-label">Containere</span>
-      <strong id="hub-containers">-</strong>
-      <span class="resource-muted">aktive containere</span>
-    </article>
-    <article class="resource-summary-card">
-      <span class="resource-card-label">LXC total</span>
-      <strong id="system-memory">-</strong>
-      <div class="resource-bar"><span id="system-memory-bar"></span></div>
-      <span class="resource-muted" id="system-cpu">-</span>
-    </article>
-    <article class="resource-summary-card">
-      <span class="resource-card-label">Docker-containere</span>
-      <strong id="hub-memory">-</strong>
-      <div class="resource-bar"><span id="hub-memory-bar"></span></div>
-      <span class="resource-muted" id="hub-cpu">-</span>
-    </article>
-    <article class="resource-summary-card">
-      <span class="resource-card-label">System-overhead</span>
-      <strong id="overhead-memory">-</strong>
-      <div class="resource-bar"><span id="overhead-memory-bar"></span></div>
-      <span class="resource-muted" id="overhead-cpu">-</span>
+      <strong id="resource-containers">-</strong>
+      <span class="resource-muted" id="resource-containers-detail">aktive containere</span>
     </article>
     <article class="resource-summary-card">
       <span class="resource-card-label">Netværk</span>
-      <strong id="hub-network">-</strong>
-      <span class="resource-muted">ind / ud</span>
+      <strong id="resource-network">-</strong>
+      <span class="resource-muted" id="resource-network-detail">ind / ud</span>
     </article>
     <article class="resource-summary-card">
       <span class="resource-card-label">Disk I/O</span>
-      <strong id="hub-disk">-</strong>
-      <span class="resource-muted">læst / skrevet</span>
+      <strong id="resource-disk">-</strong>
+      <span class="resource-muted" id="resource-disk-detail">læst / skrevet</span>
     </article>
   </section>
+
+  <div class="resource-breakdown" id="resource-breakdown" style="display:none;"></div>
 
   <section class="resource-section">
     <div class="app-section-header">
@@ -90,7 +96,10 @@
 {% block scripts %}
 <script>
 const RESOURCE_REFRESH_MS = 7000;
+const RESOURCE_VIEW_KEY = 'fjordhub.resourceView';
 let resourceTimer = null;
+let currentResourceView = localStorage.getItem(RESOURCE_VIEW_KEY) || 'lxc';
+let latestResourceData = null;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -108,7 +117,15 @@ function clampPercent(value) {
 }
 
 function statusLabel(status) {
-  return STATUS_LABELS?.[status] || status || 'Ukendt';
+  const labels = {
+    running: 'Kører',
+    exited: 'Stoppet',
+    created: 'Oprettet',
+    restarting: 'Genstarter',
+    paused: 'Pause',
+    dead: 'Fejl',
+  };
+  return labels[status] || status || 'Ukendt';
 }
 
 function setText(id, value) {
@@ -125,7 +142,79 @@ function ioPair(left, right) {
   return `${left || '0 B'} / ${right || '0 B'}`;
 }
 
-function renderSummary(data) {
+function capacityCpuLabel(metric) {
+  const value = Number(metric?.cpu_capacity_percent || 0);
+  return `${Number.isFinite(value) ? value.toFixed(1) : '0.0'}%`;
+}
+
+function displayCpuLabel(metric) {
+  if (currentResourceView === 'lxc') return capacityCpuLabel(metric);
+  return metric?.cpu_percent_label || '0.0%';
+}
+
+function displayCpuBar(metric) {
+  if (currentResourceView === 'lxc') return metric?.cpu_capacity_percent || 0;
+  return metric?.cpu_percent || 0;
+}
+
+function setResourceView(view) {
+  currentResourceView = view === 'docker' ? 'docker' : 'lxc';
+  localStorage.setItem(RESOURCE_VIEW_KEY, currentResourceView);
+  document.querySelectorAll('[data-resource-view]').forEach(button => {
+    button.classList.toggle('active', button.dataset.resourceView === currentResourceView);
+  });
+  if (latestResourceData) renderResources(latestResourceData);
+}
+
+function renderBreakdown(data) {
+  const el = document.getElementById('resource-breakdown');
+  if (!el) return;
+  if (currentResourceView !== 'lxc') {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+
+  const hub = data.hub || {};
+  const overhead = data.overhead || {};
+  const cards = [
+    {
+      title: 'Docker-containere',
+      cpu: capacityCpuLabel(hub),
+      memory: `${hub.memory_usage_label || '0 B'} (${hub.memory_percent_label || '0.0%'})`,
+      detail: `${hub.running_count || 0}/${hub.container_count || 0} korer`,
+      cpuBar: hub.cpu_capacity_percent,
+      memoryBar: hub.memory_percent,
+    },
+    {
+      title: 'Uden for Docker',
+      cpu: overhead.available ? (overhead.cpu_capacity_percent_label || '0.0%') : 'Ikke tilgaengelig',
+      memory: overhead.available ? `${overhead.memory_usage_label || '0 B'} (${overhead.memory_percent_label || '0.0%'})` : (overhead.message || 'Ikke tilgaengelig'),
+      detail: 'LXC-system og ovrige processer',
+      cpuBar: overhead.cpu_capacity_percent,
+      memoryBar: overhead.memory_percent,
+    },
+  ];
+
+  el.innerHTML = cards.map(card => `
+    <article class="resource-breakdown-card">
+      <div>
+        <span class="resource-card-label">${escapeHtml(card.title)}</span>
+        <strong>${escapeHtml(card.cpu)}</strong>
+        <div class="resource-bar"><span style="width:${clampPercent(card.cpuBar)}%"></span></div>
+      </div>
+      <div>
+        <span class="resource-card-label">RAM</span>
+        <strong>${escapeHtml(card.memory)}</strong>
+        <div class="resource-bar"><span style="width:${clampPercent(card.memoryBar)}%"></span></div>
+      </div>
+      <span class="resource-muted">${escapeHtml(card.detail)}</span>
+    </article>
+  `).join('');
+  el.style.display = '';
+}
+
+function renderLegacySummary(data) {
   const hub = data.hub || {};
   const system = data.system || {};
   const overhead = data.overhead || {};
@@ -160,6 +249,54 @@ function renderSummary(data) {
   setBar('hub-memory-bar', hub.memory_percent);
 }
 
+function renderSummary(data) {
+  const hub = data.hub || {};
+  const system = data.system || {};
+  const capacity = data.capacity || {};
+
+  if (currentResourceView === 'lxc') {
+    setText('resource-scope-title', 'LXC fra Proxmox');
+    setText('resource-scope-subtitle', 'Hele FjordHub-containeren');
+    if (system.available) {
+      setText('resource-cpu', system.cpu_capacity_percent_label || '0.0%');
+      setText('resource-cpu-detail', `${system.cpu_percent_label || '0.0%'} samlet CPU`);
+      setBar('resource-cpu-bar', system.cpu_capacity_percent);
+      setText('resource-memory', `${system.memory_usage_label || '0 B'} (${system.memory_percent_label || '0.0%'})`);
+      setText('resource-memory-detail', `af ${system.memory_limit_label || capacity.memory_total_label || 'ukendt'}`);
+      setBar('resource-memory-bar', system.memory_percent);
+    } else {
+      setText('resource-cpu', 'Ikke tilgaengelig');
+      setText('resource-cpu-detail', system.message || 'Cgroup ikke monteret');
+      setBar('resource-cpu-bar', 0);
+      setText('resource-memory', 'Ikke tilgaengelig');
+      setText('resource-memory-detail', system.message || 'Cgroup ikke monteret');
+      setBar('resource-memory-bar', 0);
+    }
+    setText('resource-containers', `${hub.running_count || 0}/${hub.container_count || 0}`);
+    setText('resource-containers-detail', 'Docker-containere');
+    setText('resource-network', ioPair(hub.net_rx_label, hub.net_tx_label));
+    setText('resource-network-detail', 'Docker ind / ud');
+    setText('resource-disk', ioPair(hub.block_read_label, hub.block_write_label));
+    setText('resource-disk-detail', 'Docker laest / skrevet');
+  } else {
+    setText('resource-scope-title', 'Docker-containere');
+    setText('resource-scope-subtitle', 'FjordHub core og apps');
+    setText('resource-cpu', hub.cpu_percent_label || '0.0%');
+    setText('resource-cpu-detail', `${capacity.cpus || 1} CPU-traade i Docker`);
+    setBar('resource-cpu-bar', hub.cpu_capacity_percent);
+    setText('resource-memory', `${hub.memory_usage_label || '0 B'} (${hub.memory_percent_label || '0.0%'})`);
+    setText('resource-memory-detail', `af ${capacity.memory_total_label || 'ukendt'}`);
+    setBar('resource-memory-bar', hub.memory_percent);
+    setText('resource-containers', `${hub.running_count || 0}/${hub.container_count || 0}`);
+    setText('resource-containers-detail', 'aktive Docker-containere');
+    setText('resource-network', ioPair(hub.net_rx_label, hub.net_tx_label));
+    setText('resource-network-detail', 'ind / ud');
+    setText('resource-disk', ioPair(hub.block_read_label, hub.block_write_label));
+    setText('resource-disk-detail', 'laest / skrevet');
+  }
+  renderBreakdown(data);
+}
+
 function containerRows(group) {
   const containers = group.containers || [];
   if (!containers.length) {
@@ -174,7 +311,7 @@ function containerRows(group) {
             <span>${escapeHtml(container.name)}</span>
           </div>
           <span>${escapeHtml(statusLabel(container.status))}</span>
-          <span>${Number(container.cpu_percent || 0).toFixed(1)}%</span>
+          <span>${escapeHtml(displayCpuLabel(container))}</span>
           <span>${escapeHtml(container.memory_usage_label || '0 B')}</span>
           <span>${escapeHtml(ioPair(container.net_rx_label, container.net_tx_label))}</span>
           <span>${escapeHtml(ioPair(container.block_read_label, container.block_write_label))}</span>
@@ -195,12 +332,12 @@ function renderAppCard(app) {
             <span>${app.running_count || 0}/${app.container_count || 0} kører</span>
           </div>
         </div>
-        <strong>${escapeHtml(app.cpu_percent_label || '0.0%')}</strong>
+        <strong>${escapeHtml(displayCpuLabel(app))}</strong>
       </div>
       <div class="resource-metrics">
         <div>
           <span>CPU</span>
-          <div class="resource-bar"><span style="width:${clampPercent(app.cpu_capacity_percent)}%"></span></div>
+          <div class="resource-bar"><span style="width:${clampPercent(displayCpuBar(app))}%"></span></div>
         </div>
         <div>
           <span>RAM</span>
@@ -227,6 +364,7 @@ function renderResources(data) {
     return;
   }
   if (error) error.style.display = 'none';
+  latestResourceData = data;
 
   renderSummary(data);
 
@@ -269,6 +407,12 @@ async function refreshResources() {
   }
 }
 
+document.querySelector('.resource-view-switch')?.addEventListener('click', event => {
+  const button = event.target.closest('[data-resource-view]');
+  if (button) setResourceView(button.dataset.resourceView);
+});
+
+setResourceView(currentResourceView);
 refreshResources();
 resourceTimer = setInterval(refreshResources, RESOURCE_REFRESH_MS);
 </script>
