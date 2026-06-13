@@ -146,24 +146,30 @@
       <h3>🗄 NFS mount hjælper — <span id="nfs-field-label"></span></h3>
       <p class="nfs-modal-desc">Generer de præcise kommandoer til at mounte dit NFS-share og skrive det til <code>/etc/fstab</code>.</p>
       <div class="nfs-input-row">
-        <label>NFS export <span style="font-weight:400;color:var(--text-muted)">(server:/sti)</span></label>
+        <label>NAS server IP</label>
         <div style="display:flex;gap:8px;">
-          <input id="nfs-export" type="text" placeholder="10.10.0.161:/volume1/MinNAS" oninput="renderNfsCommands()" style="flex:1;">
-          <button type="button" class="btn-nfs-helper" id="nfs-check-btn" onclick="checkNfs()" style="white-space:nowrap;">Tjek NFS</button>
+          <input id="nfs-server-ip" type="text" placeholder="10.10.0.161" onkeydown="if(event.key==='Enter')fetchNfsExports()" style="flex:1;">
+          <button type="button" class="btn-nfs-helper" id="nfs-fetch-btn" onclick="fetchNfsExports()" style="white-space:nowrap;">Connect</button>
         </div>
-        <div id="nfs-check-result" style="margin-top:6px;font-size:.8rem;display:none;"></div>
+        <div id="nfs-fetch-result" style="margin-top:6px;font-size:.8rem;display:none;"></div>
+      </div>
+      <div class="nfs-input-row">
+        <label>NFS export <span style="font-weight:400;color:var(--text-muted)">(NFS share på serveren)</span></label>
+        <select id="nfs-export-select" onchange="renderNfsCommands()" style="width:100%;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:.9rem;" disabled>
+          <option value="">— Tryk Connect først —</option>
+        </select>
       </div>
       <div class="nfs-input-row">
         <label>Lokalt mount-punkt <span style="font-weight:400;color:var(--text-muted)">(hvor NFS skal hænges op)</span></label>
-        <input id="nfs-mount-root" type="text" placeholder="/mnt/nas-fjord" oninput="renderNfsCommands()">
+        <input id="nfs-mount-root" type="text" placeholder="/mnt/nas-fjord" oninput="renderNfsCommands()" disabled>
       </div>
       <div class="nfs-input-row">
         <label>Undermappe til denne sti <span style="font-weight:400;color:var(--text-muted)">(tom = mount-roden bruges direkte)</span></label>
-        <input id="nfs-subdir" type="text" placeholder="uploads" oninput="renderNfsCommands()">
+        <input id="nfs-subdir" type="text" placeholder="uploads" oninput="renderNfsCommands()" disabled>
       </div>
       <div class="nfs-input-row">
         <label>fstab options</label>
-        <input id="nfs-options" type="text" value="vers=3,_netdev,nofail" oninput="renderNfsCommands()">
+        <input id="nfs-options" type="text" value="vers=3,_netdev,nofail" oninput="renderNfsCommands()" disabled>
       </div>
       <div>
         <p style="font-size:.8rem;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Genererede kommandoer</p>
@@ -377,7 +383,14 @@ function openNfsHelper(fieldKey, fieldLabel) {
   const currentPath = document.getElementById(`f-${fieldKey}`)?.value || '';
   const sub = currentPath.replace(/\/$/, '').split('/').pop() || '';
   document.getElementById('nfs-subdir').value = sub;
-  document.getElementById('nfs-check-result').style.display = 'none';
+  document.getElementById('nfs-fetch-result').style.display = 'none';
+  document.getElementById('nfs-export-select').innerHTML = '<option value="">— Tryk Connect først —</option>';
+  _nfsSetConnected(false);
+  const mountEl = document.getElementById('nfs-mount-root');
+  if (mountEl && !mountEl.value) {
+    const slug = APP_NAME.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    mountEl.value = `/mnt/${slug}`;
+  }
   renderNfsCommands();
   document.getElementById('nfs-modal').style.display = 'flex';
 }
@@ -387,14 +400,16 @@ function closeNfsHelper() {
 }
 
 function renderNfsCommands() {
-  const exp     = document.getElementById('nfs-export')?.value.trim() || '';
+  const ip      = document.getElementById('nfs-server-ip')?.value.trim() || '';
+  const path    = document.getElementById('nfs-export-select')?.value || '';
+  const exp     = ip && path ? `${ip}:${path}` : '';
   const root    = document.getElementById('nfs-mount-root')?.value.trim() || '';
   const subdir  = document.getElementById('nfs-subdir')?.value.trim() || '';
   const options = document.getElementById('nfs-options')?.value.trim() || 'vers=3,_netdev,nofail';
   const block   = document.getElementById('nfs-code-block');
 
   if (!exp || !root) {
-    block.innerHTML = '<span style="color:var(--text-muted)">Udfyld NFS export og lokalt mount-punkt…</span>';
+    block.innerHTML = '<span style="color:var(--text-muted)">Vælg NFS export og udfyld lokalt mount-punkt…</span>';
     return;
   }
 
@@ -424,30 +439,45 @@ function renderNfsCommands() {
   block.innerHTML = lines.join('\n');
 }
 
-async function checkNfs() {
-  const exp = document.getElementById('nfs-export')?.value.trim() || '';
-  if (!exp) { alert('Udfyld NFS export først (f.eks. 10.10.0.161:/volume1/MinNAS)'); return; }
-  const host = exp.split(':')[0];
-  const btn = document.getElementById('nfs-check-btn');
-  const result = document.getElementById('nfs-check-result');
-  btn.textContent = 'Tjekker…';
+function _nfsSetConnected(connected) {
+  ['nfs-export-select', 'nfs-mount-root', 'nfs-subdir', 'nfs-options'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !connected;
+  });
+}
+
+async function fetchNfsExports() {
+  const ip = document.getElementById('nfs-server-ip')?.value.trim() || '';
+  const btn = document.getElementById('nfs-fetch-btn');
+  const resultEl = document.getElementById('nfs-fetch-result');
+  const sel = document.getElementById('nfs-export-select');
+  if (!ip) return;
+  btn.textContent = 'Forbinder…';
   btn.disabled = true;
-  result.style.display = 'none';
+  resultEl.style.display = 'none';
+  _nfsSetConnected(false);
+  sel.innerHTML = '<option value="">Henter…</option>';
   try {
-    const res  = await fetch(`/api/check-nfs?export=${encodeURIComponent(exp)}`);
+    const res = await fetch(`/api/list-nfs-exports?host=${encodeURIComponent(ip)}`);
     const data = await res.json();
-    result.style.display = '';
-    if (data.ok) {
-      result.innerHTML = `<span style="color:#22c55e">✓ NFS export fundet på ${host}</span>`;
+    resultEl.style.display = '';
+    if (data.exports && data.exports.length > 0) {
+      sel.innerHTML = '<option value="">— Vælg export —</option>' +
+        data.exports.map(e => `<option value="${e}">${e}</option>`).join('');
+      _nfsSetConnected(true);
+      resultEl.innerHTML = `<span style="color:#22c55e">✓ Forbundet — ${data.exports.length} export(s) fundet</span>`;
     } else {
-      result.innerHTML = `<span style="color:#ef4444">✗ Ingen forbindelse til ${host}:2049 — ${data.error || ''}</span>`;
+      sel.innerHTML = '<option value="">Ingen exports fundet</option>';
+      resultEl.innerHTML = `<span style="color:#ef4444">✗ ${data.error || 'Ingen exports på denne server'}</span>`;
     }
   } catch(e) {
-    result.style.display = '';
-    result.innerHTML = `<span style="color:#ef4444">✗ Fejl: ${e.message}</span>`;
+    sel.innerHTML = '<option value="">Fejl ved hentning</option>';
+    resultEl.style.display = '';
+    resultEl.innerHTML = `<span style="color:#ef4444">✗ Fejl: ${e.message}</span>`;
   } finally {
-    btn.textContent = 'Tjek NFS';
+    btn.textContent = 'Connect';
     btn.disabled = false;
+    renderNfsCommands();
   }
 }
 

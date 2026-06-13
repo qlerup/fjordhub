@@ -439,6 +439,33 @@ def api_hub_sso_verify():
     return jsonify({"ok": True, "username": entry["username"], "id": entry["id"], "role": entry["role"]})
 
 
+@app.route("/api/list-nfs-exports")
+@login_required
+def api_list_nfs_exports():
+    import socket, subprocess
+    host = request.args.get("host", "").strip()
+    if not host:
+        return jsonify({"exports": [], "error": "host mangler"})
+    try:
+        sock = socket.create_connection((host, 2049), timeout=4)
+        sock.close()
+    except OSError as e:
+        return jsonify({"exports": [], "error": f"Port 2049 ikke tilgængelig: {e}"})
+    try:
+        result = subprocess.run(
+            ["showmount", "-e", "--no-headers", host],
+            capture_output=True, text=True, timeout=8
+        )
+        if result.returncode == 0:
+            exports = [line.split()[0].rstrip("/") for line in result.stdout.strip().splitlines() if line.strip()]
+            return jsonify({"exports": exports})
+        return jsonify({"exports": [], "error": result.stderr.strip()})
+    except FileNotFoundError:
+        return jsonify({"exports": [], "error": "showmount ikke installeret"})
+    except subprocess.TimeoutExpired:
+        return jsonify({"exports": [], "error": "timeout"})
+
+
 @app.route("/api/check-nfs")
 @login_required
 def api_check_nfs():
