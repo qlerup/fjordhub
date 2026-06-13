@@ -388,8 +388,8 @@ function openNfsHelper(fieldKey, fieldLabel) {
   _nfsSetConnected(false);
   const mountEl = document.getElementById('nfs-mount-root');
   if (mountEl && !mountEl.value) {
-    const slug = APP_NAME.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    mountEl.value = `/mnt/${slug}`;
+    const appSlug = APP_NAME.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    mountEl.value = `/mnt/${appSlug}`;
   }
   renderNfsCommands();
   document.getElementById('nfs-modal').style.display = 'flex';
