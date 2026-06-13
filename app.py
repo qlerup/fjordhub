@@ -439,6 +439,21 @@ def api_hub_sso_verify():
     return jsonify({"ok": True, "username": entry["username"], "id": entry["id"], "role": entry["role"]})
 
 
+@app.route("/api/check-nfs")
+@login_required
+def api_check_nfs():
+    import socket
+    host = request.args.get("host", "").strip()
+    if not host:
+        return jsonify({"ok": False, "error": "host mangler"}), 400
+    try:
+        sock = socket.create_connection((host, 2049), timeout=4)
+        sock.close()
+        return jsonify({"ok": True})
+    except OSError as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+
 @app.route("/api/apps-status")
 def api_apps_status():
     return jsonify({a["id"]: docker_mgr.get_status(a) for a in _get_apps()})

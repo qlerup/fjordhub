@@ -96,11 +96,18 @@
         </div>
 
         {% else %}
-        <input type="{{ 'number' if field.type == 'number' else 'url' if field.type == 'url' else 'text' }}"
-               id="f-{{ field.key }}" name="{{ field.key }}"
-               value="{{ field.default }}"
-               onchange="onFieldChange('{{ field.key }}', this.value)"
-               oninput="onFieldChange('{{ field.key }}', this.value)">
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="{{ 'number' if field.type == 'number' else 'url' if field.type == 'url' else 'text' }}"
+                 id="f-{{ field.key }}" name="{{ field.key }}"
+                 value="{{ field.default }}"
+                 style="flex:1;"
+                 onchange="onFieldChange('{{ field.key }}', this.value)"
+                 oninput="onFieldChange('{{ field.key }}', this.value)">
+          {% if field.type == "path" %}
+          <button type="button" class="btn-nfs-helper" title="NFS mount hjælper"
+                  onclick="openNfsHelper('{{ field.key }}', {{ field.label | tojson }})">🗄 NFS</button>
+          {% endif %}
+        </div>
         {% endif %}
 
         {% if field.hint %}
@@ -130,6 +137,42 @@
     </div>
 
   </div>{# /.wizard-panels #}
+
+  {# ── NFS helper modal (outside wizard-panels) ── #}
+  <div id="nfs-modal" class="nfs-modal-overlay" style="display:none;" onclick="if(event.target===this)closeNfsHelper()">
+    <div class="nfs-modal">
+      <h3>🗄 NFS mount hjælper — <span id="nfs-field-label"></span></h3>
+      <p class="nfs-modal-desc">Generer de præcise kommandoer til at mounte dit NFS-share og skrive det til <code>/etc/fstab</code>.</p>
+      <div class="nfs-input-row">
+        <label>NFS export <span style="font-weight:400;color:var(--text-muted)">(server:/sti)</span></label>
+        <div style="display:flex;gap:8px;">
+          <input id="nfs-export" type="text" placeholder="10.10.0.161:/volume1/MinNAS" oninput="renderNfsCommands()" style="flex:1;">
+          <button type="button" class="btn-nfs-helper" id="nfs-check-btn" onclick="checkNfs()" style="white-space:nowrap;">Tjek NFS</button>
+        </div>
+        <div id="nfs-check-result" style="margin-top:6px;font-size:.8rem;display:none;"></div>
+      </div>
+      <div class="nfs-input-row">
+        <label>Lokalt mount-punkt <span style="font-weight:400;color:var(--text-muted)">(hvor NFS skal hænges op)</span></label>
+        <input id="nfs-mount-root" type="text" placeholder="/mnt/nas-fjord" oninput="renderNfsCommands()">
+      </div>
+      <div class="nfs-input-row">
+        <label>Undermappe til denne sti <span style="font-weight:400;color:var(--text-muted)">(tom = mount-roden bruges direkte)</span></label>
+        <input id="nfs-subdir" type="text" placeholder="uploads" oninput="renderNfsCommands()">
+      </div>
+      <div class="nfs-input-row">
+        <label>fstab options</label>
+        <input id="nfs-options" type="text" value="vers=3,_netdev,nofail" oninput="renderNfsCommands()">
+      </div>
+      <div>
+        <p style="font-size:.8rem;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Genererede kommandoer</p>
+        <div id="nfs-code-block" class="nfs-code-block"><span style="color:var(--text-muted)">Udfyld felterne ovenfor…</span></div>
+      </div>
+      <div class="nfs-modal-actions">
+        <button type="button" id="nfs-copy-btn" class="btn-copy" onclick="copyNfsCommands()">Kopiér</button>
+        <button type="button" class="btn btn-open" onclick="closeNfsHelper()">Luk</button>
+      </div>
+    </div>
+  </div>
 
   {# ── Navigation ── #}
   <div class="wizard-nav" id="wizard-nav">
@@ -321,5 +364,99 @@ function appendLog(line) {
 
 // Init
 showPanel(0);
+
+// ── NFS helper ───────────────────────────────────────────────────────────────
+
+let _nfsFieldKey = '';
+
+function openNfsHelper(fieldKey, fieldLabel) {
+  _nfsFieldKey = fieldKey;
+  document.getElementById('nfs-field-label').textContent = fieldLabel;
+  const currentPath = document.getElementById(`f-${fieldKey}`)?.value || '';
+  const sub = currentPath.replace(/\/$/, '').split('/').pop() || '';
+  document.getElementById('nfs-subdir').value = sub;
+  document.getElementById('nfs-check-result').style.display = 'none';
+  renderNfsCommands();
+  document.getElementById('nfs-modal').style.display = 'flex';
+}
+
+function closeNfsHelper() {
+  document.getElementById('nfs-modal').style.display = 'none';
+}
+
+function renderNfsCommands() {
+  const exp     = document.getElementById('nfs-export')?.value.trim() || '';
+  const root    = document.getElementById('nfs-mount-root')?.value.trim() || '';
+  const subdir  = document.getElementById('nfs-subdir')?.value.trim() || '';
+  const options = document.getElementById('nfs-options')?.value.trim() || 'vers=3,_netdev,nofail';
+  const block   = document.getElementById('nfs-code-block');
+
+  if (!exp || !root) {
+    block.innerHTML = '<span style="color:var(--text-muted)">Udfyld NFS export og lokalt mount-punkt…</span>';
+    return;
+  }
+
+  const finalPath = subdir ? `${root.replace(/\/$/, '')}/${subdir}` : root;
+  const c = t => `<span class="nfs-code-comment">${t}</span>`;
+  const lines = [
+    c('# 1. Opret mount-punkt'),
+    `sudo mkdir -p ${root}`,
+    '',
+    c('# 2. Tilføj til /etc/fstab (vedvarende montering)'),
+    `${exp} ${root} nfs ${options} 0 0`,
+    '',
+    c('# 3. Montér nu'),
+    'sudo mount -a',
+  ];
+
+  if (subdir) {
+    lines.push('', c('# 4. Opret undermappe'), `sudo mkdir -p ${finalPath}`);
+  }
+
+  lines.push(
+    '',
+    c(`# Brug denne sti i wizard-feltet "${_nfsFieldKey}":`),
+    finalPath,
+  );
+
+  block.innerHTML = lines.join('\n');
+}
+
+async function checkNfs() {
+  const exp = document.getElementById('nfs-export')?.value.trim() || '';
+  if (!exp) { alert('Udfyld NFS export først (f.eks. 10.10.0.161:/volume1/MinNAS)'); return; }
+  const host = exp.split(':')[0];
+  const btn = document.getElementById('nfs-check-btn');
+  const result = document.getElementById('nfs-check-result');
+  btn.textContent = 'Tjekker…';
+  btn.disabled = true;
+  result.style.display = 'none';
+  try {
+    const res  = await fetch(`/api/check-nfs?host=${encodeURIComponent(host)}`);
+    const data = await res.json();
+    result.style.display = '';
+    if (data.ok) {
+      result.innerHTML = `<span style="color:#22c55e">✓ NFS server svarer (${host}:2049)</span>`;
+    } else {
+      result.innerHTML = `<span style="color:#ef4444">✗ Ingen forbindelse til ${host}:2049 — ${data.error || ''}</span>`;
+    }
+  } catch(e) {
+    result.style.display = '';
+    result.innerHTML = `<span style="color:#ef4444">✗ Fejl: ${e.message}</span>`;
+  } finally {
+    btn.textContent = 'Tjek NFS';
+    btn.disabled = false;
+  }
+}
+
+function copyNfsCommands() {
+  const block = document.getElementById('nfs-code-block');
+  navigator.clipboard.writeText(block.innerText).then(() => {
+    const btn = document.getElementById('nfs-copy-btn');
+    btn.textContent = '✓ Kopieret!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Kopiér'; btn.classList.remove('copied'); }, 2000);
+  });
+}
 </script>
 {% endblock %}
