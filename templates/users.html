@@ -13,12 +13,26 @@
       <h1>Brugere</h1>
       <p class="dashboard-sub">Administrer adgang til FjordHub.</p>
     </div>
-    <button type="button" class="btn btn-open" id="open-add-modal" style="flex-shrink:0;">
-      <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-      </svg>
-      Tilføj bruger
-    </button>
+    <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+      {% if current_user.is_admin %}
+      <button type="button" class="btn btn-open" id="open-add-modal">
+        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Tilføj bruger
+      </button>
+      {% endif %}
+      <form action="{{ url_for('logout') }}" method="post" style="margin:0;">
+        <button type="submit" class="btn btn-open" style="color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,var(--border));">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          Log ud
+        </button>
+      </form>
+    </div>
   </div>
 
   {% if msg %}
@@ -80,7 +94,7 @@
 </div>
 
 <!-- Tilføj bruger modal -->
-<div class="modal-overlay" id="add-modal" hidden>
+<div class="modal-overlay" id="add-modal">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-header">
       <h2 id="modal-title">Tilføj bruger</h2>
@@ -128,14 +142,14 @@
   const closeBtn = document.getElementById('close-add-modal');
   const cancelBtn = document.getElementById('cancel-add-modal');
 
-  function open() { overlay.hidden = false; document.getElementById('new-username').focus(); }
-  function close() { overlay.hidden = true; }
+  function open() { overlay.classList.add('is-open'); document.getElementById('new-username').focus(); }
+  function close() { overlay.classList.remove('is-open'); }
 
-  openBtn.addEventListener('click', open);
+  openBtn && openBtn.addEventListener('click', open);
   closeBtn.addEventListener('click', close);
   cancelBtn.addEventListener('click', close);
   overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !overlay.hidden) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && overlay.classList.contains('is-open')) close(); });
 
   {% if modal_error %}open();{% endif %}
 })();

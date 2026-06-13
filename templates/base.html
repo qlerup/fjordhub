@@ -31,66 +31,18 @@
   <div class="app-body">
     <nav class="sidebar">
       <div class="sidebar-top">
-        <div class="user-menu-wrap">
-          <button type="button" class="sidebar-item{% if active_page in ('profile', 'users') %} active{% endif %}" id="user-menu-btn" title="Bruger" aria-haspopup="menu" aria-expanded="false">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-              <circle cx="12" cy="7" r="4"/>
-            </svg>
-          </button>
-          <div class="user-menu" id="user-menu" hidden role="menu">
-            <div class="user-menu-header">
-              <div class="user-menu-avatar">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                  <circle cx="12" cy="7" r="4"/>
-                </svg>
-              </div>
-              <div class="user-menu-info">
-                <span class="user-menu-name">{{ current_user.username }}</span>
-                <span class="user-menu-role">{{ 'Admin' if current_user.is_admin else 'Bruger' }}</span>
-              </div>
-            </div>
-            <div class="user-menu-divider"></div>
-            <a href="{{ url_for('profile') }}" class="user-menu-item" role="menuitem">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
-              Profil
-            </a>
-            {% if current_user.is_admin %}
-            <a href="{{ url_for('users') }}" class="user-menu-item" role="menuitem">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                <circle cx="9" cy="7" r="4"/>
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-              </svg>
-              Brugere
-            </a>
-            {% endif %}
-            <div class="user-menu-divider"></div>
-            <form action="{{ url_for('logout') }}" method="post" style="margin:0;">
-              <button type="submit" class="user-menu-item user-menu-logout" role="menuitem">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                  <polyline points="16 17 21 12 16 7"/>
-                  <line x1="21" y1="12" x2="9" y2="12"/>
-                </svg>
-                Log ud
-              </button>
-            </form>
-          </div>
-        </div>
+        <a href="{{ url_for('users') }}" class="sidebar-item{% if active_page in ('profile', 'users') %} active{% endif %}" title="Brugere">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+        </a>
         <a href="{{ url_for('dashboard') }}" class="sidebar-item{% if active_page == 'apps' %} active{% endif %}" title="Apps">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
             <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
           </svg>
         </a>
-      </div>
-      <div class="sidebar-bottom">
         <a href="{{ url_for('settings') }}" class="sidebar-item{% if active_page == 'settings' %} active{% endif %}" title="Indstillinger">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
@@ -98,6 +50,7 @@
           </svg>
         </a>
       </div>
+      <div class="sidebar-bottom"></div>
     </nav>
 
     <main class="page-content">

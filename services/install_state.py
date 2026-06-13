@@ -51,6 +51,22 @@ class InstallState:
             "finished_at": datetime.now(timezone.utc).isoformat(),
         })
 
+    def is_initialized(self, key: str) -> bool:
+        with self._lock:
+            state = self._state.get(key, {})
+            return bool(state.get("initialized"))
+
+    def mark_initialized(self, key: str, app_name: str, db_path: str, reason: str = "unknown"):
+        if self.is_initialized(key):
+            return
+        self._update(key, {
+            "app": app_name,
+            "initialized": True,
+            "initialized_at": datetime.now(timezone.utc).isoformat(),
+            "reason": str(reason or "unknown"),
+            "db_path": str(db_path or ""),
+        })
+
     def _update(self, app_id: str, updates: dict):
         with self._lock:
             self._state.setdefault(app_id, {}).update(updates)

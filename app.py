@@ -17,6 +17,8 @@ from services.update_manager import UpdateManager
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+AUTH_DB_PATH = DATA_DIR / "hub.db"
+AUTH_INSTALL_STATE_KEY = "__fjordhub_auth__"
 
 REGISTRY_URL = os.environ.get(
     "REGISTRY_URL",
@@ -26,7 +28,7 @@ REGISTRY_URL = os.environ.get(
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 
-_auth            = AuthService(DATA_DIR / "hub.db")
+_auth            = AuthService(AUTH_DB_PATH)
 _local_registry  = AppRegistry(Path(__file__).parent / "app_registry")
 _remote_registry = RemoteRegistry(DATA_DIR, REGISTRY_URL)
 _install_state   = InstallState(DATA_DIR)
@@ -58,11 +60,51 @@ def _unauthorized():
 _AUTH_EXEMPT = {"static", "setup", "login", "health"}
 
 
+def _install_state_exists() -> bool:
+    return _install_state.is_initialized(AUTH_INSTALL_STATE_KEY)
+
+
+def _mark_install_initialized(reason: str = "unknown") -> None:
+    _install_state.mark_initialized(
+        AUTH_INSTALL_STATE_KEY,
+        "fjordhub",
+        str(AUTH_DB_PATH),
+        reason,
+    )
+
+
+def _ensure_install_state_for_existing_users() -> None:
+    try:
+        if _auth.users_count() > 0:
+            _mark_install_initialized("existing-users")
+    except Exception:
+        pass
+
+
+def _setup_locked_response():
+    message = "FjordHub er allerede initialiseret, men databasen mangler eller er tom."
+    if request.path.startswith("/api/"):
+        return jsonify({"ok": False, "error": message, "recovery_required": True}), 503
+    return render_template(
+        "setup_locked.html",
+        app_name="FjordHub",
+        db_path=str(AUTH_DB_PATH),
+    ), 503
+
+
+_ensure_install_state_for_existing_users()
+
+
 @app.before_request
 def _auth_gate():
     if request.endpoint in _AUTH_EXEMPT:
         return None
-    if _auth.users_count() == 0:
+    user_count = _auth.users_count()
+    if user_count > 0:
+        _ensure_install_state_for_existing_users()
+    if user_count == 0 and _install_state_exists():
+        return _setup_locked_response()
+    if user_count == 0:
         if request.path.startswith("/api/"):
             return jsonify({"ok": False, "error": "Opsætning kræves."}), 503
         return redirect(url_for("setup"))
@@ -92,7 +134,10 @@ def inject_globals():
 @app.route("/setup", methods=["GET", "POST"])
 def setup():
     if _auth.users_count() > 0:
+        _ensure_install_state_for_existing_users()
         return redirect(url_for("login"))
+    if _install_state_exists():
+        return _setup_locked_response()
     error = ""
     username = ""
     if request.method == "POST":
@@ -106,6 +151,7 @@ def setup():
         else:
             try:
                 _auth.create_user(username, password, role="admin")
+                _mark_install_initialized("first-admin-created")
                 return redirect(url_for("login", created="1"))
             except ValueError as exc:
                 error = str(exc)
@@ -115,7 +161,10 @@ def setup():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if _auth.users_count() == 0:
+        if _install_state_exists():
+            return _setup_locked_response()
         return redirect(url_for("setup"))
+    _ensure_install_state_for_existing_users()
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
     error = ""
@@ -184,8 +233,6 @@ def profile():
 
 @app.route("/users")
 def users():
-    if not current_user.is_admin:
-        return redirect(url_for("dashboard"))
     msg = "Bruger oprettet." if str(request.args.get("msg") or "") == "1" else ""
     return render_template(
         "users.html",
