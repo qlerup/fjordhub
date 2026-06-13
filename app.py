@@ -479,7 +479,8 @@ def install_wizard(app_id):
         for field in step.get("fields", []):
             if field.get("type") == "auto_secret":
                 pregenerated[field["key"]] = generate_secret()
-    return render_template("wizard.html", app=a, pregenerated=pregenerated)
+    steps = a.get("setup_steps", [])
+    return render_template("wizard.html", app=a, pregenerated=pregenerated, steps=steps)
 
 
 @app.route("/apps/<app_id>/install", methods=["POST"])

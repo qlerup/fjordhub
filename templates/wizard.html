@@ -30,8 +30,6 @@
   </div>
 
   {# ── Step indicator ── #}
-  {% set steps = app.setup_steps %}
-  {% set total = steps | length + 3 %}{# +3 for intro + hub-admin + summary #}
   <div class="wizard-step-indicator" id="step-indicator">
     <div class="step-pill active" data-step="0">Intro</div>
     {% for step in steps %}
@@ -85,8 +83,9 @@
           <input type="checkbox" id="f-{{ field.key }}" name="{{ field.key }}"
                  {% if field.default == "1" %}checked{% endif %}
                  onchange="onFieldChange('{{ field.key }}', this.checked ? '1' : '0')">
-          <span class="toggle-track"></span>
-          <span class="toggle-knob"></span>
+          <span class="toggle-track">
+            <span class="toggle-knob"></span>
+          </span>
         </label>
 
         {% elif field.type == "auto_secret" %}
