@@ -150,10 +150,10 @@
 
   {# ── Navigation ── #}
   <div class="wizard-nav" id="wizard-nav">
-    <button class="btn btn-toggle" id="btn-back" onclick="wizardBack()" style="display:none;">← Tilbage</button>
+    <button type="button" class="btn btn-toggle" id="btn-back" onclick="wizardBack()" style="display:none;">← Tilbage</button>
     <div style="flex:1"></div>
-    <button class="btn btn-open" id="btn-next" onclick="wizardNext()">Næste →</button>
-    <button class="btn btn-install" id="btn-install" onclick="startInstall()" style="display:none;">
+    <button type="button" class="btn btn-open" id="btn-next" onclick="wizardNext()">Næste →</button>
+    <button type="button" class="btn btn-install" id="btn-install" onclick="startInstall()" style="display:none;">
       ⬇ Installer {{ app.name }}
     </button>
   </div>
