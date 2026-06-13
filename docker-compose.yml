@@ -29,6 +29,7 @@ services:
       - "${APPS_DIR:-./apps}:/apps"
     environment:
       DATA_DIR: /data
+      APP_PORT: ${APP_PORT:-8091}
       TZ: ${TZ:-Europe/Copenhagen}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       # URL to registry.json in FjordHub's GitHub repo (raw content URL)
