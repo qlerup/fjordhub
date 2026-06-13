@@ -107,18 +107,18 @@ class Installer:
     def __init__(self, state: InstallState):
         self.state = state
 
-    def start_install(self, app_def: dict, env_values: dict):
+    def start_install(self, app_def: dict, env_values: dict, on_success=None):
         app_id = app_def["id"]
         install_dir = APPS_BASE / app_id
         self.state.set_installing(app_id, str(install_dir))
         t = threading.Thread(
             target=self._run,
-            args=(app_def, env_values, install_dir),
+            args=(app_def, env_values, install_dir, on_success),
             daemon=True,
         )
         t.start()
 
-    def _run(self, app_def: dict, env_values: dict, install_dir: Path):
+    def _run(self, app_def: dict, env_values: dict, install_dir: Path, on_success=None):
         app_id = app_def["id"]
         source_url = app_def.get("source_url", "")
         log = lambda msg: self.state.append_log(app_id, msg)
@@ -206,6 +206,11 @@ class Installer:
 
             log(f"{app_def['name']} er installeret og koerer!")
             self.state.set_installed(app_id)
+            if on_success:
+                try:
+                    on_success()
+                except Exception:
+                    pass
 
         except subprocess.TimeoutExpired:
             log("Timeout - processen tog for lang tid")

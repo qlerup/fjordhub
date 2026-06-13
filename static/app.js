@@ -229,13 +229,15 @@ function closeUpdateModal() {
 
 function finishUpdateModal(state) {
   _terminalDone = true;
-  const footer = document.getElementById('update-log-footer');
-  const title  = document.getElementById('update-log-title');
+  const footer  = document.getElementById('update-log-footer');
+  const title   = document.getElementById('update-log-title');
+  const doneBtn = document.getElementById('update-log-done');
   if (!footer) return;
   const ok = state === 'up_to_date' || state === 'updated';
   footer.textContent = ok ? '✓ Opdatering færdig' : '✗ Opdatering fejlede';
   footer.className   = 'terminal-footer ' + (ok ? 'ok' : 'err');
   if (title) title.textContent = title.textContent.replace('Opdaterer', ok ? 'Opdateret' : 'Fejl —');
+  if (doneBtn) doneBtn.style.display = '';
 }
 
 // ── Docker health indicator ───────────────────────────────────────────────
@@ -405,9 +407,8 @@ async function confirmUninstall(card) {
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 
-document.getElementById('update-log-close')?.addEventListener('click', closeUpdateModal);
 document.getElementById('update-log-modal')?.addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeUpdateModal();
+  if (e.target === e.currentTarget && _terminalDone) closeUpdateModal();
 });
 
 checkDockerHealth();

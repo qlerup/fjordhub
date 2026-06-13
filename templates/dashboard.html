@@ -135,14 +135,12 @@
   <div class="modal modal-terminal">
     <div class="modal-header">
       <h2 id="update-log-title">Opdaterer…</h2>
-      <button class="modal-close" id="update-log-close" title="Luk">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </button>
     </div>
     <pre class="terminal-log" id="update-log-output"></pre>
-    <div class="terminal-footer" id="update-log-footer"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;min-height:32px;">
+      <div class="terminal-footer" id="update-log-footer"></div>
+      <button class="btn-install" id="update-log-done" style="display:none;" onclick="closeUpdateModal()">Færdig</button>
+    </div>
   </div>
 </div>
 {% endblock %}

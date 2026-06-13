@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -273,6 +274,18 @@ def _sync_user_to_app(app_id: str, username: str, password: str, role: str) -> b
         return False
 
 
+def _post_install_provision(app_id: str, username: str, password: str, user_id: int) -> None:
+    """Background: retry syncing admin user to newly installed app until container is ready."""
+    for _ in range(12):
+        time.sleep(5)
+        if _sync_user_to_app(app_id, username, password, "admin"):
+            try:
+                _auth.set_user_app_access(user_id, app_id, "admin")
+            except Exception:
+                pass
+            return
+
+
 @app.route("/users")
 def users():
     if not current_user.is_admin:
@@ -483,7 +496,19 @@ def install_app(app_id):
     env_values["FJORDHUB_API_KEY"] = hub_key
     env_values["FJORDHUB_APP_ID"] = app_id
     env_values["FJORDHUB_URL"] = f"http://host.docker.internal:{APP_PORT}"
-    _installer.start_install(a, env_values)
+
+    # Post-install: auto-provision the hub admin user in the new app
+    on_success = None
+    hub_admin = body.get("hub_admin", {}) if isinstance(body.get("hub_admin"), dict) else {}
+    hub_admin_user = str(hub_admin.get("username") or "").strip()
+    hub_admin_pass = str(hub_admin.get("password") or "").strip()
+    if hub_admin_user and hub_admin_pass:
+        admin_obj = _auth.get_by_username(hub_admin_user)
+        if admin_obj:
+            uid = admin_obj.id
+            on_success = lambda: _post_install_provision(app_id, hub_admin_user, hub_admin_pass, uid)
+
+    _installer.start_install(a, env_values, on_success=on_success)
     return jsonify({"ok": True, "message": "Installation startet"})
 
 

@@ -31,13 +31,14 @@
 
   {# ── Step indicator ── #}
   {% set steps = app.setup_steps %}
-  {% set total = steps | length + 2 %}{# +2 for intro + summary #}
+  {% set total = steps | length + 3 %}{# +3 for intro + hub-admin + summary #}
   <div class="wizard-step-indicator" id="step-indicator">
     <div class="step-pill active" data-step="0">Intro</div>
     {% for step in steps %}
     <div class="step-pill" data-step="{{ loop.index }}">{{ step.title }}</div>
     {% endfor %}
-    <div class="step-pill" data-step="{{ steps | length + 1 }}">Bekræft</div>
+    <div class="step-pill" data-step="{{ steps | length + 1 }}">Administrator</div>
+    <div class="step-pill" data-step="{{ steps | length + 2 }}">Bekræft</div>
   </div>
 
   {# ── Panels ── #}
@@ -112,8 +113,29 @@
     </div>
     {% endfor %}
 
-    {# Summary panel #}
+    {# Hub Admin panel #}
     <div class="wizard-panel" id="panel-{{ steps | length + 1 }}">
+      <h2>Hub-administrator</h2>
+      <p class="wizard-desc">
+        Denne konto oprettes automatisk i <strong>{{ app.name }}</strong> som administrator,
+        så du kan logge direkte ind uden manuel opsætning.
+      </p>
+      <div class="form-field">
+        <label for="hub-admin-username">Brugernavn</label>
+        <input type="text" id="hub-admin-username" value="{{ current_user.username }}" readonly style="opacity:.7;cursor:default;">
+      </div>
+      <div class="form-field">
+        <label for="hub-admin-password">Adgangskode til {{ app.name }}</label>
+        <div class="secret-row">
+          <input type="text" id="hub-admin-password" class="secret-input" placeholder="Genererer…">
+          <button type="button" class="btn-gen" onclick="regenHubAdminPassword()">↻ Ny</button>
+        </div>
+        <p class="field-hint">Brug denne adgangskode første gang du logger ind i {{ app.name }}.</p>
+      </div>
+    </div>
+
+    {# Summary panel #}
+    <div class="wizard-panel" id="panel-{{ steps | length + 2 }}">
       <h2>Bekræft installation</h2>
       <p class="wizard-desc">Gennemse dine valg. Klik <strong>Installer</strong> for at starte.</p>
       <div id="summary-list" class="summary-list"></div>
@@ -149,7 +171,7 @@
 <script>
 const APP_ID    = {{ app.id | tojson }};
 const APP_NAME  = {{ app.name | tojson }};
-const TOTAL_STEPS = {{ steps | length + 2 }};  // intro + steps + summary
+const TOTAL_STEPS = {{ steps | length + 3 }};  // intro + steps + hub-admin + summary
 
 // Field values store
 const VALUES = {};
@@ -165,8 +187,8 @@ VALUES[{{ field.key | tojson }}] = {{ (field.default or '') | tojson }};
 {% endif %}
 {% endfor %}
 {% endfor %}
-// Sync secret values after DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
+// Sync secret values and pre-generate hub admin password after DOM is ready
+document.addEventListener('DOMContentLoaded', async () => {
   {% for step in steps %}
   {% for field in step.fields %}
   {% if field.type == "auto_secret" %}
@@ -175,6 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
   {% endfor %}
   {% endfor %}
   updateConditionals();
+  await regenHubAdminPassword();
 });
 
 let currentStep = 0;
@@ -236,6 +259,12 @@ async function regenSecret(key) {
   VALUES[key] = data.secret;
 }
 
+async function regenHubAdminPassword() {
+  const res = await fetch('/api/generate-secret');
+  const data = await res.json();
+  document.getElementById('hub-admin-password').value = data.secret.slice(0, 20);
+}
+
 function buildSummary() {
   const list = document.getElementById('summary-list');
   const rows = Object.entries(VALUES)
@@ -245,6 +274,12 @@ function buildSummary() {
       const display = isSecret ? '••••••••' : v;
       return `<div class="summary-row"><span>${k}</span><code>${display}</code></div>`;
     });
+  const hubUser = document.getElementById('hub-admin-username')?.value || '';
+  const hubPw   = document.getElementById('hub-admin-password')?.value || '';
+  if (hubUser) {
+    rows.push(`<div class="summary-row"><span>Hub-admin bruger</span><code>${hubUser}</code></div>`);
+    rows.push(`<div class="summary-row"><span>Hub-admin adgangskode</span><code>${hubPw ? '••••••••' : '—'}</code></div>`);
+  }
   list.innerHTML = rows.join('');
 }
 
@@ -271,10 +306,15 @@ async function startInstall() {
   progress.classList.add('active');
 
   // POST install
+  const hubAdminUser = document.getElementById('hub-admin-username')?.value || '';
+  const hubAdminPass = document.getElementById('hub-admin-password')?.value || '';
   const res = await fetch(`/apps/${APP_ID}/install`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ env: VALUES }),
+    body: JSON.stringify({
+      env: VALUES,
+      hub_admin: { username: hubAdminUser, password: hubAdminPass },
+    }),
   });
   const data = await res.json();
   if (!data.ok) {
