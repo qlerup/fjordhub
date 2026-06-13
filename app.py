@@ -14,6 +14,7 @@ from services.install_state import InstallState
 from services.installer import Installer, generate_secret
 from services.compose_env import build_compose_env
 from services.update_manager import UpdateManager
+from services.resource_monitor import ResourceMonitor
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
@@ -36,6 +37,7 @@ _install_state   = InstallState(DATA_DIR)
 _installer       = Installer(_install_state)
 _update_manager  = UpdateManager(_install_state)
 docker_mgr       = DockerManager()
+resource_monitor = ResourceMonitor(docker_mgr)
 
 # ── Auth setup ───────────────────────────────────────────────────────────────
 
@@ -213,6 +215,24 @@ def dashboard():
         reg_status=_remote_registry.get_status(),
         active_page="apps",
     )
+
+
+def _apps_with_install_dirs() -> list[dict]:
+    return [_with_compose_dir(a, str(a.get("id") or "")) for a in _get_apps()]
+
+
+@app.route("/resources")
+def resources():
+    if not current_user.is_admin:
+        return redirect(url_for("dashboard"))
+    return render_template("resources.html", active_page="resources")
+
+
+@app.route("/api/resources")
+def api_resources():
+    if not current_user.is_admin:
+        return jsonify({"ok": False, "error": "Kræver admin."}), 403
+    return jsonify(resource_monitor.collect(_apps_with_install_dirs()))
 
 
 # ── Settings ─────────────────────────────────────────────────────────────────

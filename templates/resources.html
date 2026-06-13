@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block title %}FjordHub - Ressourcer{% endblock %}
+
+{% block topbar_right %}
+  <button class="btn-refresh" id="resources-refresh-btn" onclick="refreshResources()" title="Opdater ressourceforbrug">
+    <svg id="resources-refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="23 4 23 10 17 10"/>
+      <polyline points="1 20 1 14 7 14"/>
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+    </svg>
+    <span class="refresh-label">Opdater</span>
+  </button>
+  <span class="topbar-status" id="hub-docker-status" title="Docker-forbindelse"></span>
+{% endblock %}
+
+{% block content %}
+<div class="resource-page">
+  <div class="dashboard-header resource-header">
+    <div class="dashboard-header-top">
+      <h1>Ressourcer</h1>
+      <div class="registry-meta">
+        <span class="reg-ok">● Live</span>
+        <span class="reg-time" id="resource-updated">Henter...</span>
+      </div>
+    </div>
+    <p class="dashboard-sub">CPU, RAM, netværk og disk I/O for FjordHub og installerede apps.</p>
+  </div>
+
+  <div id="resource-error" class="resource-error" style="display:none;"></div>
+
+  <section class="resource-overview" aria-label="Samlet ressourceforbrug">
+    <article class="resource-summary-card resource-summary-primary">
+      <span class="resource-card-label">Hele hubben</span>
+      <strong id="hub-containers">-</strong>
+      <span class="resource-muted">aktive containere</span>
+    </article>
+    <article class="resource-summary-card">
+      <span class="resource-card-label">CPU</span>
+      <strong id="hub-cpu">-</strong>
+      <div class="resource-bar"><span id="hub-cpu-bar"></span></div>
+      <span class="resource-muted" id="host-cpus">-</span>
+    </article>
+    <article class="resource-summary-card">
+      <span class="resource-card-label">RAM</span>
+      <strong id="hub-memory">-</strong>
+      <div class="resource-bar"><span id="hub-memory-bar"></span></div>
+      <span class="resource-muted" id="host-memory">-</span>
+    </article>
+    <article class="resource-summary-card">
+      <span class="resource-card-label">Netværk</span>
+      <strong id="hub-network">-</strong>
+      <span class="resource-muted">ind / ud</span>
+    </article>
+    <article class="resource-summary-card">
+      <span class="resource-card-label">Disk I/O</span>
+      <strong id="hub-disk">-</strong>
+      <span class="resource-muted">læst / skrevet</span>
+    </article>
+  </section>
+
+  <section class="resource-section">
+    <div class="app-section-header">
+      <h2>Installerede apps</h2>
+      <span class="section-count" id="resource-app-count">0</span>
+    </div>
+    <div class="resource-app-grid" id="resource-apps">
+      <div class="resource-empty">Henter apps...</div>
+    </div>
+  </section>
+
+  <section class="resource-section">
+    <div class="app-section-header">
+      <h2>FjordHub core</h2>
+      <span class="section-count" id="resource-core-count">0</span>
+    </div>
+    <div class="resource-core-card" id="resource-core">
+      <div class="resource-empty">Henter core-containere...</div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const RESOURCE_REFRESH_MS = 7000;
+let resourceTimer = null;
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function clampPercent(value) {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, n));
+}
+
+function statusLabel(status) {
+  return STATUS_LABELS?.[status] || status || 'Ukendt';
+}
+
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = value;
+}
+
+function setBar(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.style.width = `${clampPercent(value)}%`;
+}
+
+function ioPair(left, right) {
+  return `${left || '0 B'} / ${right || '0 B'}`;
+}
+
+function renderSummary(data) {
+  const hub = data.hub || {};
+  const capacity = data.capacity || {};
+  setText('hub-containers', `${hub.running_count || 0}/${hub.container_count || 0}`);
+  setText('hub-cpu', hub.cpu_percent_label || '0.0%');
+  setText('hub-memory', `${hub.memory_usage_label || '0 B'} (${hub.memory_percent_label || '0.0%'})`);
+  setText('hub-network', ioPair(hub.net_rx_label, hub.net_tx_label));
+  setText('hub-disk', ioPair(hub.block_read_label, hub.block_write_label));
+  setText('host-cpus', `${capacity.cpus || 1} CPU-tråde`);
+  setText('host-memory', `af ${capacity.memory_total_label || 'ukendt'}`);
+  setBar('hub-cpu-bar', hub.cpu_capacity_percent);
+  setBar('hub-memory-bar', hub.memory_percent);
+}
+
+function containerRows(group) {
+  const containers = group.containers || [];
+  if (!containers.length) {
+    return '<div class="resource-empty">Ingen containere fundet.</div>';
+  }
+  return `
+    <div class="resource-container-list">
+      ${containers.map(container => `
+        <div class="resource-container-row">
+          <div class="resource-container-name">
+            <span class="status-dot" data-status="${escapeHtml(container.status)}"></span>
+            <span>${escapeHtml(container.name)}</span>
+          </div>
+          <span>${escapeHtml(statusLabel(container.status))}</span>
+          <span>${Number(container.cpu_percent || 0).toFixed(1)}%</span>
+          <span>${escapeHtml(container.memory_usage_label || '0 B')}</span>
+          <span>${escapeHtml(ioPair(container.net_rx_label, container.net_tx_label))}</span>
+          <span>${escapeHtml(ioPair(container.block_read_label, container.block_write_label))}</span>
+        </div>
+      `).join('')}
+    </div>`;
+}
+
+function renderAppCard(app) {
+  const accent = escapeHtml(app.accent || '#3b82f6');
+  return `
+    <article class="resource-app-card" style="--accent:${accent}">
+      <div class="resource-app-header">
+        <div class="resource-app-title">
+          ${app.icon_url ? `<img src="${escapeHtml(app.icon_url)}" alt="" class="resource-app-icon">` : ''}
+          <div>
+            <h3>${escapeHtml(app.name)}</h3>
+            <span>${app.running_count || 0}/${app.container_count || 0} kører</span>
+          </div>
+        </div>
+        <strong>${escapeHtml(app.cpu_percent_label || '0.0%')}</strong>
+      </div>
+      <div class="resource-metrics">
+        <div>
+          <span>CPU</span>
+          <div class="resource-bar"><span style="width:${clampPercent(app.cpu_capacity_percent)}%"></span></div>
+        </div>
+        <div>
+          <span>RAM</span>
+          <strong>${escapeHtml(app.memory_usage_label || '0 B')}</strong>
+          <div class="resource-bar"><span style="width:${clampPercent(app.memory_percent)}%"></span></div>
+        </div>
+      </div>
+      <div class="resource-io-grid">
+        <div><span>Netværk</span><strong>${escapeHtml(ioPair(app.net_rx_label, app.net_tx_label))}</strong></div>
+        <div><span>Disk I/O</span><strong>${escapeHtml(ioPair(app.block_read_label, app.block_write_label))}</strong></div>
+      </div>
+      ${containerRows(app)}
+    </article>
+  `;
+}
+
+function renderResources(data) {
+  const error = document.getElementById('resource-error');
+  if (!data.ok) {
+    if (error) {
+      error.textContent = data.error || 'Kunne ikke hente ressourcer.';
+      error.style.display = '';
+    }
+    return;
+  }
+  if (error) error.style.display = 'none';
+
+  renderSummary(data);
+
+  const updated = data.generated_at ? new Date(data.generated_at) : new Date();
+  setText('resource-updated', `opdateret ${updated.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`);
+
+  const apps = data.apps || [];
+  const appsEl = document.getElementById('resource-apps');
+  setText('resource-app-count', `${apps.length}`);
+  if (appsEl) {
+    appsEl.innerHTML = apps.length
+      ? apps.map(renderAppCard).join('')
+      : '<div class="resource-empty">Ingen installerede apps fundet.</div>';
+  }
+
+  const core = data.core || {};
+  const coreEl = document.getElementById('resource-core');
+  setText('resource-core-count', `${core.container_count || 0}`);
+  if (coreEl) coreEl.innerHTML = containerRows(core);
+}
+
+async function refreshResources() {
+  const btn = document.getElementById('resources-refresh-btn');
+  const icon = document.getElementById('resources-refresh-icon');
+  if (btn) btn.disabled = true;
+  if (icon) icon.classList.add('spinning');
+  try {
+    const res = await fetch('/api/resources');
+    const data = await res.json();
+    renderResources(data);
+  } catch (_) {
+    const error = document.getElementById('resource-error');
+    if (error) {
+      error.textContent = 'Kunne ikke nå FjordHub API.';
+      error.style.display = '';
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+    if (icon) icon.classList.remove('spinning');
+  }
+}
+
+refreshResources();
+resourceTimer = setInterval(refreshResources, RESOURCE_REFRESH_MS);
+</script>
+{% endblock %}
