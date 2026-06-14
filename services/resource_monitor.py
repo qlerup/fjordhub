@@ -263,7 +263,11 @@ class ResourceMonitor:
         if not root.exists():
             return self._empty_system("Cgroup er ikke monteret")
 
-        memory_usage = self._read_cgroup_memory_usage(root)
+        memory_usage_raw = self._read_cgroup_memory_usage(root)
+        memory_cache = self._read_cgroup_memory_cache(root)
+        memory_usage = memory_usage_raw
+        if memory_usage_raw is not None and memory_cache:
+            memory_usage = max(memory_usage_raw - memory_cache, 0)
         memory_limit = self._read_cgroup_memory_limit(root)
         cpu_usage = self._read_cgroup_cpu_usage(root)
         if memory_usage is None and cpu_usage is None:
@@ -295,6 +299,10 @@ class ResourceMonitor:
             "cpu_capacity_percent_label": f"{cpu_capacity_percent:.1f}%",
             "memory_usage": memory_usage or 0,
             "memory_usage_label": _format_bytes(memory_usage or 0),
+            "memory_usage_raw": memory_usage_raw or 0,
+            "memory_usage_raw_label": _format_bytes(memory_usage_raw or 0),
+            "memory_cache": memory_cache or 0,
+            "memory_cache_label": _format_bytes(memory_cache or 0),
             "memory_limit": memory_limit or 0,
             "memory_limit_label": _format_bytes(memory_limit or 0) if memory_limit else "Ukendt",
             "memory_percent": round(memory_percent, 2),
@@ -358,6 +366,29 @@ class ResourceMonitor:
             if value is not None:
                 return value
         return None
+
+    def _read_cgroup_memory_cache(self, root: Path) -> int:
+        stats = self._read_cgroup_memory_stat(root)
+        return (
+            _safe_int(stats.get("inactive_file"))
+            or _safe_int(stats.get("total_inactive_file"))
+            or _safe_int(stats.get("cache"))
+        )
+
+    def _read_cgroup_memory_stat(self, root: Path) -> dict[str, int]:
+        for path in (root / "memory.stat", root / "memory" / "memory.stat"):
+            if not path.exists():
+                continue
+            try:
+                stats = {}
+                for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+                    key, _, value = line.partition(" ")
+                    if key:
+                        stats[key] = _safe_int(value)
+                return stats
+            except Exception:
+                return {}
+        return {}
 
     def _read_cgroup_memory_limit(self, root: Path) -> int | None:
         for path in (root / "memory.max", root / "memory" / "memory.limit_in_bytes"):
