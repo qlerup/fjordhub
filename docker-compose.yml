@@ -1,3 +1,5 @@
+name: fjordhub
+
 services:
   traefik:
     image: traefik:v3.3
