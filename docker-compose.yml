@@ -33,6 +33,12 @@ services:
       DATA_DIR: /data
       HOST_CGROUP_ROOT: /host/sys/fs/cgroup
       HOST_PROC_ROOT: /host/proc
+      PROXMOX_API_URL: ${PROXMOX_API_URL:-}
+      PROXMOX_NODE: ${PROXMOX_NODE:-pve}
+      PROXMOX_VMID: ${PROXMOX_VMID:-1000}
+      PROXMOX_TOKEN_ID: ${PROXMOX_TOKEN_ID:-}
+      PROXMOX_TOKEN_SECRET: ${PROXMOX_TOKEN_SECRET:-}
+      PROXMOX_VERIFY_SSL: ${PROXMOX_VERIFY_SSL:-false}
       APP_PORT: ${APP_PORT:-8091}
       TZ: ${TZ:-Europe/Copenhagen}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}

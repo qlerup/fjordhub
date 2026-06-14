@@ -3,9 +3,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import ssl
 import subprocess
 import threading
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -259,6 +262,15 @@ class ResourceMonitor:
         return {"cpus": 1, "memory_total": 0, "memory_total_label": "Ukendt"}
 
     def _system_summary(self, capacity: dict) -> dict:
+        proxmox_summary = self._proxmox_system_summary(capacity)
+        if proxmox_summary:
+            return proxmox_summary
+        if not self._proxmox_configured():
+            return self._empty_system("Proxmox API er ikke sat op")
+
+        return self._empty_system("Kunne ikke hente Proxmox-tal")
+
+    def _cgroup_system_summary(self, capacity: dict) -> dict:
         root = Path(os.environ.get("HOST_CGROUP_ROOT", "/host/sys/fs/cgroup"))
         if not root.exists():
             return self._empty_system("Cgroup er ikke monteret")
@@ -316,6 +328,65 @@ class ResourceMonitor:
             "memory_limit_label": _format_bytes(memory_limit or 0) if memory_limit else "Ukendt",
             "memory_percent": round(memory_percent, 2),
             "memory_percent_label": f"{memory_percent:.1f}%",
+            "message": "",
+        }
+
+    def _proxmox_configured(self) -> bool:
+        return all((
+            os.environ.get("PROXMOX_API_URL"),
+            os.environ.get("PROXMOX_NODE"),
+            os.environ.get("PROXMOX_VMID"),
+            os.environ.get("PROXMOX_TOKEN_ID"),
+            os.environ.get("PROXMOX_TOKEN_SECRET"),
+        ))
+
+    def _proxmox_system_summary(self, capacity: dict) -> dict | None:
+        if not self._proxmox_configured():
+            return None
+
+        api_url = str(os.environ.get("PROXMOX_API_URL") or "").rstrip("/")
+        node = str(os.environ.get("PROXMOX_NODE") or "")
+        vmid = str(os.environ.get("PROXMOX_VMID") or "")
+        token_id = str(os.environ.get("PROXMOX_TOKEN_ID") or "")
+        token_secret = str(os.environ.get("PROXMOX_TOKEN_SECRET") or "")
+        verify_ssl = str(os.environ.get("PROXMOX_VERIFY_SSL") or "false").lower() in {"1", "true", "yes"}
+        url = f"{api_url}/api2/json/nodes/{node}/lxc/{vmid}/status/current"
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"PVEAPIToken={token_id}={token_secret}",
+            },
+        )
+        context = None if verify_ssl else ssl._create_unverified_context()
+        try:
+            with urllib.request.urlopen(request, timeout=5, context=context) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+            return None
+
+        data = payload.get("data") or {}
+        memory_usage = _safe_int(data.get("mem"))
+        memory_limit = _safe_int(data.get("maxmem")) or _safe_int(capacity.get("memory_total"))
+        maxcpu = _safe_int(data.get("maxcpu"), _safe_int(capacity.get("cpus"), 1)) or 1
+        cpu_ratio = max(0.0, _safe_float(data.get("cpu")))
+        cpu_capacity_percent = min(100.0, cpu_ratio * 100.0)
+        cpu_percent = cpu_capacity_percent * maxcpu
+        memory_percent = (memory_usage / memory_limit * 100.0) if memory_usage and memory_limit else 0.0
+
+        return {
+            "available": True,
+            "cpu_percent": round(cpu_percent, 2),
+            "cpu_percent_label": f"{cpu_percent:.1f}%",
+            "cpu_capacity_percent": round(cpu_capacity_percent, 2),
+            "cpu_capacity_percent_label": f"{cpu_capacity_percent:.1f}%",
+            "memory_usage": memory_usage,
+            "memory_usage_label": _format_bytes(memory_usage),
+            "memory_limit": memory_limit,
+            "memory_limit_label": _format_bytes(memory_limit) if memory_limit else "Ukendt",
+            "memory_percent": round(memory_percent, 2),
+            "memory_percent_label": f"{memory_percent:.1f}%",
+            "memory_source": "proxmox_api",
             "message": "",
         }
 
