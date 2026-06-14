@@ -484,7 +484,7 @@ resourceTimer = setInterval(refreshResources, RESOURCE_REFRESH_MS);
 
 // ── Charts ──────────────────────────────────────────────────────────────────
 const CHART_MAX_POINTS = 40;
-const chartHistory = [];
+const chartHistories = { lxc: [], docker: [] };
 
 const CHART_COLORS = {
   cpu:    '#3b82f6',
@@ -496,16 +496,26 @@ const CHART_COLORS = {
 function pushChartPoint(data) {
   const sys    = data.system || {};
   const hub    = data.hub    || {};
-  const docker = currentResourceView === 'docker';
 
-  chartHistory.push({
+  // Push into both histories independently so switching views never mixes data
+  const lxcPt = {
     ts:     Date.now(),
-    cpu:    docker ? (hub.cpu_capacity_percent   || 0) : (sys.cpu_capacity_percent   || 0),
-    ram:    docker ? (hub.memory_percent          || 0) : (sys.memory_percent          || 0),
+    cpu:    sys.cpu_capacity_percent || 0,
+    ram:    sys.memory_percent       || 0,
     netIn:  hub.net_rx  || 0,
     netOut: hub.net_tx  || 0,
-  });
-  if (chartHistory.length > CHART_MAX_POINTS) chartHistory.shift();
+  };
+  const dockerPt = {
+    ts:     Date.now(),
+    cpu:    hub.cpu_capacity_percent || 0,
+    ram:    hub.memory_percent       || 0,
+    netIn:  hub.net_rx  || 0,
+    netOut: hub.net_tx  || 0,
+  };
+  chartHistories.lxc.push(lxcPt);
+  chartHistories.docker.push(dockerPt);
+  if (chartHistories.lxc.length    > CHART_MAX_POINTS) chartHistories.lxc.shift();
+  if (chartHistories.docker.length > CHART_MAX_POINTS) chartHistories.docker.shift();
 }
 
 function drawLineChart(canvasId, key, color, maxY) {
@@ -546,7 +556,7 @@ function drawLineChart(canvasId, key, color, maxY) {
     }
   });
 
-  const pts = chartHistory;
+  const pts = chartHistories[currentResourceView] || [];
   if (pts.length < 2) return;
 
   const values = pts.map(p => {
