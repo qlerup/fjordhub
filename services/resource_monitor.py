@@ -263,7 +263,7 @@ class ResourceMonitor:
         if not root.exists():
             return self._empty_system("Cgroup er ikke monteret")
 
-        memory_limit = self._read_cgroup_memory_limit(root)
+        memory_limit = self._read_cgroup_memory_limit(root) or _safe_int(capacity.get("memory_total"))
         memory_usage_raw = self._read_cgroup_memory_usage(root)
         memory_cache = self._read_cgroup_memory_cache(root)
         memory_source = "cgroup"
@@ -271,7 +271,9 @@ class ResourceMonitor:
         if memory_usage_raw is not None and memory_cache:
             memory_usage = max(memory_usage_raw - memory_cache, 0)
 
-        proc_memory = self._read_proc_memory()
+        proc_memory = self._read_proc_memory(Path(os.environ.get("HOST_PROC_ROOT", "/host/proc")))
+        if not self._proc_memory_matches_limit(proc_memory, memory_limit):
+            proc_memory = self._read_proc_memory(Path("/proc"))
         if self._proc_memory_matches_limit(proc_memory, memory_limit):
             memory_usage = proc_memory["usage"]
             memory_limit = proc_memory["limit"]
@@ -294,8 +296,6 @@ class ResourceMonitor:
                 delta = max(cpu_usage - previous_usage, 0)
                 cpu_percent = (delta / 1_000_000_000.0) / elapsed * 100.0
 
-        if not memory_limit or memory_limit <= 0:
-            memory_limit = _safe_int(capacity.get("memory_total"))
         memory_percent = (memory_usage / memory_limit * 100.0) if memory_usage and memory_limit else 0.0
         cpu_capacity_percent = min(100.0, cpu_percent / cpus) if cpus else min(100.0, cpu_percent)
 
@@ -401,10 +401,13 @@ class ResourceMonitor:
                 return {}
         return {}
 
-    def _read_proc_memory(self) -> dict[str, int] | None:
+    def _read_proc_memory(self, root: Path) -> dict[str, int] | None:
         try:
             stats = {}
-            for line in Path("/proc/meminfo").read_text(encoding="utf-8", errors="ignore").splitlines():
+            meminfo = root / "meminfo"
+            if not meminfo.exists():
+                return None
+            for line in meminfo.read_text(encoding="utf-8", errors="ignore").splitlines():
                 key, _, value = line.partition(":")
                 if key:
                     stats[key] = _safe_int(value.strip().split()[0]) * 1024
@@ -424,7 +427,7 @@ class ResourceMonitor:
         if proc_limit <= 0:
             return False
         if cgroup_limit <= 0:
-            return proc_limit < 1 << 50
+            return False
         ratio = proc_limit / cgroup_limit
         return 0.90 <= ratio <= 1.10
 
