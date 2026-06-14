@@ -34,60 +34,106 @@
 
   <div id="resource-error" class="resource-error" style="display:none;"></div>
 
-  <section class="resource-overview" aria-label="Samlet ressourceforbrug">
-    <article class="resource-summary-card resource-summary-primary">
-      <span class="resource-card-label">Synspunkt</span>
-      <strong id="resource-scope-title">-</strong>
-      <span class="resource-muted" id="resource-scope-subtitle">-</span>
-    </article>
-    <article class="resource-summary-card">
-      <span class="resource-card-label">CPU</span>
-      <strong id="resource-cpu">-</strong>
-      <div class="resource-bar"><span id="resource-cpu-bar"></span></div>
-      <span class="resource-muted" id="resource-cpu-detail">-</span>
-    </article>
-    <article class="resource-summary-card">
-      <span class="resource-card-label">RAM</span>
-      <strong id="resource-memory">-</strong>
-      <div class="resource-bar"><span id="resource-memory-bar"></span></div>
-      <span class="resource-muted" id="resource-memory-detail">-</span>
-      <span class="resource-muted resource-memory-split" id="resource-memory-split" style="display:none;"></span>
-    </article>
-    <article class="resource-summary-card">
-      <span class="resource-card-label">Containere</span>
-      <strong id="resource-containers">-</strong>
-      <span class="resource-muted" id="resource-containers-detail">aktive containere</span>
-    </article>
-    <article class="resource-summary-card">
-      <span class="resource-card-label">Netværk</span>
-      <strong id="resource-network">-</strong>
-      <span class="resource-muted" id="resource-network-detail">ind / ud</span>
-    </article>
-    <article class="resource-summary-card">
-      <span class="resource-card-label">Disk I/O</span>
-      <strong id="resource-disk">-</strong>
-      <span class="resource-muted" id="resource-disk-detail">læst / skrevet</span>
-    </article>
-  </section>
-  <section class="resource-section">
-    <div class="app-section-header">
-      <h2>Installerede apps</h2>
-      <span class="section-count" id="resource-app-count">0</span>
-    </div>
-    <div class="resource-app-grid" id="resource-apps">
-      <div class="resource-empty">Henter apps...</div>
-    </div>
-  </section>
+  <div class="resource-layout">
+    <div class="resource-main">
+      <section class="resource-overview" aria-label="Samlet ressourceforbrug">
+        <article class="resource-summary-card resource-summary-primary">
+          <span class="resource-card-label">Synspunkt</span>
+          <strong id="resource-scope-title">-</strong>
+          <span class="resource-muted" id="resource-scope-subtitle">-</span>
+        </article>
+        <article class="resource-summary-card">
+          <span class="resource-card-label">CPU</span>
+          <strong id="resource-cpu">-</strong>
+          <div class="resource-bar"><span id="resource-cpu-bar"></span></div>
+          <span class="resource-muted" id="resource-cpu-detail">-</span>
+        </article>
+        <article class="resource-summary-card">
+          <span class="resource-card-label">RAM</span>
+          <strong id="resource-memory">-</strong>
+          <div class="resource-bar"><span id="resource-memory-bar"></span></div>
+          <span class="resource-muted" id="resource-memory-detail">-</span>
+          <span class="resource-muted resource-memory-split" id="resource-memory-split" style="display:none;"></span>
+        </article>
+        <article class="resource-summary-card">
+          <span class="resource-card-label">Containere</span>
+          <strong id="resource-containers">-</strong>
+          <span class="resource-muted" id="resource-containers-detail">aktive containere</span>
+        </article>
+        <article class="resource-summary-card">
+          <span class="resource-card-label">Netværk</span>
+          <strong id="resource-network">-</strong>
+          <span class="resource-muted" id="resource-network-detail">ind / ud</span>
+        </article>
+        <article class="resource-summary-card">
+          <span class="resource-card-label">Disk I/O</span>
+          <strong id="resource-disk">-</strong>
+          <span class="resource-muted" id="resource-disk-detail">læst / skrevet</span>
+        </article>
+      </section>
 
-  <section class="resource-section">
-    <div class="app-section-header">
-      <h2>FjordHub core</h2>
-      <span class="section-count" id="resource-core-count">0</span>
-    </div>
-    <div class="resource-core-card" id="resource-core">
-      <div class="resource-empty">Henter core-containere...</div>
-    </div>
-  </section>
+      <section class="resource-section">
+        <div class="app-section-header">
+          <h2>Installerede apps</h2>
+          <span class="section-count" id="resource-app-count">0</span>
+        </div>
+        <div class="resource-app-grid" id="resource-apps">
+          <div class="resource-empty">Henter apps...</div>
+        </div>
+      </section>
+
+      <section class="resource-section">
+        <div class="app-section-header">
+          <h2>FjordHub core</h2>
+          <span class="section-count" id="resource-core-count">0</span>
+        </div>
+        <div class="resource-core-card" id="resource-core">
+          <div class="resource-empty">Henter core-containere...</div>
+        </div>
+      </section>
+    </div>{# end .resource-main #}
+
+    <aside class="resource-sidebar">
+      <div class="resource-chart-card">
+        <div class="resource-chart-head">
+          <span class="resource-chart-title">CPU</span>
+          <div class="resource-chart-legend">
+            <span class="resource-chart-legend-item">
+              <span class="resource-chart-legend-dot" style="background:var(--accent)"></span>CPU %
+            </span>
+          </div>
+        </div>
+        <canvas class="resource-chart-canvas" id="chart-cpu" height="120"></canvas>
+      </div>
+
+      <div class="resource-chart-card">
+        <div class="resource-chart-head">
+          <span class="resource-chart-title">RAM</span>
+          <div class="resource-chart-legend">
+            <span class="resource-chart-legend-item">
+              <span class="resource-chart-legend-dot" style="background:var(--green)"></span>RAM %
+            </span>
+          </div>
+        </div>
+        <canvas class="resource-chart-canvas" id="chart-ram" height="120"></canvas>
+      </div>
+
+      <div class="resource-chart-card">
+        <div class="resource-chart-head">
+          <span class="resource-chart-title">Netværk</span>
+          <div class="resource-chart-legend">
+            <span class="resource-chart-legend-item">
+              <span class="resource-chart-legend-dot" style="background:#a78bfa"></span>Ind
+            </span>
+            <span class="resource-chart-legend-item">
+              <span class="resource-chart-legend-dot" style="background:var(--yellow)"></span>Ud
+            </span>
+          </div>
+        </div>
+        <canvas class="resource-chart-canvas" id="chart-net" height="120"></canvas>
+      </div>
+    </aside>
+  </div>{# end .resource-layout #}
 </div>
 {% endblock %}
 
@@ -435,5 +481,139 @@ document.querySelector('.resource-view-switch')?.addEventListener('click', event
 setResourceView(currentResourceView);
 refreshResources();
 resourceTimer = setInterval(refreshResources, RESOURCE_REFRESH_MS);
+
+// ── Charts ──────────────────────────────────────────────────────────────────
+const CHART_MAX_POINTS = 40;
+const chartHistory = [];
+
+const CHART_COLORS = {
+  cpu:    '#3b82f6',
+  ram:    '#22c55e',
+  netIn:  '#a78bfa',
+  netOut: '#f59e0b',
+};
+
+function pushChartPoint(data) {
+  const sys    = data.system || {};
+  const hub    = data.hub    || {};
+  const docker = currentResourceView === 'docker';
+
+  chartHistory.push({
+    ts:     Date.now(),
+    cpu:    docker ? (hub.cpu_capacity_percent   || 0) : (sys.cpu_capacity_percent   || 0),
+    ram:    docker ? (hub.memory_percent          || 0) : (sys.memory_percent          || 0),
+    netIn:  hub.net_rx  || 0,
+    netOut: hub.net_tx  || 0,
+  });
+  if (chartHistory.length > CHART_MAX_POINTS) chartHistory.shift();
+}
+
+function drawLineChart(canvasId, key, color, maxY) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const W = rect.width  || canvas.offsetWidth  || 280;
+  const H = rect.height || canvas.offsetHeight || 120;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const pad = { top: 6, right: 8, bottom: 20, left: 32 };
+  const gW = W - pad.left - pad.right;
+  const gH = H - pad.top  - pad.bottom;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // grid
+  const gridColor = 'rgba(255,255,255,0.06)';
+  const labelColor = 'rgba(255,255,255,0.28)';
+  ctx.font = `${10 * dpr / dpr}px system-ui, sans-serif`;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  [0, 25, 50, 75, 100].forEach(pct => {
+    const y = pad.top + gH - (pct / 100) * gH;
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(pad.left + gW, y);
+    ctx.stroke();
+    if (maxY === 100 || pct === 0 || pct === 100) {
+      ctx.fillStyle = labelColor;
+      ctx.fillText(maxY === 100 ? `${pct}%` : '', pad.left - 4, y);
+    }
+  });
+
+  const pts = chartHistory;
+  if (pts.length < 2) return;
+
+  const values = pts.map(p => {
+    if (Array.isArray(key)) return key.reduce((a, k) => a + (p[k] || 0), 0);
+    return p[key] || 0;
+  });
+  const yMax = maxY || (Math.max(...values) * 1.15) || 1;
+
+  function xFor(i) { return pad.left + (i / (CHART_MAX_POINTS - 1)) * gW; }
+  function yFor(v) { return pad.top + gH - (Math.min(v, yMax) / yMax) * gH; }
+
+  // fill
+  ctx.beginPath();
+  ctx.moveTo(xFor(CHART_MAX_POINTS - pts.length), yFor(values[0]));
+  pts.forEach((_, i) => ctx.lineTo(xFor(CHART_MAX_POINTS - pts.length + i), yFor(values[i])));
+  ctx.lineTo(xFor(CHART_MAX_POINTS - 1), pad.top + gH);
+  ctx.lineTo(xFor(CHART_MAX_POINTS - pts.length), pad.top + gH);
+  ctx.closePath();
+  ctx.fillStyle = color + '22';
+  ctx.fill();
+
+  // line
+  ctx.beginPath();
+  ctx.moveTo(xFor(CHART_MAX_POINTS - pts.length), yFor(values[0]));
+  pts.forEach((_, i) => ctx.lineTo(xFor(CHART_MAX_POINTS - pts.length + i), yFor(values[i])));
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // current value dot
+  const lastX = xFor(CHART_MAX_POINTS - 1);
+  const lastY = yFor(values[values.length - 1]);
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 3, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+
+  // current value label bottom-right
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = color;
+  ctx.font = `bold 11px system-ui, sans-serif`;
+  const label = maxY === 100
+    ? `${values[values.length - 1].toFixed(1)}%`
+    : fmtBytes(values[values.length - 1]) + '/s';
+  ctx.fillText(label, W - pad.right, H - 4);
+}
+
+function fmtBytes(b) {
+  if (b < 1024)       return `${b.toFixed(0)} B`;
+  if (b < 1024**2)    return `${(b/1024).toFixed(1)} KB`;
+  if (b < 1024**3)    return `${(b/1024**2).toFixed(1)} MB`;
+  return `${(b/1024**3).toFixed(2)} GB`;
+}
+
+function drawCharts() {
+  drawLineChart('chart-cpu', 'cpu',    CHART_COLORS.cpu,    100);
+  drawLineChart('chart-ram', 'ram',    CHART_COLORS.ram,    100);
+  drawLineChart('chart-net', ['netIn', 'netOut'], CHART_COLORS.netIn, null);
+}
+
+const _origRenderResources = renderResources;
+renderResources = function(data) {
+  _origRenderResources(data);
+  if (data.ok) { pushChartPoint(data); drawCharts(); }
+};
 </script>
 {% endblock %}
