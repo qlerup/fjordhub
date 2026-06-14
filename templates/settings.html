@@ -88,6 +88,7 @@
   var statusEl = document.getElementById('hubStatus');
   var logEl    = document.getElementById('hubLog');
   var pollTimer = null;
+  var updateRunning = false;
 
   function badgeCls(state) {
     if (state === 'up_to_date')       return 'badge badge-ok';
@@ -158,16 +159,41 @@
       statusEl.hidden = true;
     }
 
-    if (running) { schedulePoll(); } else { clearPoll(); }
+    if (!restarting) {
+      if (!running) updateRunning = false;
+      if (running) { schedulePoll(); } else { clearPoll(); }
+    }
+  }
+
+  function showRestartingUI() {
+    badge.textContent = 'Genstarter...';
+    badge.className = 'badge badge-info';
+    checkBtn.disabled = true;
+    updBtn.disabled = true;
+    statusEl.hidden = false;
+    statusEl.textContent = 'FjordHub genstarter med ny version — venter...';
+    statusEl.style.background = 'color-mix(in srgb,var(--accent) 10%,var(--surface-2))';
+    statusEl.style.color = 'var(--accent)';
+    statusEl.style.borderColor = 'color-mix(in srgb,var(--accent) 30%,var(--border))';
   }
 
   function schedulePoll() {
     if (pollTimer) return;
     pollTimer = setTimeout(function () {
       pollTimer = null;
-      fetch('/api/hub/self/update/status').then(function (r) { return r.json(); }).then(apply).catch(function () {
-        schedulePoll();
-      });
+      fetch('/api/hub/self/update/status')
+        .then(function (r) { return r.json(); })
+        .then(apply)
+        .catch(function () {
+          if (updateRunning) {
+            // Server is gone during an active update — container is restarting
+            clearPoll();
+            showRestartingUI();
+            pollUntilAlive();
+          } else {
+            schedulePoll();
+          }
+        });
     }, 1500);
   }
 
@@ -199,10 +225,12 @@
     logEl.hidden = true;
     logEl.textContent = '';
     updBtn.disabled = true;
+    updateRunning = true;
     fetch('/api/hub/self/update/start', { method: 'POST' })
       .then(function (r) { return r.json(); })
       .then(apply)
       .catch(function (err) {
+        updateRunning = false;
         statusEl.hidden = false;
         statusEl.textContent = 'Fejl: ' + err.message;
         updBtn.disabled = false;
