@@ -56,6 +56,14 @@ class InstallState:
             state = self._state.get(key, {})
             return bool(state.get("initialized"))
 
+    def register(self, app_id: str, install_dir: str) -> None:
+        with self._lock:
+            entry = self._state.get(app_id, {})
+            if entry.get("install_dir") == install_dir and entry.get("state") == "installed":
+                return
+            self._state.setdefault(app_id, {}).update({"state": "installed", "install_dir": install_dir})
+            self._save()
+
     def mark_initialized(self, key: str, app_name: str, db_path: str, reason: str = "unknown"):
         if self.is_initialized(key):
             return

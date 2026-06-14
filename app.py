@@ -27,6 +27,9 @@ REGISTRY_URL = os.environ.get(
     "https://raw.githubusercontent.com/qlerup/fjordhub/main/registry.json",
 )
 
+FJORDHUB_SRC_DIR = os.environ.get("FJORDHUB_SRC_DIR", "")
+_FJORDHUB_APP_DEF = {"id": "fjordhub", "name": "FjordHub"}
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 
@@ -108,6 +111,9 @@ def _setup_locked_response():
 
 
 _ensure_install_state_for_existing_users()
+
+if FJORDHUB_SRC_DIR:
+    _install_state.register("fjordhub", FJORDHUB_SRC_DIR)
 
 
 @app.before_request
@@ -241,7 +247,42 @@ def api_resources():
 def settings():
     if not current_user.is_admin:
         return redirect(url_for("dashboard"))
-    return render_template("settings.html", active_page="settings")
+    section = request.args.get("section", "general")
+    return render_template(
+        "settings.html",
+        active_page="settings",
+        section=section,
+        hub_src_configured=bool(FJORDHUB_SRC_DIR),
+    )
+
+
+@app.route("/api/hub/self/update/status")
+@login_required
+def api_hub_self_update_status():
+    if not current_user.is_admin:
+        return jsonify({"ok": False, "error": "Kræver admin."}), 403
+    status = _update_manager.get_status(_FJORDHUB_APP_DEF)
+    status["log"] = _update_manager.get_log("fjordhub")
+    return jsonify(status)
+
+
+@app.route("/api/hub/self/update/check", methods=["POST"])
+@login_required
+def api_hub_self_update_check():
+    if not current_user.is_admin:
+        return jsonify({"ok": False, "error": "Kræver admin."}), 403
+    status = _update_manager.check_now(_FJORDHUB_APP_DEF)
+    status["log"] = _update_manager.get_log("fjordhub")
+    return jsonify(status)
+
+
+@app.route("/api/hub/self/update/start", methods=["POST"])
+@login_required
+def api_hub_self_update_start():
+    if not current_user.is_admin:
+        return jsonify({"ok": False, "error": "Kræver admin."}), 403
+    payload, code = _update_manager.start_update(_FJORDHUB_APP_DEF)
+    return jsonify(payload), code
 
 
 @app.route("/profile", methods=["GET", "POST"])

@@ -29,6 +29,7 @@ services:
       - /proc:/host/proc:ro
       - "${DATA_DIR:-./data}:/data"
       - "${APPS_DIR:-./apps}:/apps"
+      - "${FJORDHUB_HOST_DIR:-/opt/fjordhub}:/fjordhub-src"
     environment:
       DATA_DIR: /data
       HOST_CGROUP_ROOT: /host/sys/fs/cgroup
@@ -45,6 +46,7 @@ services:
       # URL to registry.json in FjordHub's GitHub repo (raw content URL)
       REGISTRY_URL: ${REGISTRY_URL:-https://raw.githubusercontent.com/qlerup/fjordhub/main/registry.json}
       APPS_DIR: /apps
+      FJORDHUB_SRC_DIR: /fjordhub-src
       # Paths to each app's docker-compose directory on the host
       FJORDLENS_DIR: ${FJORDLENS_DIR:-}
       FJORDSHARE_DIR: ${FJORDSHARE_DIR:-}

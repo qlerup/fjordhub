@@ -1255,7 +1255,88 @@ a { color: inherit; text-decoration: none; }
 .user-menu-logout:hover { background: color-mix(in srgb, var(--red) 10%, var(--surface)); color: var(--red); }
 
 /* ── Settings ── */
-.settings-page { max-width: 640px; }
+.settings-page { max-width: 720px; }
+
+.settings-tabs {
+  display: inline-flex;
+  gap: 3px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 22px;
+}
+.settings-tab {
+  padding: 6px 14px;
+  font-size: .85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-radius: 5px;
+  text-decoration: none;
+  transition: color .15s, background .15s;
+}
+.settings-tab:hover { color: var(--text); }
+.settings-tab.active { color: var(--text); background: var(--surface-raised); }
+
+.settings-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
+.settings-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.settings-card-head h2 { font-size: 1rem; font-weight: 700; margin: 0; }
+
+.settings-info-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 20px;
+  margin-bottom: 16px;
+  font-size: .875rem;
+}
+.settings-info-grid dt { color: var(--text-muted); }
+.settings-info-grid dd { margin: 0; font-weight: 600; font-family: monospace; }
+
+.settings-btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.btn-settings {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 13px;
+  font-size: .85rem;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-settings:hover { background: var(--border); }
+.btn-settings:disabled { opacity: .4; cursor: not-allowed; }
+
+.badge-ok {
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  color: var(--green);
+  border: 1px solid color-mix(in srgb, var(--green) 28%, transparent);
+}
+.badge-warn {
+  background: color-mix(in srgb, var(--yellow) 12%, transparent);
+  color: var(--yellow);
+  border: 1px solid color-mix(in srgb, var(--yellow) 28%, transparent);
+}
+.badge-err {
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  color: var(--red);
+  border: 1px solid color-mix(in srgb, var(--red) 28%, transparent);
+}
+.badge-info {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+}
 
 /* ── Resources ── */
 .resource-page {

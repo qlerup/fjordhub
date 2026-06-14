@@ -12,6 +12,168 @@
     <h1>Indstillinger</h1>
     <p class="dashboard-sub">FjordHub-konfiguration.</p>
   </div>
-  <p style="color: var(--text-muted); font-size: .9rem;">Kommer snart.</p>
+
+  <nav class="settings-tabs">
+    <a class="settings-tab {% if section != 'update' %}active{% endif %}" href="{{ url_for('settings', section='general') }}" data-tab="general">Generelt</a>
+    <a class="settings-tab {% if section == 'update' %}active{% endif %}" href="{{ url_for('settings', section='update') }}" data-tab="update">Opdatering</a>
+  </nav>
+
+  {# ── Generelt ── #}
+  <div id="pane-general" {% if section == 'update' %}hidden{% endif %}>
+    <div class="settings-card">
+      <div class="settings-card-head">
+        <h2>Generelt</h2>
+      </div>
+      <p style="color:var(--text-muted);font-size:.9rem">Kommer snart.</p>
+    </div>
+  </div>
+
+  {# ── Opdatering ── #}
+  <div id="pane-update" {% if section != 'update' %}hidden{% endif %}>
+    <div class="settings-card">
+      <div class="settings-card-head">
+        <h2>FjordHub opdatering</h2>
+        <span class="badge" id="hubUpdateBadge">Klar</span>
+      </div>
+
+      {% if not hub_src_configured %}
+      <div style="background:color-mix(in srgb,var(--yellow) 8%,var(--surface-2));border:1px solid color-mix(in srgb,var(--yellow) 25%,var(--border));border-radius:7px;padding:10px 14px;margin-bottom:16px;font-size:.86rem">
+        <strong style="color:var(--text)">Selvoppdatering er ikke aktiveret.</strong><br>
+        <span style="color:var(--text-muted)">Tilføj <code>FJORDHUB_HOST_DIR=/opt/fjordhub</code> til din <code>.env</code> og genstart containeren.</span>
+      </div>
+      {% endif %}
+
+      <dl class="settings-info-grid">
+        <dt>Branch</dt><dd id="hubBranch">-</dd>
+        <dt>Installeret</dt><dd id="hubCurrent">-</dd>
+        <dt>Nyeste</dt><dd id="hubRemote">-</dd>
+      </dl>
+
+      <div class="settings-btn-row">
+        <button type="button" id="hubCheckBtn" class="btn-settings" {% if not hub_src_configured %}disabled{% endif %}>Tjek for opdatering</button>
+        <button type="button" id="hubUpdateBtn" class="btn-install" style="padding:6px 14px;font-size:.85rem" disabled>Opdater nu</button>
+      </div>
+
+      <div id="hubStatus" hidden style="margin-top:10px;padding:9px 13px;border-radius:7px;font-size:.86rem;border:1px solid var(--border)"></div>
+      <pre id="hubLog" hidden style="margin-top:10px;background:var(--surface-2);color:#cdd6f4;padding:13px;border-radius:7px;font-size:.77rem;max-height:380px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;border:1px solid var(--border)"></pre>
+    </div>
+  </div>
 </div>
+
+<script>
+(function () {
+  var tabs = document.querySelectorAll('.settings-tab');
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function (e) {
+      var pane = document.getElementById('pane-' + tab.dataset.tab);
+      if (!pane) return;
+      e.preventDefault();
+      tabs.forEach(function (t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      document.querySelectorAll('[id^="pane-"]').forEach(function (p) { p.hidden = true; });
+      pane.hidden = false;
+      history.pushState(null, '', tab.href);
+    });
+  });
+})();
+
+{% if hub_src_configured %}
+(function () {
+  var badge    = document.getElementById('hubUpdateBadge');
+  var branchEl = document.getElementById('hubBranch');
+  var currEl   = document.getElementById('hubCurrent');
+  var remEl    = document.getElementById('hubRemote');
+  var checkBtn = document.getElementById('hubCheckBtn');
+  var updBtn   = document.getElementById('hubUpdateBtn');
+  var statusEl = document.getElementById('hubStatus');
+  var logEl    = document.getElementById('hubLog');
+  var pollTimer = null;
+
+  function badgeCls(state) {
+    if (state === 'up_to_date')       return 'badge badge-ok';
+    if (state === 'update_available') return 'badge badge-warn';
+    if (state === 'updating')         return 'badge badge-info';
+    if (state === 'error' || state === 'failed') return 'badge badge-err';
+    return 'badge';
+  }
+
+  function apply(data) {
+    badge.textContent = data.label || '-';
+    badge.className = badgeCls(data.state);
+
+    branchEl.textContent = data.branch || '-';
+    currEl.textContent   = data.current_short || '-';
+    remEl.textContent    = data.remote_short  || '-';
+
+    var running = !!data.running;
+    checkBtn.disabled = running;
+    updBtn.disabled   = running || !data.update_available;
+
+    if (data.log && data.log.length) {
+      logEl.hidden = false;
+      logEl.textContent = data.log.join('\n');
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    if (data.error && !running) {
+      statusEl.hidden = false;
+      statusEl.textContent = data.error;
+      statusEl.style.background = 'color-mix(in srgb,var(--red) 10%,var(--surface-2))';
+      statusEl.style.color = 'var(--red)';
+      statusEl.style.borderColor = 'color-mix(in srgb,var(--red) 30%,var(--border))';
+    } else {
+      statusEl.hidden = true;
+    }
+
+    if (running) { schedulePoll(); } else { clearPoll(); }
+  }
+
+  function schedulePoll() {
+    if (pollTimer) return;
+    pollTimer = setTimeout(function () {
+      pollTimer = null;
+      fetch('/api/hub/self/update/status').then(function (r) { return r.json(); }).then(apply).catch(function () {});
+    }, 1500);
+  }
+
+  function clearPoll() {
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+  }
+
+  fetch('/api/hub/self/update/status')
+    .then(function (r) { return r.json(); })
+    .then(apply)
+    .catch(function () { badge.textContent = 'Fejl'; badge.className = 'badge badge-err'; });
+
+  checkBtn.addEventListener('click', function () {
+    checkBtn.disabled = true;
+    badge.textContent = 'Tjekker...';
+    badge.className = 'badge badge-info';
+    fetch('/api/hub/self/update/check', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(apply)
+      .catch(function () {
+        badge.textContent = 'Fejl';
+        badge.className = 'badge badge-err';
+        checkBtn.disabled = false;
+      });
+  });
+
+  updBtn.addEventListener('click', function () {
+    if (!confirm('Start opdatering af FjordHub?\n\nContaineren genstartes automatisk efter opdatering er færdig.')) return;
+    logEl.hidden = true;
+    logEl.textContent = '';
+    updBtn.disabled = true;
+    fetch('/api/hub/self/update/start', { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(apply)
+      .catch(function (err) {
+        statusEl.hidden = false;
+        statusEl.textContent = 'Fejl: ' + err.message;
+        updBtn.disabled = false;
+      });
+  });
+})();
+{% endif %}
+</script>
 {% endblock %}

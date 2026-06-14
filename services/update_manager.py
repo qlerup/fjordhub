@@ -54,6 +54,11 @@ class UpdateManager:
         self._set_cache(app_id, status)
         return status
 
+    def get_log(self, app_id: str) -> list[str]:
+        with self._lock:
+            job = self._jobs.get(app_id)
+            return list(job.get("log", [])) if job else []
+
     def get_all_statuses(self, app_defs: list[dict]) -> dict[str, dict]:
         return {app_def["id"]: self.get_status(app_def, fetch=False) for app_def in app_defs}
 
