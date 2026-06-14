@@ -263,12 +263,20 @@ class ResourceMonitor:
         if not root.exists():
             return self._empty_system("Cgroup er ikke monteret")
 
+        memory_limit = self._read_cgroup_memory_limit(root)
         memory_usage_raw = self._read_cgroup_memory_usage(root)
         memory_cache = self._read_cgroup_memory_cache(root)
+        memory_source = "cgroup"
         memory_usage = memory_usage_raw
         if memory_usage_raw is not None and memory_cache:
             memory_usage = max(memory_usage_raw - memory_cache, 0)
-        memory_limit = self._read_cgroup_memory_limit(root)
+
+        proc_memory = self._read_proc_memory()
+        if self._proc_memory_matches_limit(proc_memory, memory_limit):
+            memory_usage = proc_memory["usage"]
+            memory_limit = proc_memory["limit"]
+            memory_source = "proc_meminfo"
+
         cpu_usage = self._read_cgroup_cpu_usage(root)
         if memory_usage is None and cpu_usage is None:
             return self._empty_system("Kunne ikke laese cgroup-tal")
@@ -303,6 +311,7 @@ class ResourceMonitor:
             "memory_usage_raw_label": _format_bytes(memory_usage_raw or 0),
             "memory_cache": memory_cache or 0,
             "memory_cache_label": _format_bytes(memory_cache or 0),
+            "memory_source": memory_source,
             "memory_limit": memory_limit or 0,
             "memory_limit_label": _format_bytes(memory_limit or 0) if memory_limit else "Ukendt",
             "memory_percent": round(memory_percent, 2),
@@ -391,6 +400,33 @@ class ResourceMonitor:
             except Exception:
                 return {}
         return {}
+
+    def _read_proc_memory(self) -> dict[str, int] | None:
+        try:
+            stats = {}
+            for line in Path("/proc/meminfo").read_text(encoding="utf-8", errors="ignore").splitlines():
+                key, _, value = line.partition(":")
+                if key:
+                    stats[key] = _safe_int(value.strip().split()[0]) * 1024
+            total = _safe_int(stats.get("MemTotal"))
+            available = _safe_int(stats.get("MemAvailable"))
+            if total > 0 and available >= 0:
+                return {"limit": total, "usage": max(total - available, 0)}
+        except Exception:
+            return None
+        return None
+
+    def _proc_memory_matches_limit(self, proc_memory: dict[str, int] | None, memory_limit: int | None) -> bool:
+        if not proc_memory:
+            return False
+        proc_limit = _safe_int(proc_memory.get("limit"))
+        cgroup_limit = _safe_int(memory_limit)
+        if proc_limit <= 0:
+            return False
+        if cgroup_limit <= 0:
+            return proc_limit < 1 << 50
+        ratio = proc_limit / cgroup_limit
+        return 0.90 <= ratio <= 1.10
 
     def _read_cgroup_memory_limit(self, root: Path) -> int | None:
         for path in (root / "memory.max", root / "memory" / "memory.limit_in_bytes"):
