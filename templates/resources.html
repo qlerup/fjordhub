@@ -51,6 +51,7 @@
       <strong id="resource-memory">-</strong>
       <div class="resource-bar"><span id="resource-memory-bar"></span></div>
       <span class="resource-muted" id="resource-memory-detail">-</span>
+      <span class="resource-muted resource-memory-split" id="resource-memory-split" style="display:none;"></span>
     </article>
     <article class="resource-summary-card">
       <span class="resource-card-label">Containere</span>
@@ -68,9 +69,6 @@
       <span class="resource-muted" id="resource-disk-detail">læst / skrevet</span>
     </article>
   </section>
-
-  <div class="resource-breakdown" id="resource-breakdown" style="display:none;"></div>
-
   <section class="resource-section">
     <div class="app-section-header">
       <h2>Installerede apps</h2>
@@ -214,6 +212,27 @@ function renderBreakdown(data) {
   el.style.display = '';
 }
 
+function renderMemorySplit(data) {
+  const el = document.getElementById('resource-memory-split');
+  if (!el) return;
+  if (currentResourceView !== 'lxc') {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+
+  const hub = data.hub || {};
+  const overhead = data.overhead || {};
+  if (!overhead.available) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+
+  el.textContent = `Heraf ${hub.memory_usage_label || '0 B'} Docker / ${overhead.memory_usage_label || '0 B'} system`;
+  el.style.display = '';
+}
+
 function renderLegacySummary(data) {
   const hub = data.hub || {};
   const system = data.system || {};
@@ -258,8 +277,9 @@ function renderSummary(data) {
     setText('resource-scope-title', 'LXC fra Proxmox');
     setText('resource-scope-subtitle', 'Hele FjordHub-containeren');
     if (system.available) {
+      const cpuCount = system.cpu_count || capacity.cpus || 1;
       setText('resource-cpu', system.cpu_capacity_percent_label || '0.0%');
-      setText('resource-cpu-detail', `${system.cpu_percent_label || '0.0%'} samlet CPU`);
+      setText('resource-cpu-detail', `${system.cpu_percent_label || '0.0%'} på tværs af ${cpuCount} CPU'er`);
       setBar('resource-cpu-bar', system.cpu_capacity_percent);
       setText('resource-memory', `${system.memory_usage_label || '0 B'} (${system.memory_percent_label || '0.0%'})`);
       setText('resource-memory-detail', `af ${system.memory_limit_label || capacity.memory_total_label || 'ukendt'}`);
@@ -294,7 +314,7 @@ function renderSummary(data) {
     setText('resource-disk', ioPair(hub.block_read_label, hub.block_write_label));
     setText('resource-disk-detail', 'læst / skrevet');
   }
-  renderBreakdown(data);
+  renderMemorySplit(data);
 }
 
 function containerRows(group) {
