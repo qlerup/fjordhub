@@ -275,6 +275,38 @@ class UpdateManager:
             if merge_code != 0:
                 raise RuntimeError("git merge --ff-only fejlede")
 
+            if app_id == "fjordhub":
+                # Self-update: build the new image first (safe — doesn't touch running containers),
+                # then fire a detached restart so this process can die cleanly.
+                build_code = self._run_logged(
+                    app_id,
+                    ["docker", "compose", "build"],
+                    cwd=install_dir,
+                    timeout=900,
+                )
+                if build_code != 0:
+                    raise RuntimeError("docker compose build fejlede")
+
+                self._append_job_log(app_id, f"[{_now_iso()}] Nyt image bygget. FjordHub genstarter...")
+                self._set_job(app_id, {
+                    "state": "restarting",
+                    "label": "Genstarter...",
+                    "running": True,
+                    "update_available": False,
+                })
+
+                import subprocess as _sp
+                _sp.Popen(
+                    ["docker", "compose", "up", "-d"],
+                    cwd=str(install_dir),
+                    env=build_compose_env(),
+                    stdout=_sp.DEVNULL,
+                    stderr=_sp.DEVNULL,
+                    start_new_session=True,
+                    close_fds=True,
+                )
+                return  # Container will restart; this process will be killed shortly
+
             compose_code = self._run_logged(
                 app_id,
                 ["docker", "compose", "up", "-d", "--build"],

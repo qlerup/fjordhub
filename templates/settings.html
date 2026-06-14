@@ -92,9 +92,29 @@
   function badgeCls(state) {
     if (state === 'up_to_date')       return 'badge badge-ok';
     if (state === 'update_available') return 'badge badge-warn';
-    if (state === 'updating')         return 'badge badge-info';
+    if (state === 'updating' || state === 'restarting') return 'badge badge-info';
     if (state === 'error' || state === 'failed') return 'badge badge-err';
     return 'badge';
+  }
+
+  var healthTimer = null;
+
+  function pollUntilAlive() {
+    if (healthTimer) return;
+    healthTimer = setInterval(function () {
+      fetch('/api/health').then(function (r) {
+        if (r.ok) {
+          clearInterval(healthTimer);
+          healthTimer = null;
+          statusEl.hidden = false;
+          statusEl.textContent = 'FjordHub er opdateret! Siden genindlæses...';
+          statusEl.style.background = 'color-mix(in srgb,var(--green) 10%,var(--surface-2))';
+          statusEl.style.color = 'var(--green)';
+          statusEl.style.borderColor = 'color-mix(in srgb,var(--green) 30%,var(--border))';
+          setTimeout(function () { location.reload(); }, 2000);
+        }
+      }).catch(function () {});
+    }, 2000);
   }
 
   function apply(data) {
@@ -106,6 +126,8 @@
     remEl.textContent    = data.remote_short  || '-';
 
     var running = !!data.running;
+    var restarting = data.state === 'restarting';
+
     checkBtn.disabled = running;
     updBtn.disabled   = running || !data.update_available;
 
@@ -113,6 +135,17 @@
       logEl.hidden = false;
       logEl.textContent = data.log.join('\n');
       logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    if (restarting) {
+      statusEl.hidden = false;
+      statusEl.textContent = 'FjordHub genstarter med ny version — venter...';
+      statusEl.style.background = 'color-mix(in srgb,var(--accent) 10%,var(--surface-2))';
+      statusEl.style.color = 'var(--accent)';
+      statusEl.style.borderColor = 'color-mix(in srgb,var(--accent) 30%,var(--border))';
+      clearPoll();
+      pollUntilAlive();
+      return;
     }
 
     if (data.error && !running) {
@@ -132,7 +165,9 @@
     if (pollTimer) return;
     pollTimer = setTimeout(function () {
       pollTimer = null;
-      fetch('/api/hub/self/update/status').then(function (r) { return r.json(); }).then(apply).catch(function () {});
+      fetch('/api/hub/self/update/status').then(function (r) { return r.json(); }).then(apply).catch(function () {
+        schedulePoll();
+      });
     }, 1500);
   }
 
