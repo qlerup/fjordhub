@@ -373,6 +373,8 @@ class ResourceMonitor:
             _safe_int(stats.get("inactive_file"))
             or _safe_int(stats.get("total_inactive_file"))
             or _safe_int(stats.get("cache"))
+            or _safe_int(stats.get("total_cache"))
+            or _safe_int(stats.get("file"))
         )
 
     def _read_cgroup_memory_stat(self, root: Path) -> dict[str, int]:
@@ -382,9 +384,9 @@ class ResourceMonitor:
             try:
                 stats = {}
                 for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
-                    key, _, value = line.partition(" ")
-                    if key:
-                        stats[key] = _safe_int(value)
+                    parts = line.split(None, 1)
+                    if len(parts) == 2:
+                        stats[parts[0]] = _safe_int(parts[1])
                 return stats
             except Exception:
                 return {}
