@@ -26,11 +26,13 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /sys/fs/cgroup:/host/sys/fs/cgroup:ro
+      - /proc:/host/proc:ro
       - "${DATA_DIR:-./data}:/data"
       - "${APPS_DIR:-./apps}:/apps"
     environment:
       DATA_DIR: /data
       HOST_CGROUP_ROOT: /host/sys/fs/cgroup
+      HOST_PROC_ROOT: /host/proc
       APP_PORT: ${APP_PORT:-8091}
       TZ: ${TZ:-Europe/Copenhagen}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
