@@ -145,12 +145,13 @@
       <div class="nfs-input-row">
         <label>Opsætningstype</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <label class="nfs-type-label" id="nfs-type-label-proxmox">
-            <input type="radio" name="nfs-setup-type" id="nfs-type-proxmox" value="proxmox" checked onchange="onNfsTypeChange()">
+          {% set nfs_is_docker_desktop = nfs_runtime and nfs_runtime.runtime == 'docker_desktop' %}
+          <label class="nfs-type-label" id="nfs-type-label-proxmox" {% if nfs_is_docker_desktop %}style="opacity:.55" title="Automatisk Proxmox/LXC-mount er ikke tilgaengeligt paa Docker Desktop."{% endif %}>
+            <input type="radio" name="nfs-setup-type" id="nfs-type-proxmox" value="proxmox" {% if not nfs_is_docker_desktop %}checked{% endif %} {% if nfs_is_docker_desktop %}disabled{% endif %} onchange="onNfsTypeChange()">
             Proxmox (LXC)
           </label>
           <label class="nfs-type-label" id="nfs-type-label-wsl2">
-            <input type="radio" name="nfs-setup-type" id="nfs-type-wsl2" value="wsl2" onchange="onNfsTypeChange()">
+            <input type="radio" name="nfs-setup-type" id="nfs-type-wsl2" value="wsl2" {% if nfs_is_docker_desktop %}checked{% endif %} onchange="onNfsTypeChange()">
             Windows (Docker Desktop)
           </label>
         </div>
