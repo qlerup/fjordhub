@@ -181,6 +181,10 @@
         <label>fstab options</label>
         <input id="nfs-options" type="text" value="vers=3,_netdev,nofail" oninput="renderNfsCommands()" disabled>
       </div>
+      <div class="nfs-input-row" id="nfs-vmid-row" style="display:none;">
+        <label>Proxmox LXC VMID</label>
+        <input id="nfs-vmid" type="text" placeholder="f.eks. 100" oninput="renderNfsCommands()">
+      </div>
       <div>
         <p style="font-size:.8rem;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Genererede kommandoer</p>
         <div id="nfs-code-block"><span style="color:var(--text-muted)">Udfyld felterne ovenfor…</span></div>
@@ -423,6 +427,14 @@ async function _detectLxcType() {
     const data = await res.json();
     _nfsLxcPrivileged = data.privileged;
     _nfsVmid = data.vmid || null;
+    const vmidRow = document.getElementById('nfs-vmid-row');
+    const vmidInput = document.getElementById('nfs-vmid');
+    if (data.privileged === false) {
+      if (vmidRow) vmidRow.style.display = '';
+      if (vmidInput && !vmidInput.value && data.vmid) vmidInput.value = data.vmid;
+    } else {
+      if (vmidRow) vmidRow.style.display = 'none';
+    }
     if (el) {
       if (data.privileged === true) {
         el.innerHTML = '▶ Kør kommandoerne i <strong>fjordhub-terminalen</strong> (privilegeret LXC)';
@@ -556,7 +568,7 @@ function renderNfsCommands() {
       ],
     });
   } else if (_nfsLxcPrivileged === false) {
-    const vmid = _nfsVmid || '<VMID>';
+    const vmid = document.getElementById('nfs-vmid')?.value.trim() || _nfsVmid || '<VMID>';
     sections.push({
       location: 'PVE-hosten (root@pve)',
       lines: [
