@@ -183,8 +183,7 @@
       </div>
       <div>
         <p style="font-size:.8rem;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Genererede kommandoer</p>
-        <div id="nfs-code-block" class="nfs-code-block"><span style="color:var(--text-muted)">Udfyld felterne ovenfor…</span></div>
-        <div id="nfs-lxc-hint" style="font-size:.8rem;margin-top:6px;min-height:1em;"></div>
+        <div id="nfs-code-block"><span style="color:var(--text-muted)">Udfyld felterne ovenfor…</span></div>
       </div>
       <div id="nfs-mount-status" style="display:none;font-size:.8rem;margin-top:4px;"></div>
       <div id="nfs-field-selector" style="display:none;margin-top:12px;">
@@ -555,9 +554,15 @@ function renderNfsCommands() {
     });
   }
 
-  block.innerHTML = sections.map(sec =>
-    `<div class="nfs-block-location">📍 ${sec.location}</div>${sec.lines.join('\n')}`
-  ).join('\n\n');
+  block.innerHTML = sections.map((sec, i) =>
+    `<div class="nfs-code-section">
+      <div class="nfs-section-header">
+        <span class="nfs-block-location">📍 ${sec.location}</span>
+        <button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button>
+      </div>
+      <div class="nfs-code-block">${sec.lines.join('\n')}</div>
+    </div>`
+  ).join('');
 
   startMountPolling(root);
 }
@@ -634,20 +639,31 @@ async function fetchNfsExports() {
   }
 }
 
-function copyNfsCommands() {
-  const block = document.getElementById('nfs-code-block');
-  const text = block.innerText;
-  const btn = document.getElementById('nfs-copy-btn');
+function _copyText(text, btn, label) {
   const confirm = () => {
+    const orig = btn.textContent;
     btn.textContent = '✓ Kopieret!';
     btn.classList.add('copied');
-    setTimeout(() => { btn.textContent = 'Kopiér'; btn.classList.remove('copied'); }, 2000);
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
   };
   if (navigator.clipboard) {
     navigator.clipboard.writeText(text).then(confirm).catch(() => _copyFallback(text, confirm));
   } else {
     _copyFallback(text, confirm);
   }
+}
+
+function copyNfsCommands() {
+  const blocks = document.querySelectorAll('#nfs-code-block .nfs-code-block');
+  const text = blocks.length
+    ? Array.from(blocks).map(b => b.innerText).join('\n\n')
+    : document.getElementById('nfs-code-block').innerText;
+  _copyText(text, document.getElementById('nfs-copy-btn'));
+}
+
+function copySectionCommands(btn) {
+  const codeBlock = btn.closest('.nfs-code-section').querySelector('.nfs-code-block');
+  _copyText(codeBlock.innerText, btn);
 }
 
 function _copyFallback(text, onSuccess) {
