@@ -13,7 +13,7 @@ from services.docker_manager import DockerManager
 from services.registry import AppRegistry
 from services.remote_registry import RemoteRegistry
 from services.install_state import InstallState
-from services.installer import Installer, generate_secret
+from services.installer import Installer, generate_secret, APPS_BASE
 from services.compose_env import build_compose_env
 from services.update_manager import UpdateManager
 from services.resource_monitor import ResourceMonitor
@@ -647,6 +647,50 @@ def app_sso_url(app_id):
     return jsonify({"ok": True, "url": f"{app_url}/hub-login?token={token}"})
 
 
+@app.route("/api/apps/<app_id>/link-hub", methods=["POST"])
+@login_required
+def api_link_hub(app_id):
+    if not current_user.is_admin:
+        return jsonify({"ok": False, "error": "Kun administratorer kan linke hub-integration"}), 403
+    app_def = _get_app(app_id)
+    if not app_def:
+        return jsonify({"ok": False, "error": "Ukendt app"}), 404
+    install_dir = APPS_BASE / app_id
+    env_path = install_dir / ".env"
+    if not env_path.exists():
+        return jsonify({"ok": False, "error": "Appen er ikke installeret via FjordHub"}), 400
+    hub_key = generate_secret(32)
+    _auth.save_hub_key(app_id, hub_key)
+    try:
+        content = env_path.read_text(encoding="utf-8")
+        lines = [l for l in content.splitlines()
+                 if not l.startswith(("FJORDHUB_API_KEY=", "FJORDHUB_APP_ID=", "FJORDHUB_URL="))]
+        lines += [
+            f"FJORDHUB_API_KEY={hub_key}",
+            f"FJORDHUB_APP_ID={app_id}",
+            f"FJORDHUB_URL=http://host.docker.internal:{APP_PORT}",
+        ]
+        env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Kunne ikke opdatere .env: {e}"}), 500
+    try:
+        result = subprocess.run(
+            ["docker", "compose", "up", "-d", "--force-recreate"],
+            cwd=str(install_dir),
+            env=build_compose_env(),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            return jsonify({"ok": False, "error": f"compose up fejlede: {result.stderr[:400]}"}), 500
+    except subprocess.TimeoutExpired:
+        return jsonify({"ok": False, "error": "Timeout ved genstart"}), 500
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+    return jsonify({"ok": True, "message": "FjordHub-integration aktiveret — appen genstarter nu."})
+
+
 @app.route("/api/hub/sso-verify")
 def api_hub_sso_verify():
     app_id = request.args.get("app_id", "").strip()
@@ -925,7 +969,12 @@ def api_check_nfs():
 
 @app.route("/api/apps-status")
 def api_apps_status():
-    return jsonify({a["id"]: docker_mgr.get_status(a) for a in _get_apps()})
+    result = {}
+    for a in _get_apps():
+        status = docker_mgr.get_status(a)
+        status["hub_linked"] = bool(_auth.get_hub_key(a["id"]))
+        result[a["id"]] = status
+    return jsonify(result)
 
 
 @app.route("/api/apps-updates")

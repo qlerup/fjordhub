@@ -42,7 +42,8 @@ function applyStatus(card, status) {
     + (state === 'running' ? ' running' : state === 'error' ? ' error' : '');
   uptime.textContent = (state === 'running' && status.uptime) ? status.uptime : '';
 
-  const delBtn = card.querySelector('.btn-delete');
+  const delBtn  = card.querySelector('.btn-delete');
+  const linkBtn = card.querySelector('.btn-link-hub');
 
   if (state === 'running') {
     open.href = getAppUrl(port);
@@ -62,7 +63,9 @@ function applyStatus(card, status) {
     btn.disabled       = false;
     btn.dataset.wizardUrl = `/apps/${id}/wizard`;
     if (delBtn) delBtn.style.display = 'none';
+    if (linkBtn) linkBtn.style.display = 'none';
     hideUpdateRow(card);
+    return;
   } else {
     open.href = getAppUrl(port);
     open.style.opacity = '0.5';
@@ -71,6 +74,10 @@ function applyStatus(card, status) {
     btn.dataset.action = 'start';
     btn.disabled       = false;
     if (delBtn) delBtn.style.display = '';
+  }
+
+  if (linkBtn) {
+    linkBtn.style.display = (status.hub_linked === false) ? '' : 'none';
   }
 }
 
@@ -367,6 +374,11 @@ document.getElementById('app-sections')?.addEventListener('click', e => {
     confirmUninstall(delBtn.closest('.app-card'));
     return;
   }
+  const linkBtn = e.target.closest('.btn-link-hub');
+  if (linkBtn && !linkBtn.disabled) {
+    linkHubIntegration(linkBtn.closest('.app-card'));
+    return;
+  }
   const btn = e.target.closest('.btn-toggle');
   if (!btn || btn.disabled) return;
   const card   = btn.closest('.app-card');
@@ -374,6 +386,31 @@ document.getElementById('app-sections')?.addEventListener('click', e => {
   if (action === 'start' || action === 'stop') toggleApp(card, action);
   if (action === 'install') window.location.href = btn.dataset.wizardUrl;
 });
+
+// ── Link FjordHub integration ────────────────────────────────────────────────
+
+async function linkHubIntegration(card) {
+  const id   = card.dataset.appId;
+  const name = card.querySelector('.card-name')?.textContent || id;
+  const linkBtn = card.querySelector('.btn-link-hub');
+  if (!confirm(`Aktiver FjordHub-integration til ${name}?\n\nDette opdaterer appens konfiguration og genstarter containeren.`)) return;
+  if (linkBtn) { linkBtn.disabled = true; linkBtn.textContent = 'Tilslutter…'; }
+  try {
+    const res  = await fetch(`/api/apps/${encodeURIComponent(id)}/link-hub`, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      showToast(`✓ ${data.message}`, 'ok');
+      if (linkBtn) linkBtn.style.display = 'none';
+      setTimeout(fetchStatuses, 4000);
+    } else {
+      showToast(`✗ ${data.error || 'Tilslutning fejlede'}`, 'err');
+      if (linkBtn) { linkBtn.disabled = false; linkBtn.textContent = 'Link FjordHub'; }
+    }
+  } catch (_) {
+    showToast('✗ Netværksfejl', 'err');
+    if (linkBtn) { linkBtn.disabled = false; linkBtn.textContent = 'Link FjordHub'; }
+  }
+}
 
 // ── Uninstall ─────────────────────────────────────────────────────────────
 
@@ -433,7 +470,11 @@ async function openWithSso(appId, appUrl) {
       return;
     }
     if (popup) popup.close();
-    showToast(`✗ SSO fejlede: ${data.error || 'ukendt fejl'}`, 'err');
+    if (data.error && data.error.includes('FjordHub-integration')) {
+      showToast('✗ SSO kræver FjordHub-integration — klik "Link FjordHub" på app-kortet', 'err');
+    } else {
+      showToast(`✗ SSO fejlede: ${data.error || 'ukendt fejl'}`, 'err');
+    }
   } catch (_) {
     if (popup) popup.close();
     showToast('✗ SSO fejlede: kunne ikke nå FjordHub', 'err');
