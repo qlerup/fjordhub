@@ -180,7 +180,7 @@
       </div>
       <div class="nfs-input-row">
         <label>fstab options</label>
-        <input id="nfs-options" type="text" value="vers=3,_netdev,nofail" oninput="renderNfsCommands()" disabled>
+        <input id="nfs-options" type="text" value="vers=3,resvport,_netdev,nofail" oninput="renderNfsCommands()" disabled>
       </div>
       <div class="nfs-input-row" id="nfs-vmid-row" style="display:none;">
         <label>Proxmox LXC VMID</label>
@@ -494,7 +494,7 @@ async function autoMountNfs() {
   const path     = document.getElementById('nfs-export-select')?.value || '';
   const root     = document.getElementById('nfs-mount-root')?.value.trim() || '';
   const subdir   = document.getElementById('nfs-subdir')?.value.trim() || '';
-  const options  = document.getElementById('nfs-options')?.value.trim() || 'vers=3,_netdev,nofail';
+  const options  = document.getElementById('nfs-options')?.value.trim() || 'vers=3,resvport,_netdev,nofail';
 
   if (!ip || !path || !root) return;
   btn.disabled = true;
@@ -554,7 +554,7 @@ function renderNfsCommands() {
   const exp     = ip && path ? `${ip}:${path}` : '';
   const root    = document.getElementById('nfs-mount-root')?.value.trim() || '';
   const subdir  = document.getElementById('nfs-subdir')?.value.trim() || '';
-  const options = document.getElementById('nfs-options')?.value.trim() || 'vers=3,_netdev,nofail';
+  const options = document.getElementById('nfs-options')?.value.trim() || 'vers=3,resvport,_netdev,nofail';
   const block   = document.getElementById('nfs-code-block');
 
   if (!exp || !root) {

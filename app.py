@@ -660,6 +660,8 @@ def _nfs_runtime_options(options: str) -> str:
         if not part or part in fstab_only or part.startswith("x-"):
             continue
         runtime_options.append(part)
+    if "noresvport" not in runtime_options and "resvport" not in runtime_options:
+        runtime_options.append("resvport")
     return ",".join(runtime_options) or "defaults"
 
 
@@ -671,7 +673,7 @@ def api_mount_nfs():
     nfs_export = str(data.get("export", "")).strip()
     mount_root = str(data.get("mount_root", "")).strip()
     subdir     = str(data.get("subdir", "")).strip().strip("/")
-    options    = str(data.get("options", "vers=3,_netdev,nofail")).strip()
+    options    = str(data.get("options", "vers=3,resvport,_netdev,nofail")).strip()
     mount_options = _nfs_runtime_options(options)
 
     if not nfs_export or ":" not in nfs_export:
@@ -738,7 +740,7 @@ def api_mount_nfs():
         r = subprocess.run(
             [
                 "docker", "run", "--rm",
-                "--privileged", "--pid=host",
+                "--privileged", "--pid=host", "--network=host",
                 FJORDHUB_IMAGE, "sh", "-c",
                 f"nsenter -t 1 -m -u -n -i /bin/sh -c {shlex.quote(lxc_script)}",
             ],
