@@ -419,17 +419,25 @@ document.getElementById('app-sections')?.addEventListener('click', e => {
 });
 
 async function openWithSso(appId, appUrl) {
+  const popup = window.open('about:blank', '_blank');
+  if (popup) popup.opener = null;
   try {
-    const res  = await fetch(`/api/hub/sso-token?app_id=${encodeURIComponent(appId)}`);
+    const res  = await fetch(`/apps/${encodeURIComponent(appId)}/sso-url`);
     const data = await res.json();
-    if (data.ok && data.token) {
-      const url = new URL('/hub-login', appUrl);
-      url.searchParams.set('token', data.token);
-      window.open(url.toString(), '_blank', 'noopener');
+    if (data.ok && data.url) {
+      if (popup) {
+        popup.location.href = data.url;
+      } else {
+        window.location.href = data.url;
+      }
       return;
     }
-  } catch (_) {}
-  window.open(appUrl, '_blank', 'noopener');
+    if (popup) popup.close();
+    showToast(`✗ SSO fejlede: ${data.error || 'ukendt fejl'}`, 'err');
+  } catch (_) {
+    if (popup) popup.close();
+    showToast('✗ SSO fejlede: kunne ikke nå FjordHub', 'err');
+  }
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────

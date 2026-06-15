@@ -603,17 +603,48 @@ def api_hub_app_user(user_id: int):
 @login_required
 def api_hub_sso_token():
     app_id = request.args.get("app_id", "").strip()
-    if not app_id or not _auth.get_hub_key(app_id):
-        return jsonify({"ok": False, "error": "App ikke installeret"}), 400
+    token, error_response = _create_app_sso_token(app_id)
+    if error_response:
+        return error_response
+    return jsonify({"ok": True, "token": token})
+
+
+def _create_app_sso_token(app_id: str) -> tuple[str, object | None]:
+    app_id = str(app_id or "").strip()
+    if not app_id:
+        return "", (jsonify({"ok": False, "error": "App mangler"}), 400)
+    if not _auth.get_hub_key(app_id):
+        return "", (jsonify({"ok": False, "error": "Appen mangler FjordHub-integration. Opdater eller geninstaller appen via FjordHub."}), 400)
+    app_role = _auth.get_user_app_role(int(current_user.id), app_id)
+    role = app_role or ("admin" if current_user.is_admin else "user")
     token = generate_secret(32)
     _sso_tokens[token] = {
         "username": current_user.username,
         "id": current_user.id,
-        "role": "admin",
+        "role": role,
         "app_id": app_id,
         "expires_at": time.time() + 60,
     }
-    return jsonify({"ok": True, "token": token})
+    return token, None
+
+
+def _external_app_url(app_def: dict) -> str:
+    host = request.host.split(":", 1)[0]
+    port = int(app_def.get("default_port") or 80)
+    return f"{request.scheme}://{host}:{port}"
+
+
+@app.route("/apps/<app_id>/sso-url")
+@login_required
+def app_sso_url(app_id):
+    app_def = _get_app(app_id)
+    if not app_def:
+        return jsonify({"ok": False, "error": "Ukendt app"}), 404
+    token, error_response = _create_app_sso_token(app_id)
+    if error_response:
+        return error_response
+    app_url = _external_app_url(app_def)
+    return jsonify({"ok": True, "url": f"{app_url}/hub-login?token={token}"})
 
 
 @app.route("/api/hub/sso-verify")
