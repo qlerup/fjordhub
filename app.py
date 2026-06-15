@@ -151,10 +151,6 @@ def _with_nfs_recommendations(app_def: dict) -> dict:
             if "UPLOAD" not in key and "UPLOAD" not in label:
                 continue
             field["nfs_recommended"] = True
-            hint = str(field.get("hint") or "").strip()
-            recommendation = "Anbefalet mappe til NAS/NFS."
-            if recommendation not in hint:
-                field["hint"] = f"{hint} {recommendation}".strip()
     return app_copy
 
 

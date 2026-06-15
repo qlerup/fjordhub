@@ -74,12 +74,7 @@
            data-show-val="{{ field.show_if.value }}"
            {% endif %}
            id="ff-{{ field.key }}">
-        <label for="f-{{ field.key }}">
-          {{ field.label }}
-          {% if field.nfs_recommended %}
-          <span style="display:inline-flex;margin-left:6px;font-size:.68rem;font-weight:700;color:#22c55e;border:1px solid rgba(34,197,94,.35);border-radius:999px;padding:1px 7px;vertical-align:middle;">Anbefalet til NAS/NFS</span>
-          {% endif %}
-        </label>
+        <label for="f-{{ field.key }}">{{ field.label }}</label>
 
         {% if field.type == "select" %}
         <select id="f-{{ field.key }}" name="{{ field.key }}" onchange="onFieldChange('{{ field.key }}', this.value)">
@@ -198,6 +193,7 @@
       <div id="nfs-mount-status" style="display:none;font-size:.8rem;margin-top:4px;"></div>
       <div id="nfs-field-selector" style="display:none;margin-top:12px;">
         <p style="font-size:.82rem;font-weight:600;margin-bottom:8px;color:var(--text);">Anvend NFS-stien på:</p>
+        <p id="nfs-recommendation" style="display:none;font-size:.78rem;color:#22c55e;margin:0 0 8px;"></p>
         <div id="nfs-field-list"></div>
       </div>
       <div class="nfs-modal-actions">
@@ -512,7 +508,20 @@ function closeNfsHelper() {
 function _showNfsFieldSelector() {
   if (_nfsPathFields.length === 0) return;
   const list = document.getElementById('nfs-field-list');
+  const recommendationEl = document.getElementById('nfs-recommendation');
   const hasRecommended = _nfsPathFields.some(field => field.recommended);
+  const recommendedLabels = _nfsPathFields
+    .filter(field => field.recommended)
+    .map(field => field.label);
+  if (recommendationEl) {
+    if (recommendedLabels.length) {
+      recommendationEl.style.display = '';
+      recommendationEl.textContent = `Anbefalet: brug NFS til ${recommendedLabels.join(', ')}. Data og thumbnails anbefales normalt på lokal disk.`;
+    } else {
+      recommendationEl.style.display = 'none';
+      recommendationEl.textContent = '';
+    }
+  }
   list.innerHTML = _nfsPathFields.map((field) => {
     const checked = hasRecommended ? field.recommended : true;
     const badge = field.recommended
