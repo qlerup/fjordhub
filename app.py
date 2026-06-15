@@ -668,15 +668,16 @@ def api_mount_nfs():
         if r1.returncode != 0:
             return jsonify({"ok": False, "error": f"Trin 1 fejlede: {r1.stderr.strip() or r1.stdout.strip()}"})
 
-        # Trin 2: Mount NFS via nsenter + /sbin/mount.nfs direkte (undgår busybox mount)
+        # Trin 2: Mount NFS via nsenter + util-linux mount (ikke busybox)
         r2 = subprocess.run(
             [
                 "docker", "run", "--rm",
                 "--privileged", "--pid=host",
                 "alpine", "sh", "-c",
-                f"apk add -q --no-cache nfs-utils 2>/dev/null && "
+                f"apk add -q --no-cache nfs-utils util-linux 2>/dev/null && "
                 f"nsenter -t 1 -m -u -n -i "
-                f"/sbin/mount.nfs {shlex.quote(nfs_export)} {shlex.quote(mount_root)} -o {shlex.quote(options)}",
+                f"/usr/bin/mount -t nfs -o {shlex.quote(options)} "
+                f"{shlex.quote(nfs_export)} {shlex.quote(mount_root)}",
             ],
             capture_output=True, text=True, timeout=60,
         )
