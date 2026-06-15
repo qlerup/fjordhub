@@ -488,51 +488,77 @@ function renderNfsCommands() {
 
   const finalPath = subdir ? `${root.replace(/\/$/, '')}/${subdir}` : root;
   const c = t => `<span class="nfs-code-comment">${t}</span>`;
-  const lines = [];
+
+  const sections = [];
 
   if (isWSL2) {
-    lines.push(
-      c('# Kør disse kommandoer i WSL2-terminalen (skriv "wsl" i PowerShell)'),
-      '',
-      c('# 0. Installér NFS-klient (kun første gang)'),
-      'sudo apt install -y nfs-common',
-      '',
-    );
-  }
-
-  lines.push(
-    c(`# ${isWSL2 ? '1' : '1'}. Opret mount-punkt`),
-    `${s}mkdir -p ${root}`,
-    '',
-    c(`# ${isWSL2 ? '2' : '2'}. Tilføj til /etc/fstab (vedvarende montering)`),
-    `echo "${exp} ${root} nfs ${options} 0 0" | ${s}tee -a /etc/fstab`,
-    '',
-    c(`# ${isWSL2 ? '3' : '3'}. Montér nu`),
-    `${s}mount -a`,
-  );
-
-  if (subdir) {
-    lines.push('', c(`# ${isWSL2 ? '4' : '4'}. Opret undermappe`), `${s}mkdir -p ${finalPath}`);
-  }
-
-  if (_nfsLxcPrivileged === false) {
+    sections.push({
+      location: 'WSL2-terminalen (skriv "wsl" i PowerShell)',
+      lines: [
+        c('# 0. Installér NFS-klient (kun første gang)'),
+        'sudo apt install -y nfs-common',
+        '',
+        c('# 1. Opret mount-punkt'),
+        `sudo mkdir -p ${root}`,
+        '',
+        c('# 2. Tilføj til /etc/fstab (vedvarende montering)'),
+        `echo "${exp} ${root} nfs ${options} 0 0" | sudo tee -a /etc/fstab`,
+        '',
+        c('# 3. Montér nu'),
+        'sudo mount -a',
+        ...(subdir ? ['', c('# 4. Opret undermappe'), `sudo mkdir -p ${finalPath}`] : []),
+        '',
+        c(`# Base-sti til brug i wizard-felterne: ${finalPath}`),
+      ],
+    });
+  } else if (_nfsLxcPrivileged === false) {
     const vmid = _nfsVmid || '<VMID>';
-    lines.push(
-      '',
-      c('# 5. Bind-mount ind i fjordhub LXC (kør på PVE-hosten)'),
-      `pct set ${vmid} -mp0 ${root},mp=${root}`,
-      '',
-      c('# 6. Genstart LXC for at aktivere mount'),
-      `pct restart ${vmid}`,
-    );
+    sections.push({
+      location: 'PVE-hosten (root@pve)',
+      lines: [
+        c('# 1. Opret mount-punkt'),
+        `mkdir -p ${root}`,
+        '',
+        c('# 2. Tilføj til /etc/fstab (vedvarende montering)'),
+        `echo "${exp} ${root} nfs ${options} 0 0" | tee -a /etc/fstab`,
+        '',
+        c('# 3. Montér nu'),
+        'mount -a',
+        ...(subdir ? ['', c('# 4. Opret undermappe'), `mkdir -p ${finalPath}`] : []),
+        '',
+        c('# 5. Bind-mount ind i fjordhub LXC'),
+        `pct set ${vmid} -mp0 ${root},mp=${root}`,
+        '',
+        c('# 6. Genstart LXC for at aktivere mount'),
+        `pct restart ${vmid}`,
+        '',
+        c(`# Base-sti til brug i wizard-felterne: ${finalPath}`),
+      ],
+    });
+  } else {
+    const loc = _nfsLxcPrivileged === true ? 'fjordhub-terminalen (root@fjordhub)' : 'LXC-terminalen';
+    sections.push({
+      location: loc,
+      lines: [
+        c('# 1. Opret mount-punkt'),
+        `mkdir -p ${root}`,
+        '',
+        c('# 2. Tilføj til /etc/fstab (vedvarende montering)'),
+        `echo "${exp} ${root} nfs ${options} 0 0" | tee -a /etc/fstab`,
+        '',
+        c('# 3. Montér nu'),
+        'mount -a',
+        ...(subdir ? ['', c('# 4. Opret undermappe'), `mkdir -p ${finalPath}`] : []),
+        '',
+        c(`# Base-sti til brug i wizard-felterne: ${finalPath}`),
+      ],
+    });
   }
 
-  lines.push(
-    '',
-    c(`# Base-sti til brug i wizard-felterne: ${finalPath}`),
-  );
+  block.innerHTML = sections.map(sec =>
+    `<div class="nfs-block-location">📍 ${sec.location}</div>${sec.lines.join('\n')}`
+  ).join('\n\n');
 
-  block.innerHTML = lines.join('\n');
   startMountPolling(root);
 }
 
