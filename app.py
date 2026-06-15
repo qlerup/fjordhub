@@ -618,6 +618,19 @@ def api_hub_sso_verify():
     return jsonify({"ok": True, "username": entry["username"], "id": entry["id"], "role": entry["role"]})
 
 
+@app.route("/api/lxc-type")
+@login_required
+def api_lxc_type():
+    try:
+        uid_map = Path("/proc/self/uid_map").read_text().strip()
+        parts = uid_map.split()
+        privileged = len(parts) >= 3 and parts[1] == "0"
+    except Exception:
+        privileged = None
+    vmid = os.environ.get("PROXMOX_VMID", "").strip() or None
+    return jsonify({"privileged": privileged, "vmid": vmid})
+
+
 @app.route("/api/verify-nfs-mount")
 @login_required
 def api_verify_nfs_mount():

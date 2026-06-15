@@ -184,6 +184,7 @@
       <div>
         <p style="font-size:.8rem;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Genererede kommandoer</p>
         <div id="nfs-code-block" class="nfs-code-block"><span style="color:var(--text-muted)">Udfyld felterne ovenfor…</span></div>
+        <div id="nfs-lxc-hint" style="font-size:.8rem;margin-top:6px;min-height:1em;"></div>
       </div>
       <div id="nfs-mount-status" style="display:none;font-size:.8rem;margin-top:4px;"></div>
       <div id="nfs-field-selector" style="display:none;margin-top:12px;">
@@ -392,6 +393,8 @@ showPanel(0);
 // ── NFS helper ───────────────────────────────────────────────────────────────
 
 let _nfsPathFields = []; // [['key', 'label'], ...]
+let _nfsLxcPrivileged = null;
+let _nfsVmid = null;
 
 function onNfsTypeChange() {
   renderNfsCommands();
@@ -411,6 +414,25 @@ function openNfsHelper(fields) {
   }
   renderNfsCommands();
   document.getElementById('nfs-modal').style.display = 'flex';
+  _detectLxcType();
+}
+
+async function _detectLxcType() {
+  const el = document.getElementById('nfs-lxc-hint');
+  try {
+    const res  = await fetch('/api/lxc-type');
+    const data = await res.json();
+    _nfsLxcPrivileged = data.privileged;
+    _nfsVmid = data.vmid || null;
+    if (el) {
+      if (data.privileged === true) {
+        el.innerHTML = '▶ Kør kommandoerne i <strong>fjordhub-terminalen</strong> (privilegeret LXC)';
+      } else if (data.privileged === false) {
+        el.innerHTML = '▶ Kør kommandoerne på <strong>PVE-hosten</strong> (uprivilegeret LXC)';
+      }
+    }
+    renderNfsCommands();
+  } catch(_) {}
 }
 
 function closeNfsHelper() {
@@ -491,6 +513,18 @@ function renderNfsCommands() {
 
   if (subdir) {
     lines.push('', c(`# ${isWSL2 ? '4' : '4'}. Opret undermappe`), `${s}mkdir -p ${finalPath}`);
+  }
+
+  if (_nfsLxcPrivileged === false) {
+    const vmid = _nfsVmid || '<VMID>';
+    lines.push(
+      '',
+      c('# 5. Bind-mount ind i fjordhub LXC (kør på PVE-hosten)'),
+      `pct set ${vmid} -mp0 ${root},mp=${root}`,
+      '',
+      c('# 6. Genstart LXC for at aktivere mount'),
+      `pct restart ${vmid}`,
+    );
   }
 
   lines.push(
