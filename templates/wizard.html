@@ -495,8 +495,7 @@ function renderNfsCommands() {
 
   lines.push(
     '',
-    c('# Base-sti til brug i wizard-felterne:'),
-    finalPath,
+    c(`# Base-sti til brug i wizard-felterne: ${finalPath}`),
   );
 
   block.innerHTML = lines.join('\n');
