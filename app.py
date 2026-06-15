@@ -666,6 +666,7 @@ def api_mount_nfs():
                 "--privileged", "--pid=host",
                 "alpine",
                 "nsenter", "-t", "1", "-m", "-u", "-n", "-i",
+                "--root=/proc/1/root", "--wd=/proc/1/cwd",
                 "sh", "-c", script,
             ],
             capture_output=True, text=True, timeout=30,
