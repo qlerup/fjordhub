@@ -61,6 +61,12 @@
     {% for step in steps %}
     <div class="wizard-panel" id="panel-{{ loop.index }}">
       <h2>{{ step.title }}</h2>
+      {% set path_fields = step.fields | selectattr('type', 'equalto', 'path') | list %}
+      {% if path_fields %}
+      <div style="margin-bottom:16px;">
+        <button type="button" class="btn-nfs-helper" onclick="openNfsHelper([{% for f in path_fields %}['{{ f.key }}','{{ f.label }}']{% if not loop.last %},{% endif %}{% endfor %}])">🗄 NFS mount hjælper</button>
+      </div>
+      {% endif %}
       {% for field in step.fields %}
       <div class="form-field {% if field.show_if %}conditional{% endif %}"
            {% if field.show_if %}
@@ -93,15 +99,6 @@
                  value="{{ pregenerated.get(field.key, '') }}"
                  class="secret-input" readonly>
           <button type="button" class="btn-gen" onclick="regenSecret('{{ field.key }}')">↻ Ny</button>
-        </div>
-
-        {% elif field.type == "path" %}
-        <div class="path-input-row">
-          <input type="text" id="f-{{ field.key }}" name="{{ field.key }}"
-                 value="{{ field.default }}"
-                 onchange="onFieldChange('{{ field.key }}', this.value)"
-                 oninput="onFieldChange('{{ field.key }}', this.value)">
-          <button type="button" class="btn-nfs-helper btn-nfs-inline" onclick="openNfsHelper('{{ field.key }}')">🗄 NFS</button>
         </div>
 
         {% else %}
@@ -189,6 +186,10 @@
         <div id="nfs-code-block" class="nfs-code-block"><span style="color:var(--text-muted)">Udfyld felterne ovenfor…</span></div>
       </div>
       <div id="nfs-mount-status" style="display:none;font-size:.8rem;margin-top:4px;"></div>
+      <div id="nfs-field-selector" style="display:none;margin-top:12px;">
+        <p style="font-size:.82rem;font-weight:600;margin-bottom:8px;color:var(--text);">Anvend NFS-stien på:</p>
+        <div id="nfs-field-list"></div>
+      </div>
       <div class="nfs-modal-actions">
         <button type="button" id="nfs-copy-btn" class="btn-copy" onclick="copyNfsCommands()">Kopiér</button>
         <button type="button" id="nfs-done-btn" class="btn btn-open" onclick="finishNfsHelper()" disabled style="opacity:.35;cursor:not-allowed;">✓ Færdig</button>
@@ -390,16 +391,18 @@ showPanel(0);
 
 // ── NFS helper ───────────────────────────────────────────────────────────────
 
-let _nfsTargetFieldKey = null;
+let _nfsPathFields = []; // [['key', 'label'], ...]
 
 function onNfsTypeChange() {
   renderNfsCommands();
 }
 
-function openNfsHelper(fieldKey) {
-  _nfsTargetFieldKey = fieldKey || null;
+function openNfsHelper(fields) {
+  _nfsPathFields = fields || [];
   document.getElementById('nfs-fetch-result').style.display = 'none';
   document.getElementById('nfs-export-select').innerHTML = '<option value="">— Tryk Connect først —</option>';
+  document.getElementById('nfs-field-selector').style.display = 'none';
+  document.getElementById('nfs-field-list').innerHTML = '';
   _nfsSetConnected(false);
   const mountEl = document.getElementById('nfs-mount-root');
   if (mountEl && !mountEl.value) {
@@ -415,18 +418,30 @@ function closeNfsHelper() {
   document.getElementById('nfs-modal').style.display = 'none';
 }
 
+function _showNfsFieldSelector() {
+  if (_nfsPathFields.length === 0) return;
+  const list = document.getElementById('nfs-field-list');
+  list.innerHTML = _nfsPathFields.map(([key, label]) =>
+    `<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer;font-size:.88rem;">
+      <input type="checkbox" data-field-key="${key}" checked>
+      ${label}
+    </label>`
+  ).join('');
+  document.getElementById('nfs-field-selector').style.display = '';
+}
+
 function finishNfsHelper() {
-  if (_nfsTargetFieldKey) {
-    const root   = document.getElementById('nfs-mount-root')?.value.trim() || '';
-    const subdir = document.getElementById('nfs-subdir')?.value.trim() || '';
-    const finalPath = subdir ? `${root.replace(/\/$/, '')}/${subdir}` : root;
-    if (finalPath) {
-      const input = document.getElementById(`f-${_nfsTargetFieldKey}`);
+  const root     = document.getElementById('nfs-mount-root')?.value.trim() || '';
+  const subdir   = document.getElementById('nfs-subdir')?.value.trim() || '';
+  const finalPath = subdir ? `${root.replace(/\/$/, '')}/${subdir}` : root;
+  if (finalPath) {
+    document.querySelectorAll('#nfs-field-list input[type=checkbox]:checked').forEach(cb => {
+      const input = document.getElementById(`f-${cb.dataset.fieldKey}`);
       if (input) {
         input.value = finalPath;
-        onFieldChange(_nfsTargetFieldKey, finalPath);
+        onFieldChange(cb.dataset.fieldKey, finalPath);
       }
-    }
+    });
   }
   closeNfsHelper();
 }
@@ -507,6 +522,7 @@ function startMountPolling(mountRoot) {
       if (data.mounted) {
         clearInterval(_nfsMountPollTimer);
         statusEl.innerHTML = `<span style="color:#22c55e">✓ NFS mount bekræftet — klar til brug</span>`;
+        _showNfsFieldSelector();
         doneBtn.disabled = false;
         doneBtn.style.opacity = '1';
         doneBtn.style.cursor = 'pointer';
