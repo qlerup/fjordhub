@@ -30,6 +30,7 @@ REGISTRY_URL = os.environ.get(
 
 FJORDHUB_SRC_DIR = os.environ.get("FJORDHUB_SRC_DIR", "")
 FJORDHUB_UPDATER_URL = str(os.environ.get("FJORDHUB_UPDATER_URL", "") or "").strip().rstrip("/")
+FJORDHUB_IMAGE = str(os.environ.get("FJORDHUB_IMAGE", "fjordhub-fjordhub:latest") or "").strip() or "fjordhub-fjordhub:latest"
 _FJORDHUB_APP_DEF = {"id": "fjordhub", "name": "FjordHub"}
 
 app = Flask(__name__)
@@ -675,6 +676,7 @@ def api_mount_nfs():
 
     if not nfs_export or ":" not in nfs_export:
         return jsonify({"ok": False, "error": "Ugyldig NFS export"}), 400
+    nfs_host = nfs_export.split(":", 1)[0].strip()
     if not mount_root or not mount_root.startswith("/"):
         return jsonify({"ok": False, "error": "Ugyldig mount-sti"}), 400
     if not re.fullmatch(r"[a-zA-Z0-9/_.-]+", mount_root):
@@ -719,6 +721,8 @@ def api_mount_nfs():
             "  echo 'NFS mount-helper blev ikke fundet i LXC efter installation.' >&2",
             "  exit 43",
             "fi",
+            f"client_ip=$(ip route get {shlex.quote(nfs_host)} 2>/dev/null | sed -n 's/.* src \\([^ ]*\\).*/\\1/p' | head -n1 || true)",
+            '[ -n "$client_ip" ] && echo "FJORDHUB_NFS_CLIENT_IP=$client_ip"',
             f"mkdir -p {shlex.quote(mount_root)}",
             f"grep -qF {shlex.quote(fstab_line)} /etc/fstab || printf '%s\\n' {shlex.quote(fstab_line)} >> /etc/fstab",
             f"if awk -v p={shlex.quote(mount_root)} '$2==p{{found=1}} END{{exit found?0:1}}' /proc/mounts; then",
@@ -735,16 +739,29 @@ def api_mount_nfs():
             [
                 "docker", "run", "--rm",
                 "--privileged", "--pid=host",
-                "alpine", "sh", "-c",
-                f"apk add --no-cache util-linux >/dev/null && "
+                FJORDHUB_IMAGE, "sh", "-c",
                 f"nsenter -t 1 -m -u -n -i /bin/sh -c {shlex.quote(lxc_script)}",
             ],
             capture_output=True, text=True, timeout=180,
         )
         if r.returncode != 0:
-            output = r.stderr.strip() or r.stdout.strip()
+            combined_output = "\n".join(part for part in (r.stdout.strip(), r.stderr.strip()) if part)
+            client_match = re.search(r"^FJORDHUB_NFS_CLIENT_IP=(.+)$", combined_output, re.MULTILINE)
+            client_ip = client_match.group(1).strip() if client_match else ""
+            output = "\n".join(
+                line
+                for line in combined_output.splitlines()
+                if not line.startswith("FJORDHUB_NFS_CLIENT_IP=")
+            ).strip()
             if r.returncode in (42, 43):
                 output = output or "NFS mount-helper mangler i LXC"
+            if "access denied by server" in output.lower():
+                client_hint = f" for klient-IP {client_ip}" if client_ip else ""
+                output = (
+                    f"{output}\n\nNAS'en afviser NFS-mountet{client_hint}. "
+                    f"Tjek NFS-tilladelserne for exportet {nfs_export}: tillad Proxmox/LXC-klientens IP eller subnet, "
+                    "og kontroller at export-stien og NFS-versionen matcher."
+                )
             return jsonify({"ok": False, "error": f"Mount fejlede: {output}"})
 
         return jsonify({"ok": True, "path": final_path})

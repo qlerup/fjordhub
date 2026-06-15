@@ -21,6 +21,7 @@ services:
     restart: unless-stopped
 
   fjordhub:
+    image: ${FJORDHUB_IMAGE:-fjordhub-fjordhub:latest}
     build: .
     container_name: fjordhub
     ports:
@@ -48,6 +49,7 @@ services:
       # URL to registry.json in FjordHub's GitHub repo (raw content URL)
       REGISTRY_URL: ${REGISTRY_URL:-https://raw.githubusercontent.com/qlerup/fjordhub/main/registry.json}
       FJORDHUB_UPDATER_URL: http://fjordhub-updater:8090
+      FJORDHUB_IMAGE: ${FJORDHUB_IMAGE:-fjordhub-fjordhub:latest}
       APPS_DIR: /apps
       FJORDHUB_SRC_DIR: /fjordhub-src
       # Paths to each app's docker-compose directory on the host
