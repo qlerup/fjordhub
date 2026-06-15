@@ -64,7 +64,7 @@
       {% set path_fields = step.fields | selectattr('type', 'equalto', 'path') | list %}
       {% if path_fields %}
       <div style="margin-bottom:16px;">
-        <button type="button" class="btn-nfs-helper" onclick="openNfsHelper([{% for f in path_fields %}{key: {{ f.key|tojson }}, label: {{ f.label|tojson }}, recommended: {{ 'true' if f.nfs_recommended else 'false' }}}{% if not loop.last %},{% endif %}{% endfor %}])">🗄 NFS mount hjælper</button>
+        <button type="button" class="btn-nfs-helper" onclick='openNfsHelper([{% for f in path_fields %}{key: {{ f.key|tojson }}, label: {{ f.label|tojson }}, recommended: {{ "true" if f.nfs_recommended else "false" }}}{% if not loop.last %},{% endif %}{% endfor %}])'>🗄 NFS mount hjælper</button>
       </div>
       {% endif %}
       {% for field in step.fields %}
