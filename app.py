@@ -631,6 +631,71 @@ def api_lxc_type():
     return jsonify({"privileged": privileged, "vmid": vmid})
 
 
+@app.route("/api/mount-nfs", methods=["POST"])
+@login_required
+def api_mount_nfs():
+    import re
+    data       = request.get_json(force=True) or {}
+    nfs_export = str(data.get("export", "")).strip()
+    mount_root = str(data.get("mount_root", "")).strip()
+    subdir     = str(data.get("subdir", "")).strip().strip("/")
+    options    = str(data.get("options", "vers=3,_netdev,nofail")).strip()
+
+    if not nfs_export or ":" not in nfs_export:
+        return jsonify({"ok": False, "error": "Ugyldig NFS export"}), 400
+    if not mount_root or not mount_root.startswith("/"):
+        return jsonify({"ok": False, "error": "Ugyldig mount-sti"}), 400
+    if not re.fullmatch(r"[a-zA-Z0-9/_.-]+", mount_root):
+        return jsonify({"ok": False, "error": "Ugyldig mount-sti"}), 400
+
+    final_path = f"{mount_root.rstrip('/')}/{subdir}" if subdir else mount_root
+
+    fstab_line = f"{nfs_export} {mount_root} nfs {options} 0 0"
+    script = (
+        f"mkdir -p {mount_root} && "
+        f"grep -qF '{mount_root}' /etc/fstab || echo '{fstab_line}' >> /etc/fstab && "
+        f"mount -a"
+    )
+    if subdir:
+        script += f" && mkdir -p {final_path}"
+
+    try:
+        result = subprocess.run(
+            [
+                "docker", "run", "--rm",
+                "--privileged", "--pid=host",
+                "alpine",
+                "nsenter", "-t", "1", "-m", "-u", "-n", "-i",
+                "sh", "-c", script,
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            return jsonify({"ok": True, "path": final_path})
+        return jsonify({"ok": False, "error": result.stderr.strip() or result.stdout.strip()})
+    except subprocess.TimeoutExpired:
+        return jsonify({"ok": False, "error": "Timeout"}), 504
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/mkdir", methods=["POST"])
+@login_required
+def api_mkdir():
+    data = request.get_json(force=True) or {}
+    path = str(data.get("path", "")).strip()
+    if not path or not path.startswith("/"):
+        return jsonify({"ok": False, "error": "Ugyldig sti"}), 400
+    try:
+        result = subprocess.run(
+            ["docker", "run", "--rm", f"--volume={path}:/d", "alpine", "sh", "-c", "mkdir -p /d && chmod 777 /d"],
+            capture_output=True, text=True, timeout=20,
+        )
+        return jsonify({"ok": result.returncode == 0, "error": result.stderr.strip() if result.returncode != 0 else None})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/verify-nfs-mount")
 @login_required
 def api_verify_nfs_mount():

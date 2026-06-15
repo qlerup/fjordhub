@@ -451,6 +451,51 @@ function _showNfsFieldSelector() {
   document.getElementById('nfs-field-selector').style.display = '';
 }
 
+async function autoMountNfs() {
+  const btn      = document.getElementById('nfs-auto-btn');
+  const statusEl = document.getElementById('nfs-auto-status');
+  const ip       = document.getElementById('nfs-server-ip')?.value.trim() || '';
+  const path     = document.getElementById('nfs-export-select')?.value || '';
+  const root     = document.getElementById('nfs-mount-root')?.value.trim() || '';
+  const subdir   = document.getElementById('nfs-subdir')?.value.trim() || '';
+  const options  = document.getElementById('nfs-options')?.value.trim() || 'vers=3,_netdev,nofail';
+
+  if (!ip || !path || !root) return;
+  btn.disabled = true;
+  btn.textContent = '⏳ Monterer…';
+  statusEl.innerHTML = '';
+
+  try {
+    const res  = await fetch('/api/mount-nfs', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({export: `${ip}:${path}`, mount_root: root, subdir, options}),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      statusEl.innerHTML = `<span style="color:#22c55e">✓ Mountet — ${data.path}</span>`;
+      btn.textContent = '✓ Monteret';
+      _onMountConfirmed();
+    } else {
+      statusEl.innerHTML = `<span style="color:#ef4444">✗ ${data.error}</span>`;
+      btn.disabled = false;
+      btn.textContent = '⚡ Montér automatisk';
+    }
+  } catch(e) {
+    statusEl.innerHTML = `<span style="color:#ef4444">✗ Netværksfejl</span>`;
+    btn.disabled = false;
+    btn.textContent = '⚡ Montér automatisk';
+  }
+}
+
+function _onMountConfirmed() {
+  const statusEl = document.getElementById('nfs-mount-status');
+  const doneBtn  = document.getElementById('nfs-done-btn');
+  if (statusEl) statusEl.innerHTML = `<span style="color:#22c55e">✓ NFS mount bekræftet — klar til brug</span>`;
+  _showNfsFieldSelector();
+  if (doneBtn) { doneBtn.disabled = false; doneBtn.style.opacity = '1'; doneBtn.style.cursor = 'pointer'; }
+}
+
 function finishNfsHelper() {
   const root     = document.getElementById('nfs-mount-root')?.value.trim() || '';
   const subdir   = document.getElementById('nfs-subdir')?.value.trim() || '';
@@ -554,15 +599,28 @@ function renderNfsCommands() {
     });
   }
 
-  block.innerHTML = sections.map((sec, i) =>
-    `<div class="nfs-code-section">
-      <div class="nfs-section-header">
-        <span class="nfs-block-location">📍 ${sec.location}</span>
-        <button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button>
-      </div>
-      <div class="nfs-code-block">${sec.lines.join('\n')}</div>
-    </div>`
-  ).join('');
+  if (_nfsLxcPrivileged === true && !isWSL2) {
+    block.innerHTML =
+      `<div class="nfs-code-section">
+        <div class="nfs-section-header">
+          <span class="nfs-block-location">📍 fjordhub-terminalen (root@fjordhub)</span>
+        </div>
+        <div style="padding:12px 0 4px;">
+          <button type="button" class="btn btn-open" id="nfs-auto-btn" onclick="autoMountNfs()">⚡ Montér automatisk</button>
+          <div id="nfs-auto-status" style="font-size:.8rem;margin-top:8px;"></div>
+        </div>
+      </div>`;
+  } else {
+    block.innerHTML = sections.map((sec) =>
+      `<div class="nfs-code-section">
+        <div class="nfs-section-header">
+          <span class="nfs-block-location">📍 ${sec.location}</span>
+          <button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button>
+        </div>
+        <div class="nfs-code-block">${sec.lines.join('\n')}</div>
+      </div>`
+    ).join('');
+  }
 
   startMountPolling(root);
 }
@@ -585,11 +643,18 @@ function startMountPolling(mountRoot) {
       const data = await res.json();
       if (data.mounted) {
         clearInterval(_nfsMountPollTimer);
-        statusEl.innerHTML = `<span style="color:#22c55e">✓ NFS mount bekræftet — klar til brug</span>`;
-        _showNfsFieldSelector();
-        doneBtn.disabled = false;
-        doneBtn.style.opacity = '1';
-        doneBtn.style.cursor = 'pointer';
+        _onMountConfirmed();
+        if (_nfsLxcPrivileged === false) {
+          const subdir = document.getElementById('nfs-subdir')?.value.trim() || '';
+          if (subdir) {
+            const finalPath = `${mountRoot.replace(/\/$/, '')}/${subdir}`;
+            fetch('/api/mkdir', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({path: finalPath}),
+            });
+          }
+        }
       }
     } catch(_) {}
   };
