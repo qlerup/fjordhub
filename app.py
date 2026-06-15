@@ -660,16 +660,18 @@ def api_mount_nfs():
         script += f" && mkdir -p {final_path}"
 
     try:
+        full_script = (
+            "apk add -q --no-cache nfs-utils 2>/dev/null; "
+            f"nsenter -t 1 -m -u -n -i sh -c {subprocess.list2cmdline([script])}"
+        )
         result = subprocess.run(
             [
                 "docker", "run", "--rm",
                 "--privileged", "--pid=host",
                 "alpine",
-                "nsenter", "-t", "1", "-m", "-u", "-n", "-i",
-                "--root=/proc/1/root", "--wd=/proc/1/cwd",
-                "sh", "-c", script,
+                "sh", "-c", full_script,
             ],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=60,
         )
         if result.returncode == 0:
             return jsonify({"ok": True, "path": final_path})
