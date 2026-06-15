@@ -634,7 +634,7 @@ def api_lxc_type():
 @app.route("/api/mount-nfs", methods=["POST"])
 @login_required
 def api_mount_nfs():
-    import re
+    import re, shlex
     data       = request.get_json(force=True) or {}
     nfs_export = str(data.get("export", "")).strip()
     mount_root = str(data.get("mount_root", "")).strip()
@@ -649,33 +649,56 @@ def api_mount_nfs():
         return jsonify({"ok": False, "error": "Ugyldig mount-sti"}), 400
 
     final_path = f"{mount_root.rstrip('/')}/{subdir}" if subdir else mount_root
-
     fstab_line = f"{nfs_export} {mount_root} nfs {options} 0 0"
-    script = (
-        f"mkdir -p {mount_root} && "
-        f"grep -qF '{mount_root}' /etc/fstab || echo '{fstab_line}' >> /etc/fstab && "
-        f"mount -a"
-    )
-    if subdir:
-        script += f" && mkdir -p {final_path}"
 
     try:
-        full_script = (
-            "apk add -q --no-cache nfs-utils 2>/dev/null; "
-            f"nsenter -t 1 -m -u -n -i sh -c {subprocess.list2cmdline([script])}"
+        # Trin 1: Opret mount-punkt og skriv fstab på LXC via volume-mount
+        r1 = subprocess.run(
+            [
+                "docker", "run", "--rm",
+                f"--volume={mount_root}:{mount_root}",
+                "--volume=/etc/fstab:/etc/fstab",
+                "alpine", "sh", "-c",
+                f"mkdir -p {shlex.quote(mount_root)} && "
+                f"grep -qF {shlex.quote(mount_root)} /etc/fstab || "
+                f"printf '%s\\n' {shlex.quote(fstab_line)} >> /etc/fstab",
+            ],
+            capture_output=True, text=True, timeout=15,
         )
-        result = subprocess.run(
+        if r1.returncode != 0:
+            return jsonify({"ok": False, "error": f"Trin 1 fejlede: {r1.stderr.strip() or r1.stdout.strip()}"})
+
+        # Trin 2: Mount NFS via nsenter + /sbin/mount.nfs direkte (undgår busybox mount)
+        r2 = subprocess.run(
             [
                 "docker", "run", "--rm",
                 "--privileged", "--pid=host",
-                "alpine",
-                "sh", "-c", full_script,
+                "alpine", "sh", "-c",
+                f"apk add -q --no-cache nfs-utils 2>/dev/null && "
+                f"nsenter -t 1 -m -u -n -i "
+                f"/sbin/mount.nfs {shlex.quote(nfs_export)} {shlex.quote(mount_root)} -o {shlex.quote(options)}",
             ],
             capture_output=True, text=True, timeout=60,
         )
-        if result.returncode == 0:
-            return jsonify({"ok": True, "path": final_path})
-        return jsonify({"ok": False, "error": result.stderr.strip() or result.stdout.strip()})
+        if r2.returncode != 0:
+            return jsonify({"ok": False, "error": f"Mount fejlede: {r2.stderr.strip() or r2.stdout.strip()}"})
+
+        # Trin 3: Opret undermappe på NFS (via nsenter i LXC's namespace)
+        if subdir:
+            subprocess.run(
+                [
+                    "docker", "run", "--rm",
+                    "--privileged", "--pid=host",
+                    "alpine",
+                    "nsenter", "-t", "1", "-m", "-u", "-n", "-i",
+                    "--root=/proc/1/root", "--wd=/proc/1/cwd",
+                    "mkdir", "-p", final_path,
+                ],
+                capture_output=True, text=True, timeout=15,
+            )
+
+        return jsonify({"ok": True, "path": final_path})
+
     except subprocess.TimeoutExpired:
         return jsonify({"ok": False, "error": "Timeout"}), 504
     except Exception as e:
