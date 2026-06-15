@@ -50,7 +50,7 @@
           "label": "Upload-mappe (delte filer)",
           "type": "path",
           "default": "/opt/fjordshare-data/uploads",
-          "hint": "Kan ligge på NAS/NFS."
+          "hint": "Anbefalet mappe til NAS/NFS. Delte upload-filer fylder typisk mest og er det rigtige sted at bruge netværkslager."
         },
         {
           "key": "THUMBS_HOST_DIR",

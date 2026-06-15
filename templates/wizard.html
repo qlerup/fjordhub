@@ -64,7 +64,7 @@
       {% set path_fields = step.fields | selectattr('type', 'equalto', 'path') | list %}
       {% if path_fields %}
       <div style="margin-bottom:16px;">
-        <button type="button" class="btn-nfs-helper" onclick="openNfsHelper([{% for f in path_fields %}['{{ f.key }}','{{ f.label }}']{% if not loop.last %},{% endif %}{% endfor %}])">🗄 NFS mount hjælper</button>
+        <button type="button" class="btn-nfs-helper" onclick="openNfsHelper([{% for f in path_fields %}{key: {{ f.key|tojson }}, label: {{ f.label|tojson }}, recommended: {{ 'true' if f.nfs_recommended else 'false' }}}{% if not loop.last %},{% endif %}{% endfor %}])">🗄 NFS mount hjælper</button>
       </div>
       {% endif %}
       {% for field in step.fields %}
@@ -74,7 +74,12 @@
            data-show-val="{{ field.show_if.value }}"
            {% endif %}
            id="ff-{{ field.key }}">
-        <label for="f-{{ field.key }}">{{ field.label }}</label>
+        <label for="f-{{ field.key }}">
+          {{ field.label }}
+          {% if field.nfs_recommended %}
+          <span style="display:inline-flex;margin-left:6px;font-size:.68rem;font-weight:700;color:#22c55e;border:1px solid rgba(34,197,94,.35);border-radius:999px;padding:1px 7px;vertical-align:middle;">Anbefalet til NAS/NFS</span>
+          {% endif %}
+        </label>
 
         {% if field.type == "select" %}
         <select id="f-{{ field.key }}" name="{{ field.key }}" onchange="onFieldChange('{{ field.key }}', this.value)">
@@ -396,16 +401,45 @@ showPanel(0);
 
 // ── NFS helper ───────────────────────────────────────────────────────────────
 
-let _nfsPathFields = []; // [['key', 'label'], ...]
+let _nfsPathFields = []; // [{key, label, recommended}, ...]
 let _nfsLxcPrivileged = null;
 let _nfsVmid = null;
+
+function _escapeHtml(text) {
+  return String(text ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[ch]));
+}
+
+function _normalizeNfsField(field) {
+  if (Array.isArray(field)) {
+    const key = field[0] || '';
+    const label = field[1] || key;
+    return {
+      key,
+      label,
+      recommended: key === 'UPLOADS_HOST_DIR' || /upload/i.test(label),
+    };
+  }
+  const key = field?.key || '';
+  const label = field?.label || key;
+  return {
+    key,
+    label,
+    recommended: field?.recommended === true || key === 'UPLOADS_HOST_DIR' || /upload/i.test(label),
+  };
+}
 
 function onNfsTypeChange() {
   renderNfsCommands();
 }
 
 function openNfsHelper(fields) {
-  _nfsPathFields = fields || [];
+  _nfsPathFields = (fields || []).map(_normalizeNfsField);
   document.getElementById('nfs-fetch-result').style.display = 'none';
   document.getElementById('nfs-export-select').innerHTML = '<option value="">— Tryk Connect først —</option>';
   document.getElementById('nfs-field-selector').style.display = 'none';
@@ -478,12 +512,20 @@ function closeNfsHelper() {
 function _showNfsFieldSelector() {
   if (_nfsPathFields.length === 0) return;
   const list = document.getElementById('nfs-field-list');
-  list.innerHTML = _nfsPathFields.map(([key, label]) =>
-    `<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer;font-size:.88rem;">
-      <input type="checkbox" data-field-key="${key}" checked>
-      ${label}
-    </label>`
-  ).join('');
+  const hasRecommended = _nfsPathFields.some(field => field.recommended);
+  list.innerHTML = _nfsPathFields.map((field) => {
+    const checked = hasRecommended ? field.recommended : true;
+    const badge = field.recommended
+      ? '<span style="font-size:.68rem;font-weight:700;color:#22c55e;border:1px solid rgba(34,197,94,.35);border-radius:999px;padding:2px 7px;white-space:nowrap;">Anbefalet til NAS/NFS</span>'
+      : '';
+    return `<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer;font-size:.88rem;">
+      <input type="checkbox" data-field-key="${_escapeHtml(field.key)}" ${checked ? 'checked' : ''}>
+      <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span>${_escapeHtml(field.label)}</span>
+        ${badge}
+      </span>
+    </label>`;
+  }).join('');
   document.getElementById('nfs-field-selector').style.display = '';
 }
 

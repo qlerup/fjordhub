@@ -1,4 +1,5 @@
 import os
+import copy
 import shutil
 import subprocess
 import time
@@ -139,9 +140,28 @@ def _auth_gate():
     return None
 
 
+def _with_nfs_recommendations(app_def: dict) -> dict:
+    app_copy = copy.deepcopy(app_def)
+    for step in app_copy.get("setup_steps", []):
+        for field in step.get("fields", []):
+            if field.get("type") != "path":
+                continue
+            key = str(field.get("key", "")).upper()
+            label = str(field.get("label", "")).upper()
+            if "UPLOAD" not in key and "UPLOAD" not in label:
+                continue
+            field["nfs_recommended"] = True
+            hint = str(field.get("hint") or "").strip()
+            recommendation = "Anbefalet mappe til NAS/NFS."
+            if recommendation not in hint:
+                field["hint"] = f"{hint} {recommendation}".strip()
+    return app_copy
+
+
 def _get_apps() -> list[dict]:
     apps = _remote_registry.get_apps()
-    return apps if apps else _local_registry.get_all()
+    apps = apps if apps else _local_registry.get_all()
+    return [_with_nfs_recommendations(a) for a in apps]
 
 
 def _get_app(app_id: str) -> dict | None:
