@@ -31,7 +31,7 @@ services:
       - /proc:/host/proc:ro
       - "${DATA_DIR:-./data}:/data"
       - "${APPS_DIR:-./apps}:/apps"
-      - "${FJORDHUB_HOST_DIR:-/opt/fjordhub}:/fjordhub-src"
+      - "${FJORDHUB_HOST_DIR:-.}:/fjordhub-src"
     environment:
       DATA_DIR: /data
       HOST_CGROUP_ROOT: /host/sys/fs/cgroup
@@ -47,6 +47,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       # URL to registry.json in FjordHub's GitHub repo (raw content URL)
       REGISTRY_URL: ${REGISTRY_URL:-https://raw.githubusercontent.com/qlerup/fjordhub/main/registry.json}
+      FJORDHUB_UPDATER_URL: http://fjordhub-updater:8090
       APPS_DIR: /apps
       FJORDHUB_SRC_DIR: /fjordhub-src
       # Paths to each app's docker-compose directory on the host
@@ -66,6 +67,31 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    restart: unless-stopped
+
+  fjordhub-updater:
+    build:
+      context: .
+      dockerfile: updater_service/Dockerfile
+    container_name: fjordhub-updater
+    working_dir: /repo
+    environment:
+      APP_DIR: /repo
+      SERVICE_NAME: fjordhub
+      UPDATER_SERVICE_NAME: fjordhub-updater
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-fjordhub}
+      COMPOSE_SERVICES: "fjordhub"
+      DATA_DIR: ${DATA_DIR:-./data}
+      APPS_DIR: ${APPS_DIR:-./apps}
+      FJORDHUB_HOST_DIR: ${FJORDHUB_HOST_DIR:-.}
+      FJORDHUB_UPDATER_STATE_DIR: /state
+      TZ: ${TZ:-Europe/Copenhagen}
+    volumes:
+      - "${FJORDHUB_HOST_DIR:-.}:/repo"
+      - "${DATA_DIR:-./data}/fjordhub-updater:/state"
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - fjord-net
     restart: unless-stopped
 
 networks:

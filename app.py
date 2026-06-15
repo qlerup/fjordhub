@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
+import requests
 from flask import Flask, render_template, jsonify, request, redirect, url_for
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 
@@ -28,6 +29,7 @@ REGISTRY_URL = os.environ.get(
 )
 
 FJORDHUB_SRC_DIR = os.environ.get("FJORDHUB_SRC_DIR", "")
+FJORDHUB_UPDATER_URL = str(os.environ.get("FJORDHUB_UPDATER_URL", "") or "").strip().rstrip("/")
 _FJORDHUB_APP_DEF = {"id": "fjordhub", "name": "FjordHub"}
 
 app = Flask(__name__)
@@ -252,8 +254,109 @@ def settings():
         "settings.html",
         active_page="settings",
         section=section,
-        hub_src_configured=bool(FJORDHUB_SRC_DIR),
+        hub_src_configured=bool(FJORDHUB_SRC_DIR or FJORDHUB_UPDATER_URL),
     )
+
+
+def _hub_update_label(state: str, update_available: bool = False) -> str:
+    if state == "updating":
+        return "Opdaterer..."
+    if state == "restarting":
+        return "Genstarter..."
+    if state == "failed":
+        return "Opdatering fejlede"
+    if state == "error":
+        return "Kunne ikke tjekke"
+    if state == "update_available" or update_available:
+        return "Ny opdatering klar"
+    if state == "up_to_date":
+        return "Ingen opdatering"
+    return "Klar"
+
+
+def _normalize_hub_update_payload(data: dict) -> dict:
+    data = dict(data or {})
+    git = data.get("git") if isinstance(data.get("git"), dict) else {}
+    status = str(data.get("status") or "").strip().lower()
+    running = bool(data.get("running") or status in {"running", "stopping"})
+    update_available = bool(git.get("update_available", data.get("update_available", False)))
+
+    if running:
+        state = "updating"
+    elif status == "failed":
+        state = "failed"
+    elif status == "success":
+        state = "update_available" if update_available else "up_to_date"
+    elif git.get("fetch_error") or (git and not git.get("ok", True)):
+        state = "error"
+    elif data.get("error") and not data.get("ok", True):
+        state = "error"
+    elif update_available:
+        state = "update_available"
+    elif git:
+        state = "up_to_date"
+    else:
+        state = str(data.get("state") or "error")
+
+    normalized = dict(data)
+    for key in (
+        "available",
+        "branch",
+        "current_rev",
+        "current_short",
+        "remote_rev",
+        "remote_short",
+        "dirty",
+        "dirty_lines",
+        "fetch_error",
+    ):
+        if key in git:
+            normalized[key] = git.get(key)
+
+    error = str(data.get("error") or git.get("fetch_error") or git.get("error") or "")
+    normalized.update(
+        {
+            "state": state,
+            "available": bool(git.get("available", normalized.get("available", True))),
+            "running": running,
+            "ok": bool(data.get("ok", git.get("ok", state not in {"error", "failed"}))),
+            "update_available": update_available and not running,
+            "error": error,
+            "label": _hub_update_label(state, update_available),
+        }
+    )
+    return normalized
+
+
+def _hub_update_proxy(path: str, method: str = "GET", payload: dict | None = None, timeout: int = 10) -> tuple[dict, int]:
+    if not FJORDHUB_UPDATER_URL:
+        return {"ok": False, "available": False, "error": "FjordHub updater-service er ikke konfigureret."}, 503
+
+    url = f"{FJORDHUB_UPDATER_URL}/{str(path or '').strip('/')}"
+    try:
+        if method.upper() == "POST":
+            response = requests.post(url, json=payload or {}, timeout=timeout)
+        else:
+            response = requests.get(url, timeout=timeout)
+        try:
+            data = response.json()
+        except Exception:
+            data = {"ok": False, "error": response.text[:500] or "Updater-service svarede ikke med JSON."}
+        if isinstance(data, dict):
+            data.setdefault("service_reachable", True)
+            data.setdefault("updater_url", FJORDHUB_UPDATER_URL)
+        return _normalize_hub_update_payload(data), response.status_code
+    except Exception as error:
+        return _normalize_hub_update_payload(
+            {
+                "ok": False,
+                "available": False,
+                "service_reachable": False,
+                "updater_url": FJORDHUB_UPDATER_URL,
+                "error": "FjordHub updater-service er ikke tilgaengelig.",
+                "detail": str(error),
+            }
+        ), 503
 
 
 @app.route("/api/hub/self/update/status")
@@ -261,6 +364,9 @@ def settings():
 def api_hub_self_update_status():
     if not current_user.is_admin:
         return jsonify({"ok": False, "error": "Kræver admin."}), 403
+    if FJORDHUB_UPDATER_URL:
+        payload, code = _hub_update_proxy("/status", method="GET", timeout=5)
+        return jsonify(payload), code
     status = _update_manager.get_status(_FJORDHUB_APP_DEF)
     status["log"] = _update_manager.get_log("fjordhub")
     return jsonify(status)
@@ -271,6 +377,9 @@ def api_hub_self_update_status():
 def api_hub_self_update_check():
     if not current_user.is_admin:
         return jsonify({"ok": False, "error": "Kræver admin."}), 403
+    if FJORDHUB_UPDATER_URL:
+        payload, code = _hub_update_proxy("/check", method="POST", payload={}, timeout=90)
+        return jsonify(payload), code
     status = _update_manager.check_now(_FJORDHUB_APP_DEF)
     status["log"] = _update_manager.get_log("fjordhub")
     return jsonify(status)
@@ -281,6 +390,15 @@ def api_hub_self_update_check():
 def api_hub_self_update_start():
     if not current_user.is_admin:
         return jsonify({"ok": False, "error": "Kræver admin."}), 403
+    if FJORDHUB_UPDATER_URL:
+        body = request.get_json(silent=True) or {}
+        payload, code = _hub_update_proxy(
+            "/start",
+            method="POST",
+            payload={"cleanup": bool(body.get("cleanup", False))},
+            timeout=10,
+        )
+        return jsonify(payload), code
     payload, code = _update_manager.start_update(_FJORDHUB_APP_DEF)
     return jsonify(payload), code
 
