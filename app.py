@@ -694,52 +694,58 @@ def api_mount_nfs():
     final_path = f"{mount_root.rstrip('/')}/{subdir}" if subdir else mount_root
     fstab_line = f"{nfs_export} {mount_root} nfs {options} 0 0"
 
-    try:
-        # Trin 1: Opret mount-punkt og skriv fstab på LXC via volume-mount
-        r1 = subprocess.run(
-            [
-                "docker", "run", "--rm",
-                f"--volume={mount_root}:{mount_root}",
-                "--volume=/etc/fstab:/etc/fstab",
-                "alpine", "sh", "-c",
-                f"mkdir -p {shlex.quote(mount_root)} && "
-                f"grep -qF {shlex.quote(mount_root)} /etc/fstab || "
-                f"printf '%s\\n' {shlex.quote(fstab_line)} >> /etc/fstab",
-            ],
-            capture_output=True, text=True, timeout=15,
-        )
-        if r1.returncode != 0:
-            return jsonify({"ok": False, "error": f"Trin 1 fejlede: {r1.stderr.strip() or r1.stdout.strip()}"})
+    lxc_script = "\n".join(
+        [
+            "set -eu",
+            "if ! command -v mount.nfs >/dev/null 2>&1 && [ ! -x /sbin/mount.nfs ] && [ ! -x /usr/sbin/mount.nfs ]; then",
+            "  if command -v apt-get >/dev/null 2>&1; then",
+            "    export DEBIAN_FRONTEND=noninteractive",
+            "    apt-get update >/dev/null",
+            "    apt-get install -y nfs-common >/dev/null",
+            "  elif command -v apk >/dev/null 2>&1; then",
+            "    apk add --no-cache nfs-utils util-linux >/dev/null",
+            "  elif command -v dnf >/dev/null 2>&1; then",
+            "    dnf install -y nfs-utils >/dev/null",
+            "  elif command -v yum >/dev/null 2>&1; then",
+            "    yum install -y nfs-utils >/dev/null",
+            "  elif command -v zypper >/dev/null 2>&1; then",
+            "    zypper --non-interactive install nfs-client >/dev/null",
+            "  else",
+            "    echo 'NFS-klient mangler i LXC. Installer nfs-common/nfs-utils og prov igen.' >&2",
+            "    exit 42",
+            "  fi",
+            "fi",
+            "if ! command -v mount.nfs >/dev/null 2>&1 && [ ! -x /sbin/mount.nfs ] && [ ! -x /usr/sbin/mount.nfs ]; then",
+            "  echo 'NFS mount-helper blev ikke fundet i LXC efter installation.' >&2",
+            "  exit 43",
+            "fi",
+            f"mkdir -p {shlex.quote(mount_root)}",
+            f"grep -qF {shlex.quote(fstab_line)} /etc/fstab || printf '%s\\n' {shlex.quote(fstab_line)} >> /etc/fstab",
+            f"if awk -v p={shlex.quote(mount_root)} '$2==p{{found=1}} END{{exit found?0:1}}' /proc/mounts; then",
+            "  :",
+            "else",
+            f"  mount -t nfs -o {shlex.quote(mount_options)} {shlex.quote(nfs_export)} {shlex.quote(mount_root)}",
+            "fi",
+            f"mkdir -p {shlex.quote(final_path)}" if subdir else ":",
+        ]
+    )
 
-        # Trin 2: Mount NFS via nsenter + util-linux mount (ikke busybox)
-        r2 = subprocess.run(
+    try:
+        r = subprocess.run(
             [
                 "docker", "run", "--rm",
                 "--privileged", "--pid=host",
                 "alpine", "sh", "-c",
-                f"apk add --no-cache nfs-utils util-linux >/dev/null && "
-                f"nsenter -t 1 -m -u -n -i "
-                f"/usr/bin/mount -t nfs -o {shlex.quote(mount_options)} "
-                f"{shlex.quote(nfs_export)} {shlex.quote(mount_root)}",
+                f"apk add --no-cache util-linux >/dev/null && "
+                f"nsenter -t 1 -m -u -n -i /bin/sh -c {shlex.quote(lxc_script)}",
             ],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True, text=True, timeout=180,
         )
-        if r2.returncode != 0:
-            return jsonify({"ok": False, "error": f"Mount fejlede: {r2.stderr.strip() or r2.stdout.strip()}"})
-
-        # Trin 3: Opret undermappe på NFS (via nsenter i LXC's namespace)
-        if subdir:
-            subprocess.run(
-                [
-                    "docker", "run", "--rm",
-                    "--privileged", "--pid=host",
-                    "alpine",
-                    "nsenter", "-t", "1", "-m", "-u", "-n", "-i",
-                    "--root=/proc/1/root", "--wd=/proc/1/cwd",
-                    "mkdir", "-p", final_path,
-                ],
-                capture_output=True, text=True, timeout=15,
-            )
+        if r.returncode != 0:
+            output = r.stderr.strip() or r.stdout.strip()
+            if r.returncode in (42, 43):
+                output = output or "NFS mount-helper mangler i LXC"
+            return jsonify({"ok": False, "error": f"Mount fejlede: {output}"})
 
         return jsonify({"ok": True, "path": final_path})
 
