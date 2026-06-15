@@ -61,11 +61,6 @@
     {% for step in steps %}
     <div class="wizard-panel" id="panel-{{ loop.index }}">
       <h2>{{ step.title }}</h2>
-      {% if step.fields | selectattr('type', 'equalto', 'path') | list %}
-      <div style="margin-bottom:16px;">
-        <button type="button" class="btn-nfs-helper" onclick="openNfsHelper()">🗄 NFS mount hjælper</button>
-      </div>
-      {% endif %}
       {% for field in step.fields %}
       <div class="form-field {% if field.show_if %}conditional{% endif %}"
            {% if field.show_if %}
@@ -98,6 +93,15 @@
                  value="{{ pregenerated.get(field.key, '') }}"
                  class="secret-input" readonly>
           <button type="button" class="btn-gen" onclick="regenSecret('{{ field.key }}')">↻ Ny</button>
+        </div>
+
+        {% elif field.type == "path" %}
+        <div class="path-input-row">
+          <input type="text" id="f-{{ field.key }}" name="{{ field.key }}"
+                 value="{{ field.default }}"
+                 onchange="onFieldChange('{{ field.key }}', this.value)"
+                 oninput="onFieldChange('{{ field.key }}', this.value)">
+          <button type="button" class="btn-nfs-helper btn-nfs-inline" onclick="openNfsHelper('{{ field.key }}')">🗄 NFS</button>
         </div>
 
         {% else %}
@@ -187,7 +191,7 @@
       <div id="nfs-mount-status" style="display:none;font-size:.8rem;margin-top:4px;"></div>
       <div class="nfs-modal-actions">
         <button type="button" id="nfs-copy-btn" class="btn-copy" onclick="copyNfsCommands()">Kopiér</button>
-        <button type="button" id="nfs-done-btn" class="btn btn-open" onclick="closeNfsHelper()" disabled style="opacity:.35;cursor:not-allowed;">✓ Færdig</button>
+        <button type="button" id="nfs-done-btn" class="btn btn-open" onclick="finishNfsHelper()" disabled style="opacity:.35;cursor:not-allowed;">✓ Færdig</button>
         <button type="button" class="btn btn-toggle" onclick="closeNfsHelper()">Luk</button>
       </div>
     </div>
@@ -386,11 +390,14 @@ showPanel(0);
 
 // ── NFS helper ───────────────────────────────────────────────────────────────
 
+let _nfsTargetFieldKey = null;
+
 function onNfsTypeChange() {
   renderNfsCommands();
 }
 
-function openNfsHelper() {
+function openNfsHelper(fieldKey) {
+  _nfsTargetFieldKey = fieldKey || null;
   document.getElementById('nfs-fetch-result').style.display = 'none';
   document.getElementById('nfs-export-select').innerHTML = '<option value="">— Tryk Connect først —</option>';
   _nfsSetConnected(false);
@@ -406,6 +413,22 @@ function openNfsHelper() {
 function closeNfsHelper() {
   clearInterval(_nfsMountPollTimer);
   document.getElementById('nfs-modal').style.display = 'none';
+}
+
+function finishNfsHelper() {
+  if (_nfsTargetFieldKey) {
+    const root   = document.getElementById('nfs-mount-root')?.value.trim() || '';
+    const subdir = document.getElementById('nfs-subdir')?.value.trim() || '';
+    const finalPath = subdir ? `${root.replace(/\/$/, '')}/${subdir}` : root;
+    if (finalPath) {
+      const input = document.getElementById(`f-${_nfsTargetFieldKey}`);
+      if (input) {
+        input.value = finalPath;
+        onFieldChange(_nfsTargetFieldKey, finalPath);
+      }
+    }
+  }
+  closeNfsHelper();
 }
 
 function renderNfsCommands() {
