@@ -618,9 +618,17 @@ def api_hub_sso_verify():
     return jsonify({"ok": True, "username": entry["username"], "id": entry["id"], "role": entry["role"]})
 
 
-@app.route("/api/lxc-type")
-@login_required
-def api_lxc_type():
+def _nfs_runtime_info() -> dict:
+    kernel_text = ""
+    try:
+        kernel_text = (
+            Path("/proc/sys/kernel/osrelease").read_text(errors="ignore")
+            + "\n"
+            + Path("/proc/version").read_text(errors="ignore")
+        ).lower()
+    except Exception:
+        pass
+    is_wsl2 = any(marker in kernel_text for marker in ("microsoft", "wsl", "docker-desktop", "moby"))
     try:
         uid_map = Path("/proc/self/uid_map").read_text().strip()
         parts = uid_map.split()
@@ -628,7 +636,30 @@ def api_lxc_type():
     except Exception:
         privileged = None
     vmid = os.environ.get("PROXMOX_VMID", "").strip() or None
-    return jsonify({"privileged": privileged, "vmid": vmid})
+    return {
+        "privileged": privileged,
+        "vmid": vmid,
+        "runtime": "docker_desktop" if is_wsl2 else "linux",
+        "wsl2": is_wsl2,
+        "auto_mount_supported": bool(privileged is True and not is_wsl2),
+    }
+
+
+@app.route("/api/lxc-type")
+@login_required
+def api_lxc_type():
+    return jsonify(_nfs_runtime_info())
+
+
+def _nfs_runtime_options(options: str) -> str:
+    fstab_only = {"_netdev", "nofail", "noauto", "auto"}
+    runtime_options = []
+    for raw_part in str(options or "").split(","):
+        part = raw_part.strip()
+        if not part or part in fstab_only or part.startswith("x-"):
+            continue
+        runtime_options.append(part)
+    return ",".join(runtime_options) or "defaults"
 
 
 @app.route("/api/mount-nfs", methods=["POST"])
@@ -640,6 +671,7 @@ def api_mount_nfs():
     mount_root = str(data.get("mount_root", "")).strip()
     subdir     = str(data.get("subdir", "")).strip().strip("/")
     options    = str(data.get("options", "vers=3,_netdev,nofail")).strip()
+    mount_options = _nfs_runtime_options(options)
 
     if not nfs_export or ":" not in nfs_export:
         return jsonify({"ok": False, "error": "Ugyldig NFS export"}), 400
@@ -647,6 +679,17 @@ def api_mount_nfs():
         return jsonify({"ok": False, "error": "Ugyldig mount-sti"}), 400
     if not re.fullmatch(r"[a-zA-Z0-9/_.-]+", mount_root):
         return jsonify({"ok": False, "error": "Ugyldig mount-sti"}), 400
+    if _nfs_runtime_info().get("auto_mount_supported") is not True:
+        return jsonify(
+            {
+                "ok": False,
+                "error": (
+                    "Automatisk NFS-mount er kun understoettet i en privilegeret Proxmox LXC. "
+                    "Denne FjordHub koerer paa Docker Desktop/WSL2, saa vaelg 'Windows (Docker Desktop)' "
+                    "og koer de genererede kommandoer i WSL2-terminalen."
+                ),
+            }
+        ), 400
 
     final_path = f"{mount_root.rstrip('/')}/{subdir}" if subdir else mount_root
     fstab_line = f"{nfs_export} {mount_root} nfs {options} 0 0"
@@ -674,9 +717,9 @@ def api_mount_nfs():
                 "docker", "run", "--rm",
                 "--privileged", "--pid=host",
                 "alpine", "sh", "-c",
-                f"apk add -q --no-cache nfs-utils util-linux 2>/dev/null && "
+                f"apk add --no-cache nfs-utils util-linux >/dev/null && "
                 f"nsenter -t 1 -m -u -n -i "
-                f"/usr/bin/mount -t nfs -o {shlex.quote(options)} "
+                f"/usr/bin/mount -t nfs -o {shlex.quote(mount_options)} "
                 f"{shlex.quote(nfs_export)} {shlex.quote(mount_root)}",
             ],
             capture_output=True, text=True, timeout=60,

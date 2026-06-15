@@ -425,10 +425,33 @@ async function _detectLxcType() {
   try {
     const res  = await fetch('/api/lxc-type');
     const data = await res.json();
+    const isDockerDesktop = data.runtime === 'docker_desktop' || data.wsl2 === true;
+    const proxRadio = document.getElementById('nfs-type-proxmox');
+    const proxLabel = document.getElementById('nfs-type-label-proxmox');
+    const wslRadio = document.getElementById('nfs-type-wsl2');
     _nfsLxcPrivileged = data.privileged;
     _nfsVmid = data.vmid || null;
     const vmidRow = document.getElementById('nfs-vmid-row');
     const vmidInput = document.getElementById('nfs-vmid');
+    if (isDockerDesktop) {
+      _nfsLxcPrivileged = null;
+      _nfsVmid = null;
+      if (wslRadio) wslRadio.checked = true;
+      if (proxRadio) proxRadio.disabled = true;
+      if (proxLabel) {
+        proxLabel.style.opacity = '.55';
+        proxLabel.title = 'Automatisk Proxmox/LXC-mount er ikke tilgaengeligt paa Docker Desktop.';
+      }
+      if (vmidRow) vmidRow.style.display = 'none';
+      if (el) el.innerHTML = 'Docker Desktop/WSL2 registreret - koer kommandoerne i <strong>WSL2-terminalen</strong>.';
+      renderNfsCommands();
+      return;
+    }
+    if (proxRadio) proxRadio.disabled = false;
+    if (proxLabel) {
+      proxLabel.style.opacity = '';
+      proxLabel.title = '';
+    }
     if (data.privileged === false) {
       if (vmidRow) vmidRow.style.display = '';
       if (vmidInput && !vmidInput.value && data.vmid) vmidInput.value = data.vmid;
