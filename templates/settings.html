@@ -152,7 +152,7 @@
     if (updateRunning && !running && data.state === 'up_to_date' && !data.update_available && !data.error) {
       updateRunning = false;
       statusEl.hidden = false;
-      statusEl.textContent = 'FjordHub er opdateret! Siden genindlaeses...';
+      statusEl.textContent = 'FjordHub er opdateret! Siden genindlæses...';
       statusEl.style.background = 'color-mix(in srgb,var(--green) 10%,var(--surface-2))';
       statusEl.style.color = 'var(--green)';
       statusEl.style.borderColor = 'color-mix(in srgb,var(--green) 30%,var(--border))';
