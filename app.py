@@ -366,7 +366,9 @@ def _normalize_hub_update_payload(data: dict) -> dict:
         if key in git:
             normalized[key] = git.get(key)
 
-    error = str(data.get("error") or git.get("fetch_error") or git.get("error") or "")
+    error_raw = str(data.get("error") or git.get("fetch_error") or git.get("error") or "")
+    has_active_error = state in {"error", "failed"} or (not bool(data.get("ok", True)) and bool(error_raw))
+    error = error_raw if has_active_error else ""
     normalized.update(
         {
             "state": state,
