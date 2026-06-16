@@ -187,6 +187,38 @@ def _split_dirty_lines(raw_dirty: str) -> tuple[list[str], list[str]]:
     return relevant, ignored
 
 
+def _head_gitlinks() -> dict[str, str]:
+    out = cmd_output(["git", "ls-files", "-s"], timeout=20)
+    gitlinks: dict[str, str] = {}
+    for line in out.splitlines():
+        parts = line.split(maxsplit=3)
+        if len(parts) != 4:
+            continue
+        mode, sha, _stage, path = parts
+        if mode == "160000" and sha and path:
+            gitlinks[path.strip()] = sha.strip()
+    return gitlinks
+
+
+def _sync_gitlinks_to_head() -> None:
+    for rel_path, sha in _head_gitlinks().items():
+        nested_repo = APP_DIR / rel_path
+        if not (nested_repo / ".git").exists():
+            continue
+        try:
+            has_commit = run_cmd(["git", "-C", str(nested_repo), "cat-file", "-e", f"{sha}^{{commit}}"], timeout=20)
+            if has_commit.returncode != 0:
+                run_cmd(["git", "-C", str(nested_repo), "fetch", "--all", "--tags"], timeout=120)
+            has_commit = run_cmd(["git", "-C", str(nested_repo), "cat-file", "-e", f"{sha}^{{commit}}"], timeout=20)
+            if has_commit.returncode != 0:
+                continue
+            run_cmd(["git", "-C", str(nested_repo), "checkout", "-f", sha], timeout=30)
+            run_cmd(["git", "-C", str(nested_repo), "reset", "--hard", sha], timeout=30)
+            run_cmd(["git", "-C", str(nested_repo), "clean", "-fd"], timeout=30)
+        except Exception:
+            continue
+
+
 def current_branch() -> str:
     if DEFAULT_BRANCH:
         return DEFAULT_BRANCH
@@ -416,7 +448,11 @@ def start_update(cleanup: bool) -> tuple[Dict[str, Any], int]:
     if not info.get("available"):
         return {"ok": False, "error": info.get("error") or "Updater is not available", "git": info}, 503
     if info.get("dirty"):
-        return {"ok": False, "error": "Repository has local tracked changes", "git": info}, 409
+        # Try to auto-fix nested gitlink repos (e.g. apps/fjordparcel) before failing.
+        _sync_gitlinks_to_head()
+        info = git_info(fetch=False)
+        if info.get("dirty"):
+            return {"ok": False, "error": "Repository has local tracked changes", "git": info}, 409
 
     branch = str(info.get("branch") or DEFAULT_BRANCH or "").strip()
     job_id = f"upd-{int(time.time())}-{uuid.uuid4().hex[:8]}"

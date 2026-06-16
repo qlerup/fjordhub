@@ -104,6 +104,29 @@ need_cmd() {
 	fi
 }
 
+sync_gitlinks_to_head() {
+	# Some deployments track nested app repos as gitlinks (mode 160000) without
+	# a usable .gitmodules entry. Align those nested repos to the commit recorded
+	# in the current root HEAD before evaluating dirty state.
+	git ls-files -s | awk '$1=="160000" {print $2" "$4}' | while IFS=' ' read -r sha path; do
+		[ -n "$sha" ] || continue
+		[ -n "$path" ] || continue
+		if [ ! -d "$path/.git" ]; then
+			continue
+		fi
+
+		if ! git -C "$path" cat-file -e "${sha}^{commit}" >/dev/null 2>&1; then
+			git -C "$path" fetch --all --tags >/dev/null 2>&1 || true
+		fi
+
+		if git -C "$path" cat-file -e "${sha}^{commit}" >/dev/null 2>&1; then
+			git -C "$path" checkout -f "$sha" >/dev/null 2>&1 || true
+			git -C "$path" reset --hard "$sha" >/dev/null 2>&1 || true
+			git -C "$path" clean -fd >/dev/null 2>&1 || true
+		fi
+	done
+}
+
 docker_compose() {
 	if [ -n "${DOCKER_SUDO:-}" ]; then
 		sudo docker compose "$@"
@@ -383,6 +406,8 @@ if [ ! -d .git ]; then
 	echo "Tip: kontroller APP_DIR, eller klon FjordHub repoet igen i denne mappe."
 	exit 1
 fi
+
+sync_gitlinks_to_head
 
 dirty="$(git status --porcelain --untracked-files=no)"
 if [ -n "$dirty" ]; then

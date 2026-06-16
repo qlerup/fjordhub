@@ -1,3 +1,4 @@
+import os
 import subprocess
 import threading
 import time
@@ -9,6 +10,14 @@ from services.install_state import InstallState
 
 
 CHECK_TTL_SECONDS = 60
+IGNORED_DIRTY_PREFIXES = tuple(
+    prefix
+    for prefix in (
+        str(os.environ.get("FJORDHUB_UPDATER_IGNORE_DIRTY_PREFIXES", "data/") or "").replace(";", ",").split(",")
+    )
+    for prefix in [prefix.strip().replace("\\", "/").lstrip("./")]
+    if prefix
+)
 
 
 def _now_iso() -> str:
@@ -171,6 +180,39 @@ class UpdateManager:
             return "main"
         return branch
 
+    def _normalize_porcelain_path(self, line: str) -> str:
+        text = str(line or "")
+        if len(text) < 4:
+            return ""
+        path = text[3:].strip()
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1].strip()
+        return path.replace("\\", "/").lstrip("./")
+
+    def _is_ignored_dirty_path(self, path: str) -> bool:
+        normalized = str(path or "").strip().replace("\\", "/").lstrip("./")
+        if not normalized:
+            return False
+        for prefix in IGNORED_DIRTY_PREFIXES:
+            p = prefix.rstrip("/")
+            if normalized == p or normalized.startswith(p + "/"):
+                return True
+        return False
+
+    def _split_dirty_lines(self, raw_dirty: str) -> tuple[list[str], list[str]]:
+        relevant: list[str] = []
+        ignored: list[str] = []
+        for line in str(raw_dirty or "").splitlines():
+            line = line.rstrip()
+            if not line:
+                continue
+            path = self._normalize_porcelain_path(line)
+            if path and self._is_ignored_dirty_path(path):
+                ignored.append(line)
+            else:
+                relevant.append(line)
+        return relevant, ignored
+
     def _git_info(self, install_dir: Path, fetch: bool = False) -> dict:
         if not install_dir.exists():
             return self._error_status(f"Installationsmappen findes ikke: {install_dir}")
@@ -181,11 +223,12 @@ class UpdateManager:
         try:
             branch = self._current_branch(install_dir)
             current = self._git_output(install_dir, ["rev-parse", "HEAD"], timeout=20)
-            dirty = self._git_output(
+            dirty_raw = self._git_output(
                 install_dir,
                 ["status", "--porcelain", "--untracked-files=no"],
                 timeout=20,
             )
+            dirty_lines, dirty_ignored_lines = self._split_dirty_lines(dirty_raw)
 
             fetch_error = ""
             if fetch:
@@ -212,8 +255,9 @@ class UpdateManager:
                 "running": False,
                 "ok": not bool(fetch_error),
                 "update_available": update_available,
-                "dirty": bool(dirty),
-                "dirty_lines": dirty.splitlines()[:40],
+                "dirty": bool(dirty_lines),
+                "dirty_lines": dirty_lines[:40],
+                "dirty_ignored_lines": dirty_ignored_lines[:40],
                 "branch": branch,
                 "current_rev": current,
                 "current_short": _short_sha(current),
