@@ -94,7 +94,7 @@
             <div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;">
               {% if current_user.is_admin %}
               <button type="button" class="btn-delete" style="color:var(--text-muted);"
-                      onclick="openEditModal({{ u | tojson }})"
+                      data-edit-user="{{ u | tojson | e }}"
                       title="Rediger bruger">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -338,11 +338,14 @@ function toggleAppRole(appId, checked) {
     if (e.key === 'Escape' && overlay.classList.contains('is-open')) close();
   });
 
-  {% if edit_error and edit_user_id %}
-  // Re-open modal after server-side error
-  document.addEventListener('DOMContentLoaded', function () {
-    overlay.classList.add('is-open');
+  document.querySelectorAll('[data-edit-user]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      openEditModal(JSON.parse(this.dataset.editUser));
+    });
   });
+
+  {% if edit_error and edit_user_id %}
+  overlay.classList.add('is-open');
   {% endif %}
 })();
 
