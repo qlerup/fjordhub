@@ -3,6 +3,7 @@ import copy
 import shutil
 import subprocess
 import time
+import warnings
 from pathlib import Path
 import requests
 from flask import Flask, render_template, jsonify, request, redirect, url_for
@@ -630,10 +631,35 @@ def _create_app_sso_token(app_id: str) -> tuple[str, object | None]:
     return token, None
 
 
-def _external_app_url(app_def: dict) -> str:
+def _external_app_url_candidates(app_def: dict) -> list[str]:
     host = request.host.split(":", 1)[0]
     port = int(app_def.get("default_port") or 80)
-    return f"{request.scheme}://{host}:{port}"
+    return [f"https://{host}:{port}", f"http://{host}:{port}"]
+
+
+def _app_url_is_reachable(app_url: str, app_def: dict) -> bool:
+    health_path = str(app_def.get("health_path") or "/api/health").strip() or "/api/health"
+    if not health_path.startswith("/"):
+        health_path = f"/{health_path}"
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            resp = requests.get(
+                f"{app_url.rstrip('/')}{health_path}",
+                timeout=0.8,
+                verify=False,
+            )
+        return 200 <= int(resp.status_code) < 500
+    except requests.RequestException:
+        return False
+
+
+def _external_app_url(app_def: dict) -> str:
+    candidates = _external_app_url_candidates(app_def)
+    for candidate in candidates:
+        if _app_url_is_reachable(candidate, app_def):
+            return candidate
+    return candidates[1]
 
 
 @app.route("/apps/<app_id>/sso-url")
