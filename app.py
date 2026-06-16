@@ -37,6 +37,9 @@ _FJORDHUB_APP_DEF = {"id": "fjordhub", "name": "FjordHub"}
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+app.config.update(
+    SESSION_COOKIE_NAME=os.environ.get("SESSION_COOKIE_NAME", "fjordhub_session"),
+)
 
 _auth            = AuthService(AUTH_DB_PATH)
 _local_registry  = AppRegistry(Path(__file__).parent / "app_registry")
