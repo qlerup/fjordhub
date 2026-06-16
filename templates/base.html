@@ -37,12 +37,14 @@
             <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
           </svg>
         </a>
+        {% if current_user.is_admin %}
         <a href="{{ url_for('users') }}" class="sidebar-item{% if active_page in ('profile', 'users') %} active{% endif %}" title="Brugere">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
             <circle cx="12" cy="7" r="4"/>
           </svg>
         </a>
+        {% endif %}
         {% if current_user.is_admin %}
         <a href="{{ url_for('settings') }}" class="sidebar-item{% if active_page == 'settings' %} active{% endif %}" title="Indstillinger">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
