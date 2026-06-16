@@ -195,8 +195,14 @@ def setup():
         return _setup_locked_response()
     error = ""
     username = ""
+    first_name = ""
+    last_name = ""
+    language = "da"
     if request.method == "POST":
         username = str(request.form.get("username") or "").strip()
+        first_name = str(request.form.get("first_name") or "").strip()
+        last_name = str(request.form.get("last_name") or "").strip()
+        language = _normalize_language(request.form.get("language"))
         password = str(request.form.get("password") or "")
         password2 = str(request.form.get("password2") or "")
         if not username or not password:
@@ -205,12 +211,27 @@ def setup():
             error = "Adgangskoderne matcher ikke."
         else:
             try:
-                _auth.create_user(username, password, role="admin")
+                _auth.create_user(
+                    username,
+                    password,
+                    role="admin",
+                    first_name=first_name,
+                    last_name=last_name,
+                    language=language,
+                )
                 _mark_install_initialized("first-admin-created")
                 return redirect(url_for("login", created="1"))
             except ValueError as exc:
                 error = str(exc)
-    return render_template("setup.html", error=error, username=username)
+    return render_template(
+        "setup.html",
+        error=error,
+        username=username,
+        first_name=first_name,
+        last_name=last_name,
+        language=language,
+        language_options=LANGUAGE_OPTIONS,
+    )
 
 
 @app.route("/login", methods=["GET", "POST"])
