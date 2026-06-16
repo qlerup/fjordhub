@@ -148,7 +148,7 @@ is_ignored_dirty_path() {
 filter_relevant_dirty_lines() {
 	while IFS= read -r line; do
 		[ -n "$line" ] || continue
-		path="$(printf '%s' "$line" | cut -c4-)"
+		path="$(printf '%s' "$line" | cut -c3- | sed 's/^[[:space:]]*//')"
 		case "$path" in
 			*" -> "*) path="${path##* -> }" ;;
 		esac

@@ -153,9 +153,10 @@ def cmd_output(args: list[str], timeout: int = 60) -> str:
 
 def _normalize_porcelain_path(line: str) -> str:
     text = str(line or "")
-    if len(text) < 4:
+    if len(text) < 3:
         return ""
-    path = text[3:].strip()
+    # Porcelain status uses two status columns, then path. Be lenient and trim spaces.
+    path = text[2:].lstrip()
     if " -> " in path:
         path = path.split(" -> ", 1)[1].strip()
     return path.replace("\\", "/").lstrip("./")

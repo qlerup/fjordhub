@@ -182,9 +182,9 @@ class UpdateManager:
 
     def _normalize_porcelain_path(self, line: str) -> str:
         text = str(line or "")
-        if len(text) < 4:
+        if len(text) < 3:
             return ""
-        path = text[3:].strip()
+        path = text[2:].lstrip()
         if " -> " in path:
             path = path.split(" -> ", 1)[1].strip()
         return path.replace("\\", "/").lstrip("./")
