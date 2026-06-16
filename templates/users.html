@@ -93,8 +93,8 @@
             {% set is_self = (u.id == current_user.id) %}
             <div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;">
               {% if current_user.is_admin %}
-              <button type="button" class="btn-delete" style="color:var(--text-muted);"
-                      data-edit-user="{{ u | tojson | e }}"
+                    <button type="button" class="btn-delete" style="color:var(--text-muted);"
+                      data-edit-user-id="{{ u.id }}"
                       title="Rediger bruger">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -331,6 +331,12 @@ function toggleAppRole(appId, checked) {
   var overlay = document.getElementById('edit-modal');
   var closeBtn = document.getElementById('close-edit-modal');
   var cancelBtn = document.getElementById('cancel-edit-modal');
+  var users = {{ users | tojson }};
+  var usersById = {};
+
+  (users || []).forEach(function (u) {
+    usersById[String(u.id)] = u;
+  });
 
   function close() { overlay.classList.remove('is-open'); }
   closeBtn.addEventListener('click', close);
@@ -340,14 +346,20 @@ function toggleAppRole(appId, checked) {
     if (e.key === 'Escape' && overlay.classList.contains('is-open')) close();
   });
 
-  document.querySelectorAll('[data-edit-user]').forEach(function (btn) {
+  document.querySelectorAll('[data-edit-user-id]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      openEditModal(JSON.parse(this.dataset.editUser));
+      var user = usersById[this.dataset.editUserId];
+      if (user) openEditModal(user);
     });
   });
 
   {% if edit_error and edit_user_id %}
-  overlay.classList.add('is-open');
+  var editUser = usersById[String({{ edit_user_id | int }})];
+  if (editUser) {
+    openEditModal(editUser);
+  } else {
+    overlay.classList.add('is-open');
+  }
   {% endif %}
 })();
 
