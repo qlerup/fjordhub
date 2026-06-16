@@ -323,7 +323,6 @@
   if (openBtn) openBtn.addEventListener('click', open);
   closeBtn.addEventListener('click', close);
   cancelBtn.addEventListener('click', close);
-  overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && overlay.classList.contains('is-open')) close();
   });
@@ -351,7 +350,6 @@ function toggleAppRole(appId, checked) {
   function close() { overlay.classList.remove('is-open'); }
   closeBtn.addEventListener('click', close);
   cancelBtn.addEventListener('click', close);
-  overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && overlay.classList.contains('is-open')) close();
   });
