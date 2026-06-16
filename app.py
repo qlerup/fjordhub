@@ -475,7 +475,26 @@ def profile():
                 pw_ok = True
             except ValueError as exc:
                 pw_error = str(exc)
-    return render_template("profile.html", active_page="profile", pw_error=pw_error, pw_ok=pw_ok)
+    return render_template(
+        "profile.html",
+        active_page="profile",
+        pw_error=pw_error,
+        pw_ok=pw_ok,
+        info_ok=str(request.args.get("info") or "") == "1",
+        profile_user=_auth.get_by_id(current_user.id) or current_user,
+        language_options=LANGUAGE_OPTIONS,
+    )
+
+
+@app.route("/profile/info", methods=["POST"])
+def profile_info():
+    _auth.update_user_profile(
+        current_user.id,
+        first_name=str(request.form.get("first_name") or "").strip(),
+        last_name=str(request.form.get("last_name") or "").strip(),
+        language=_normalize_language(request.form.get("language")),
+    )
+    return redirect(url_for("profile", info="1"))
 
 
 def _installed_hub_apps() -> list[dict]:
