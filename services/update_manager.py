@@ -13,7 +13,7 @@ CHECK_TTL_SECONDS = 60
 IGNORED_DIRTY_PREFIXES = tuple(
     prefix
     for prefix in (
-        str(os.environ.get("FJORDHUB_UPDATER_IGNORE_DIRTY_PREFIXES", "data/") or "").replace(";", ",").split(",")
+        str(os.environ.get("FJORDHUB_UPDATER_IGNORE_DIRTY_PREFIXES", "data/,apps/fjordparcel") or "").replace(";", ",").split(",")
     )
     for prefix in [prefix.strip().replace("\\", "/").lstrip("./")]
     if prefix
