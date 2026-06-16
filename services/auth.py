@@ -196,6 +196,38 @@ class AuthService:
             except sqlite3.IntegrityError:
                 raise ValueError("Brugernavnet er allerede i brug.")
 
+    def update_user(
+        self,
+        user_id: int,
+        username: str = "",
+        first_name: str = "",
+        last_name: str = "",
+        language: str = "da",
+        role: str = "user",
+        new_password: str = "",
+    ) -> Optional[User]:
+        username = username.strip()
+        if not username:
+            raise ValueError("Brugernavn er påkrævet.")
+        if role not in ("admin", "user"):
+            raise ValueError("Ugyldig rolle.")
+        first_name = str(first_name or "").strip()
+        last_name = str(last_name or "").strip()
+        language = _normalize_language(language)
+        with closing(self._conn()) as conn:
+            try:
+                conn.execute(
+                    """UPDATE users SET username=?, first_name=?, last_name=?, language=?, role=?
+                       WHERE id=?""",
+                    (username, first_name, last_name, language, role, int(user_id)),
+                )
+                conn.commit()
+            except sqlite3.IntegrityError:
+                raise ValueError("Brugernavnet er allerede i brug.")
+        if new_password:
+            self.change_password(user_id, new_password)
+        return self.get_by_id(int(user_id))
+
     def update_user_profile(
         self,
         user_id: int,

@@ -507,7 +507,8 @@ def _installed_hub_apps() -> list[dict]:
 def users():
     if not current_user.is_admin:
         return redirect(url_for("dashboard"))
-    msg = "Bruger oprettet." if str(request.args.get("msg") or "") == "1" else ""
+    _msg_map = {"1": "Bruger oprettet.", "2": "Bruger opdateret."}
+    msg = _msg_map.get(str(request.args.get("msg") or ""), "")
     return render_template(
         "users.html",
         active_page="users",
@@ -555,6 +556,65 @@ def create_user():
             hub_apps=_installed_hub_apps(),
             language_options=LANGUAGE_OPTIONS,
             modal_error=str(exc),
+        )
+
+
+@app.route("/users/<int:user_id>/edit", methods=["POST"])
+def edit_user(user_id: int):
+    if not current_user.is_admin:
+        return redirect(url_for("dashboard"))
+    target = _auth.get_by_id(user_id)
+    if not target:
+        return redirect(url_for("users"))
+    username = str(request.form.get("username") or "").strip()
+    first_name = str(request.form.get("first_name") or "").strip()
+    last_name = str(request.form.get("last_name") or "").strip()
+    language = _normalize_language(request.form.get("language"))
+    role = str(request.form.get("role") or "user")
+    new_password = str(request.form.get("new_password") or "")
+    app_ids = request.form.getlist("app_access")
+    app_roles = {aid: str(request.form.get(f"app_role_{aid}") or "user") for aid in app_ids}
+    if target.is_admin and role != "admin" and _auth.admin_count() <= 1:
+        return render_template(
+            "users.html",
+            active_page="users",
+            users=_auth.get_all_users_with_access(),
+            admin_count=_auth.admin_count(),
+            hub_apps=_installed_hub_apps(),
+            language_options=LANGUAGE_OPTIONS,
+            edit_error="Kan ikke ændre rolle for den eneste admin.",
+            edit_user_id=user_id,
+        )
+    try:
+        _auth.update_user(
+            user_id,
+            username=username,
+            first_name=first_name,
+            last_name=last_name,
+            language=language,
+            role=role,
+            new_password=new_password,
+        )
+        existing_ids = {a["app_id"] for a in _auth.get_user_app_access(user_id)}
+        new_ids = set(app_ids)
+        for aid in existing_ids - new_ids:
+            _auth.remove_user_app_access(user_id, aid)
+        for aid in app_ids:
+            app_role = app_roles.get(aid, "user")
+            if app_role not in ("admin", "user"):
+                app_role = "user"
+            _auth.set_user_app_access(user_id, aid, app_role)
+        return redirect(url_for("users", msg="2"))
+    except ValueError as exc:
+        return render_template(
+            "users.html",
+            active_page="users",
+            users=_auth.get_all_users_with_access(),
+            admin_count=_auth.admin_count(),
+            hub_apps=_installed_hub_apps(),
+            language_options=LANGUAGE_OPTIONS,
+            edit_error=str(exc),
+            edit_user_id=user_id,
         )
 
 
