@@ -523,12 +523,22 @@ def create_user():
     if not current_user.is_admin:
         return redirect(url_for("dashboard"))
     username = str(request.form.get("username") or "").strip()
+    first_name = str(request.form.get("first_name") or "").strip()
+    last_name = str(request.form.get("last_name") or "").strip()
+    language = _normalize_language(request.form.get("language"))
     password = str(request.form.get("password") or "")
     role = str(request.form.get("role") or "user")
     app_ids = request.form.getlist("app_access")
     app_roles = {aid: str(request.form.get(f"app_role_{aid}") or "user") for aid in app_ids}
     try:
-        user_id = _auth.create_user(username, password, role=role)
+        user_id = _auth.create_user(
+            username,
+            password,
+            role=role,
+            first_name=first_name,
+            last_name=last_name,
+            language=language,
+        )
         for aid in app_ids:
             app_role = app_roles.get(aid, "user")
             if app_role not in ("admin", "user"):
