@@ -23,6 +23,7 @@ SHOW_LOGS=1
 CLEANUP_DOCKER="${CLEANUP_DOCKER:-no}"
 COMPOSE_SERVICES="${COMPOSE_SERVICES:-fjordhub}"
 FJORDHUB_UPDATE_REEXECED="${FJORDHUB_UPDATE_REEXECED:-0}"
+IGNORED_DIRTY_PREFIXES="${FJORDHUB_UPDATER_IGNORE_DIRTY_PREFIXES:-data/,apps/fjordparcel}"
 
 usage() {
 	cat <<EOF
@@ -123,6 +124,36 @@ sync_gitlinks_to_head() {
 			git -C "$path" checkout -f "$sha" >/dev/null 2>&1 || true
 			git -C "$path" reset --hard "$sha" >/dev/null 2>&1 || true
 			git -C "$path" clean -fd >/dev/null 2>&1 || true
+		fi
+	done
+}
+
+is_ignored_dirty_path() {
+	path="$1"
+	norm="$(printf '%s' "$path" | sed 's#\\#/#g; s#^\./##')"
+	old_ifs="$IFS"
+	IFS=','
+	for raw in $IGNORED_DIRTY_PREFIXES; do
+		prefix="$(printf '%s' "$raw" | sed 's#\\#/#g; s#^\./##; s#/$##; s#^[[:space:]]*##; s#[[:space:]]*$##')"
+		[ -n "$prefix" ] || continue
+		if [ "$norm" = "$prefix" ] || [ "${norm#"$prefix"/}" != "$norm" ]; then
+			IFS="$old_ifs"
+			return 0
+		fi
+	done
+	IFS="$old_ifs"
+	return 1
+}
+
+filter_relevant_dirty_lines() {
+	while IFS= read -r line; do
+		[ -n "$line" ] || continue
+		path="$(printf '%s' "$line" | cut -c4-)"
+		case "$path" in
+			*" -> "*) path="${path##* -> }" ;;
+		esac
+		if ! is_ignored_dirty_path "$path"; then
+			printf '%s\n' "$line"
 		fi
 	done
 }
@@ -410,10 +441,11 @@ fi
 sync_gitlinks_to_head
 
 dirty="$(git status --porcelain --untracked-files=no)"
-if [ -n "$dirty" ]; then
+dirty_relevant="$(printf '%s\n' "$dirty" | filter_relevant_dirty_lines || true)"
+if [ -n "$dirty_relevant" ]; then
 	echo "Fejl: der er lokale tracked aendringer i $APP_DIR."
 	echo "Commit/stash dem foerst, eller ret mappen manuelt foer update koeres igen."
-	git status --short --untracked-files=no
+	printf '%s\n' "$dirty_relevant"
 	exit 1
 fi
 
