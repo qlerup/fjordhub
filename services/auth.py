@@ -11,11 +11,23 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 
 class User(UserMixin):
-    def __init__(self, id: int, username: str, role: str, created_at: str):
+    def __init__(
+        self,
+        id: int,
+        username: str,
+        role: str,
+        created_at: str,
+        first_name: str = "",
+        last_name: str = "",
+        language: str = "da",
+    ):
         self.id = id
         self.username = username
         self.role = role
         self.created_at = created_at
+        self.first_name = first_name
+        self.last_name = last_name
+        self.language = language
 
     @property
     def is_admin(self) -> bool:
@@ -30,6 +42,9 @@ def _row_to_user(row) -> Optional[User]:
         username=str(row["username"]),
         role=str(row["role"] or "user"),
         created_at=str(row["created_at"] or ""),
+        first_name=str(row["first_name"] or ""),
+        last_name=str(row["last_name"] or ""),
+        language=_normalize_language(row["language"]),
     )
 
 
@@ -41,10 +56,21 @@ def _user_access_dict(row) -> dict:
     return {
         "id": int(row["id"]),
         "username": str(row["username"]),
+        "first_name": str(row["first_name"] or ""),
+        "last_name": str(row["last_name"] or ""),
+        "language": _normalize_language(row["language"]),
         "hub_role": str(row["hub_role"] or "user"),
         "role": str(row["app_role"] or "user"),
         "created_at": str(row["created_at"] or ""),
     }
+
+
+LANGUAGE_VALUES = {"da", "en", "fr"}
+
+
+def _normalize_language(value) -> str:
+    lang = str(value or "da").strip().lower()
+    return lang if lang in LANGUAGE_VALUES else "da"
 
 
 class AuthService:
@@ -64,6 +90,9 @@ class AuthService:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT UNIQUE NOT NULL COLLATE NOCASE,
                     password_hash TEXT NOT NULL,
+                    first_name TEXT NOT NULL DEFAULT '',
+                    last_name TEXT NOT NULL DEFAULT '',
+                    language TEXT NOT NULL DEFAULT 'da',
                     role TEXT NOT NULL DEFAULT 'user',
                     created_at TEXT NOT NULL
                 );
@@ -85,6 +114,16 @@ class AuthService:
             cols = {r["name"] for r in conn.execute("PRAGMA table_info(app_hub_keys)").fetchall()}
             if "api_key_hash" not in cols:
                 conn.execute("ALTER TABLE app_hub_keys ADD COLUMN api_key_hash TEXT")
+            user_cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+            if "first_name" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN first_name TEXT NOT NULL DEFAULT ''")
+            if "last_name" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN last_name TEXT NOT NULL DEFAULT ''")
+            if "language" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'da'")
+            conn.execute("UPDATE users SET first_name=COALESCE(first_name, '')")
+            conn.execute("UPDATE users SET last_name=COALESCE(last_name, '')")
+            conn.execute("UPDATE users SET language=COALESCE(NULLIF(language, ''), 'da')")
             conn.commit()
 
     # ── Users ────────────────────────────────────────────────────────────────
@@ -120,8 +159,19 @@ class AuthService:
             return None
         return _row_to_user(row)
 
-    def create_user(self, username: str, password: str, role: str = "user") -> int:
+    def create_user(
+        self,
+        username: str,
+        password: str,
+        role: str = "user",
+        first_name: str = "",
+        last_name: str = "",
+        language: str = "da",
+    ) -> int:
         username = username.strip()
+        first_name = str(first_name or "").strip()
+        last_name = str(last_name or "").strip()
+        language = _normalize_language(language)
         if not username:
             raise ValueError("Brugernavn er påkrævet.")
         if not password:
@@ -135,13 +185,40 @@ class AuthService:
         with closing(self._conn()) as conn:
             try:
                 cur = conn.execute(
-                    "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
-                    (username, pw_hash, role, now),
+                    """
+                    INSERT INTO users (username, password_hash, first_name, last_name, language, role, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (username, pw_hash, first_name, last_name, language, role, now),
                 )
                 conn.commit()
                 return int(cur.lastrowid)
             except sqlite3.IntegrityError:
                 raise ValueError("Brugernavnet er allerede i brug.")
+
+    def update_user_profile(
+        self,
+        user_id: int,
+        first_name: str = "",
+        last_name: str = "",
+        language: str = "da",
+    ) -> Optional[User]:
+        with closing(self._conn()) as conn:
+            conn.execute(
+                """
+                UPDATE users
+                SET first_name=?, last_name=?, language=?
+                WHERE id=?
+                """,
+                (
+                    str(first_name or "").strip(),
+                    str(last_name or "").strip(),
+                    _normalize_language(language),
+                    int(user_id),
+                ),
+            )
+            conn.commit()
+        return self.get_by_id(int(user_id))
 
     def change_password(self, user_id: int, new_password: str) -> None:
         if len(new_password) < 6:
@@ -173,6 +250,9 @@ class AuthService:
             result.append({
                 "id": u.id,
                 "username": u.username,
+                "first_name": u.first_name,
+                "last_name": u.last_name,
+                "language": u.language,
                 "role": u.role,
                 "is_admin": u.is_admin,
                 "created_at": u.created_at,
@@ -288,6 +368,9 @@ class AuthService:
         return {
             "id": user.id,
             "username": user.username,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "language": user.language,
             "hub_role": user.role,
             "role": role,
             "created_at": user.created_at,
@@ -297,7 +380,8 @@ class AuthService:
         with closing(self._conn()) as conn:
             rows = conn.execute(
                 """
-                SELECT u.id, u.username, u.role AS hub_role, u.created_at,
+                SELECT u.id, u.username, u.first_name, u.last_name, u.language,
+                       u.role AS hub_role, u.created_at,
                        a.role AS app_role
                 FROM user_app_access a
                 JOIN users u ON u.id = a.user_id
@@ -314,8 +398,14 @@ class AuthService:
         username: str,
         password: str = "",
         role: str = "user",
+        first_name: str = "",
+        last_name: str = "",
+        language: str = "da",
     ) -> dict:
         username = username.strip()
+        first_name = str(first_name or "").strip()
+        last_name = str(last_name or "").strip()
+        language = _normalize_language(language)
         if not username:
             raise ValueError("Brugernavn er påkrævet.")
         if role not in ("admin", "user"):
@@ -323,13 +413,25 @@ class AuthService:
         user = self.get_by_username(username)
         if user:
             user_id = user.id
+            if first_name or last_name or language:
+                user = self.update_user_profile(user_id, first_name, last_name, language) or user
         else:
-            user_id = self.create_user(username, password, role="user")
+            user_id = self.create_user(
+                username,
+                password,
+                role="user",
+                first_name=first_name,
+                last_name=last_name,
+                language=language,
+            )
             user = self.get_by_id(user_id)
         self.set_user_app_access(user_id, app_id, role)
         return {
             "id": int(user_id),
             "username": username if user is None else user.username,
+            "first_name": "" if user is None else user.first_name,
+            "last_name": "" if user is None else user.last_name,
+            "language": language if user is None else user.language,
             "hub_role": "user" if user is None else user.role,
             "role": role,
             "created_at": "" if user is None else user.created_at,
@@ -347,6 +449,9 @@ class AuthService:
         return {
             "id": user.id,
             "username": user.username,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "language": user.language,
             "hub_role": user.role,
             "role": role,
             "created_at": user.created_at,
