@@ -400,12 +400,14 @@ class AuthService:
         role: str = "user",
         first_name: str = "",
         last_name: str = "",
-        language: str = "da",
+        language: str = "",
     ) -> dict:
         username = username.strip()
         first_name = str(first_name or "").strip()
         last_name = str(last_name or "").strip()
-        language = _normalize_language(language)
+        raw_language = str(language or "").strip()
+        metadata_provided = bool(first_name or last_name or raw_language)
+        language = _normalize_language(raw_language) if raw_language else "da"
         if not username:
             raise ValueError("Brugernavn er påkrævet.")
         if role not in ("admin", "user"):
@@ -413,7 +415,7 @@ class AuthService:
         user = self.get_by_username(username)
         if user:
             user_id = user.id
-            if first_name or last_name or language:
+            if metadata_provided:
                 user = self.update_user_profile(user_id, first_name, last_name, language) or user
         else:
             user_id = self.create_user(

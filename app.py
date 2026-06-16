@@ -34,6 +34,17 @@ FJORDHUB_SRC_DIR = os.environ.get("FJORDHUB_SRC_DIR", "")
 FJORDHUB_UPDATER_URL = str(os.environ.get("FJORDHUB_UPDATER_URL", "") or "").strip().rstrip("/")
 FJORDHUB_IMAGE = str(os.environ.get("FJORDHUB_IMAGE", "fjordhub-fjordhub:latest") or "").strip() or "fjordhub-fjordhub:latest"
 _FJORDHUB_APP_DEF = {"id": "fjordhub", "name": "FjordHub"}
+LANGUAGE_OPTIONS = [
+    {"value": "da", "label": "Dansk"},
+    {"value": "en", "label": "English"},
+    {"value": "fr", "label": "Français"},
+]
+LANGUAGE_VALUES = {entry["value"] for entry in LANGUAGE_OPTIONS}
+
+
+def _normalize_language(value: str) -> str:
+    lang = str(value or "da").strip().lower()
+    return lang if lang in LANGUAGE_VALUES else "da"
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
