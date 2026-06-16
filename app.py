@@ -588,7 +588,7 @@ def hub_user_sync():
     password = str(data.get("password") or "").strip()
     first_name = str(data.get("first_name") or "").strip()
     last_name = str(data.get("last_name") or "").strip()
-    language = _normalize_language(data.get("language"))
+    language = _normalize_language(data.get("language")) if "language" in data else ""
     if role not in ("admin", "user"):
         role = "user"
     if not username:
@@ -651,7 +651,7 @@ def api_hub_app_users():
     role = str(data.get("role") or "user").strip()
     first_name = str(data.get("first_name") or "").strip()
     last_name = str(data.get("last_name") or "").strip()
-    language = _normalize_language(data.get("language"))
+    language = _normalize_language(data.get("language")) if "language" in data else ""
     try:
         user = _auth.create_or_grant_app_user(
             app_id,
