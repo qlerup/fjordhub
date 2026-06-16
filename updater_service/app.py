@@ -25,6 +25,15 @@ LOCK = threading.RLock()
 RUNNING_PROCESS: Optional[subprocess.Popen] = None
 STOP_REQUESTED = False
 
+_IGNORED_DIRTY_PREFIXES = tuple(
+    prefix
+    for prefix in (
+        str(os.environ.get("FJORDHUB_UPDATER_IGNORE_DIRTY_PREFIXES", "data/") or "").replace(";", ",").split(",")
+    )
+    for prefix in [prefix.strip().replace("\\", "/").lstrip("./")]
+    if prefix
+)
+
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -142,6 +151,42 @@ def cmd_output(args: list[str], timeout: int = 60) -> str:
     return (result.stdout or "").strip()
 
 
+def _normalize_porcelain_path(line: str) -> str:
+    text = str(line or "")
+    if len(text) < 4:
+        return ""
+    path = text[3:].strip()
+    if " -> " in path:
+        path = path.split(" -> ", 1)[1].strip()
+    return path.replace("\\", "/").lstrip("./")
+
+
+def _is_ignored_dirty_path(path: str) -> bool:
+    normalized = str(path or "").strip().replace("\\", "/").lstrip("./")
+    if not normalized:
+        return False
+    for prefix in _IGNORED_DIRTY_PREFIXES:
+        p = prefix.rstrip("/")
+        if normalized == p or normalized.startswith(p + "/"):
+            return True
+    return False
+
+
+def _split_dirty_lines(raw_dirty: str) -> tuple[list[str], list[str]]:
+    relevant: list[str] = []
+    ignored: list[str] = []
+    for line in str(raw_dirty or "").splitlines():
+        line = line.rstrip()
+        if not line:
+            continue
+        path = _normalize_porcelain_path(line)
+        if path and _is_ignored_dirty_path(path):
+            ignored.append(line)
+        else:
+            relevant.append(line)
+    return relevant, ignored
+
+
 def current_branch() -> str:
     if DEFAULT_BRANCH:
         return DEFAULT_BRANCH
@@ -163,7 +208,8 @@ def git_info(fetch: bool = False) -> Dict[str, Any]:
     try:
         branch = current_branch()
         current = cmd_output(["git", "rev-parse", "HEAD"], timeout=20)
-        dirty = cmd_output(["git", "status", "--porcelain", "--untracked-files=no"], timeout=20)
+        dirty_raw = cmd_output(["git", "status", "--porcelain", "--untracked-files=no"], timeout=20)
+        dirty_lines, dirty_ignored_lines = _split_dirty_lines(dirty_raw)
         fetch_error = ""
         if fetch:
             fetched = run_cmd(["git", "fetch", "origin", branch], timeout=180)
@@ -184,8 +230,9 @@ def git_info(fetch: bool = False) -> Dict[str, Any]:
             "remote_rev": remote,
             "remote_short": remote[:12] if remote else "",
             "update_available": bool(remote and current != remote),
-            "dirty": bool(dirty),
-            "dirty_lines": dirty.splitlines()[:40],
+            "dirty": bool(dirty_lines),
+            "dirty_lines": dirty_lines[:40],
+            "dirty_ignored_lines": dirty_ignored_lines[:40],
             "fetch_error": fetch_error,
             "app_dir": str(APP_DIR),
             "script": str(UPDATE_SCRIPT),
@@ -384,7 +431,11 @@ def start_update(cleanup: bool) -> tuple[Dict[str, Any], int]:
 
 def run_check(fetch: bool) -> Dict[str, Any]:
     info = git_info(fetch=fetch)
-    state = update_state({"git": info, "last_check_at": now_iso()})
+    # Clear stale error/status from previous failed start attempts once a new check succeeds.
+    patch: Dict[str, Any] = {"git": info, "last_check_at": now_iso()}
+    if info.get("ok"):
+        patch.update({"status": "idle", "error": ""})
+    state = update_state(patch)
     return {"ok": bool(info.get("ok")), **state}
 
 
