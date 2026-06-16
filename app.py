@@ -616,12 +616,14 @@ def _create_app_sso_token(app_id: str) -> tuple[str, object | None]:
     if not _auth.get_hub_key(app_id):
         return "", (jsonify({"ok": False, "error": "Appen mangler FjordHub-integration. Opdater eller geninstaller appen via FjordHub."}), 400)
     app_role = _auth.get_user_app_role(int(current_user.id), app_id)
+    hub_role = "admin" if current_user.is_admin else "user"
     role = app_role or ("admin" if current_user.is_admin else "user")
     token = generate_secret(32)
     _sso_tokens[token] = {
         "username": current_user.username,
         "id": current_user.id,
         "role": role,
+        "hub_role": hub_role,
         "app_id": app_id,
         "expires_at": time.time() + 60,
     }
@@ -707,7 +709,13 @@ def api_hub_sso_verify():
         return jsonify({"ok": False, "error": "Token tilhører en anden app"}), 401
     if time.time() > entry["expires_at"]:
         return jsonify({"ok": False, "error": "Token er udløbet"}), 401
-    return jsonify({"ok": True, "username": entry["username"], "id": entry["id"], "role": entry["role"]})
+    return jsonify({
+        "ok": True,
+        "username": entry["username"],
+        "id": entry["id"],
+        "role": entry["role"],
+        "hub_role": entry.get("hub_role", entry["role"]),
+    })
 
 
 def _nfs_runtime_info() -> dict:
