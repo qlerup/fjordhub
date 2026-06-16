@@ -209,7 +209,6 @@
     </form>
   </div>
 </div>
-{% endblock %}
 
 <!-- Rediger bruger modal -->
 <div class="modal-overlay" id="edit-modal">
@@ -297,8 +296,11 @@
   </div>
 </div>
 
+{% endblock %}
+
 {% block scripts %}
 <script>
+// Tilføj bruger modal
 (function () {
   const overlay = document.getElementById('add-modal');
   const openBtn = document.getElementById('open-add-modal');
@@ -308,11 +310,11 @@
   function open() { overlay.classList.add('is-open'); document.getElementById('new-username').focus(); }
   function close() { overlay.classList.remove('is-open'); }
 
-  openBtn && openBtn.addEventListener('click', open);
+  if (openBtn) openBtn.addEventListener('click', open);
   closeBtn.addEventListener('click', close);
   cancelBtn.addEventListener('click', close);
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-  document.addEventListener('keydown', e => {
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && overlay.classList.contains('is-open')) close();
   });
 
@@ -320,21 +322,21 @@
 })();
 
 function toggleAppRole(appId, checked) {
-  const wrap = document.getElementById('app_role_wrap_' + appId);
+  var wrap = document.getElementById('app_role_wrap_' + appId);
   if (wrap) wrap.style.display = checked ? '' : 'none';
 }
 
-// Edit modal
+// Rediger bruger modal
 (function () {
-  const overlay = document.getElementById('edit-modal');
-  const closeBtn = document.getElementById('close-edit-modal');
-  const cancelBtn = document.getElementById('cancel-edit-modal');
+  var overlay = document.getElementById('edit-modal');
+  var closeBtn = document.getElementById('close-edit-modal');
+  var cancelBtn = document.getElementById('cancel-edit-modal');
 
   function close() { overlay.classList.remove('is-open'); }
   closeBtn.addEventListener('click', close);
   cancelBtn.addEventListener('click', close);
-  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-  document.addEventListener('keydown', e => {
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && overlay.classList.contains('is-open')) close();
   });
 
@@ -350,13 +352,13 @@ function toggleAppRole(appId, checked) {
 })();
 
 function toggleEditAppRole(appId, checked) {
-  const wrap = document.getElementById('edit_app_role_wrap_' + appId);
+  var wrap = document.getElementById('edit_app_role_wrap_' + appId);
   if (wrap) wrap.style.display = checked ? '' : 'none';
 }
 
 function openEditModal(user) {
-  const overlay = document.getElementById('edit-modal');
-  const form = document.getElementById('edit-form');
+  var overlay = document.getElementById('edit-modal');
+  var form = document.getElementById('edit-form');
   form.action = '/users/' + user.id + '/edit';
 
   document.getElementById('edit-user-label').textContent = user.username;
@@ -367,17 +369,16 @@ function openEditModal(user) {
   document.getElementById('edit-role').value = user.role || 'user';
   document.getElementById('edit-language').value = user.language || 'da';
 
-  // Build a map of app_id -> role from the user's current app_access
-  const accessMap = {};
+  var accessMap = {};
   (user.app_access || []).forEach(function (a) { accessMap[a.app_id] = a.role; });
 
   document.querySelectorAll('[id^="edit_app_chk_"]').forEach(function (chk) {
-    const appId = chk.value;
-    const hasAccess = appId in accessMap;
+    var appId = chk.value;
+    var hasAccess = appId in accessMap;
     chk.checked = hasAccess;
-    const wrap = document.getElementById('edit_app_role_wrap_' + appId);
+    var wrap = document.getElementById('edit_app_role_wrap_' + appId);
     if (wrap) wrap.style.display = hasAccess ? '' : 'none';
-    const sel = document.getElementById('edit_app_role_' + appId);
+    var sel = document.getElementById('edit_app_role_' + appId);
     if (sel) sel.value = hasAccess ? (accessMap[appId] || 'user') : 'user';
   });
 
