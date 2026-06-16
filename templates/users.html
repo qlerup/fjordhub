@@ -241,9 +241,19 @@
         <label for="edit-username">Brugernavn</label>
         <input id="edit-username" name="username" type="text" autocomplete="off" required>
       </div>
-      <div class="auth-field">
-        <label for="edit-new-password">Ny adgangskode <span style="font-weight:400;color:var(--text-muted);font-size:.8rem;">(lad stå tom for uændret)</span></label>
-        <input id="edit-new-password" name="new_password" type="password" autocomplete="new-password">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+        <div class="auth-field">
+          <label for="edit-current-password">Nuværende adgangskode <span style="font-weight:400;color:var(--text-muted);font-size:.8rem;">(kræves ved ændring)</span></label>
+          <input id="edit-current-password" name="current_password" type="password" autocomplete="current-password">
+        </div>
+        <div class="auth-field">
+          <label for="edit-new-password">Ny adgangskode</label>
+          <input id="edit-new-password" name="new_password" type="password" autocomplete="new-password">
+        </div>
+        <div class="auth-field">
+          <label for="edit-new-password2">Gentag ny adgangskode</label>
+          <input id="edit-new-password2" name="new_password2" type="password" autocomplete="new-password">
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
         <div class="auth-field">
@@ -377,7 +387,9 @@ function openEditModal(user) {
   document.getElementById('edit-first-name').value = user.first_name || '';
   document.getElementById('edit-last-name').value = user.last_name || '';
   document.getElementById('edit-username').value = user.username || '';
+  document.getElementById('edit-current-password').value = '';
   document.getElementById('edit-new-password').value = '';
+  document.getElementById('edit-new-password2').value = '';
   document.getElementById('edit-role').value = user.role || 'user';
   document.getElementById('edit-language').value = user.language || 'da';
 

@@ -571,7 +571,9 @@ def edit_user(user_id: int):
     last_name = str(request.form.get("last_name") or "").strip()
     language = _normalize_language(request.form.get("language"))
     role = str(request.form.get("role") or "user")
+    current_password = str(request.form.get("current_password") or "")
     new_password = str(request.form.get("new_password") or "")
+    new_password2 = str(request.form.get("new_password2") or "")
     app_ids = request.form.getlist("app_access")
     app_roles = {aid: str(request.form.get(f"app_role_{aid}") or "user") for aid in app_ids}
     if target.is_admin and role != "admin" and _auth.admin_count() <= 1:
@@ -585,6 +587,41 @@ def edit_user(user_id: int):
             edit_error="Kan ikke ændre rolle for den eneste admin.",
             edit_user_id=user_id,
         )
+    password_fields_filled = bool(current_password or new_password or new_password2)
+    if password_fields_filled:
+        if not (current_password and new_password and new_password2):
+            return render_template(
+                "users.html",
+                active_page="users",
+                users=_auth.get_all_users_with_access(),
+                admin_count=_auth.admin_count(),
+                hub_apps=_installed_hub_apps(),
+                language_options=LANGUAGE_OPTIONS,
+                edit_error="For at ændre adgangskode skal du udfylde nuværende, ny og gentag ny adgangskode.",
+                edit_user_id=user_id,
+            )
+        if new_password != new_password2:
+            return render_template(
+                "users.html",
+                active_page="users",
+                users=_auth.get_all_users_with_access(),
+                admin_count=_auth.admin_count(),
+                hub_apps=_installed_hub_apps(),
+                language_options=LANGUAGE_OPTIONS,
+                edit_error="Ny adgangskode og gentag ny adgangskode matcher ikke.",
+                edit_user_id=user_id,
+            )
+        if _auth.check_password(target.username, current_password) is None:
+            return render_template(
+                "users.html",
+                active_page="users",
+                users=_auth.get_all_users_with_access(),
+                admin_count=_auth.admin_count(),
+                hub_apps=_installed_hub_apps(),
+                language_options=LANGUAGE_OPTIONS,
+                edit_error="Nuværende adgangskode er forkert.",
+                edit_user_id=user_id,
+            )
     try:
         _auth.update_user(
             user_id,
@@ -593,7 +630,7 @@ def edit_user(user_id: int):
             last_name=last_name,
             language=language,
             role=role,
-            new_password=new_password,
+            new_password=new_password if password_fields_filled else "",
         )
         existing_ids = {a["app_id"] for a in _auth.get_user_app_access(user_id)}
         new_ids = set(app_ids)
