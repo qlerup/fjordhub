@@ -59,6 +59,12 @@
           <td>
             <strong>{{ u.username }}</strong>
             {% if u.id == current_user.id %}<span style="color:var(--text-muted);font-size:.75rem;margin-left:6px;">(dig)</span>{% endif %}
+            {% if u.first_name or u.last_name or u.language %}
+              <div style="color:var(--text-muted);font-size:.78rem;margin-top:3px;">
+                {{ (u.first_name ~ ' ' ~ u.last_name).strip() or 'Ingen navn' }}
+                {% if u.language %}<span style="opacity:.65;"> · {{ u.language|upper }}</span>{% endif %}
+              </div>
+            {% endif %}
           </td>
           <td>
             {% if u.is_admin %}
@@ -110,7 +116,7 @@
 
 <!-- Tilføj bruger modal -->
 <div class="modal-overlay" id="add-modal">
-  <div class="modal" style="width:460px;max-width:94vw;" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div class="modal" style="width:560px;max-width:94vw;" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-header">
       <h2 id="modal-title">Tilføj bruger</h2>
       <button type="button" class="modal-close" id="close-add-modal" aria-label="Luk">
@@ -125,6 +131,16 @@
     {% endif %}
 
     <form method="post" action="{{ url_for('create_user') }}" autocomplete="off">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+        <div class="auth-field">
+          <label for="new-first-name">Navn</label>
+          <input id="new-first-name" name="first_name" type="text" autocomplete="given-name">
+        </div>
+        <div class="auth-field">
+          <label for="new-last-name">Efternavn</label>
+          <input id="new-last-name" name="last_name" type="text" autocomplete="family-name">
+        </div>
+      </div>
       <div class="auth-field">
         <label for="new-username">Brugernavn</label>
         <input id="new-username" name="username" type="text" autocomplete="off" required>
@@ -138,6 +154,14 @@
         <select id="new-role" name="role" class="auth-select">
           <option value="user">Bruger</option>
           <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div class="auth-field">
+        <label for="new-language">Sprog</label>
+        <select id="new-language" name="language" class="auth-select">
+          {% for option in language_options %}
+            <option value="{{ option.value }}" {% if option.value == 'da' %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
         </select>
       </div>
 

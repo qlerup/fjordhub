@@ -11,6 +11,18 @@
   {% endif %}
 
   <form method="post" autocomplete="off">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
+      <div class="auth-field">
+        <label for="first-name">Navn</label>
+        <input id="first-name" name="first_name" type="text" autocomplete="given-name"
+               value="{{ first_name or '' }}">
+      </div>
+      <div class="auth-field">
+        <label for="last-name">Efternavn</label>
+        <input id="last-name" name="last_name" type="text" autocomplete="family-name"
+               value="{{ last_name or '' }}">
+      </div>
+    </div>
     <div class="auth-field">
       <label for="username">Brugernavn</label>
       <input id="username" name="username" type="text" autocomplete="username" required
@@ -23,6 +35,14 @@
     <div class="auth-field">
       <label for="password2">Gentag adgangskode</label>
       <input id="password2" name="password2" type="password" autocomplete="new-password" required>
+    </div>
+    <div class="auth-field">
+      <label for="language">Sprog</label>
+      <select id="language" name="language" class="auth-select">
+        {% for option in language_options %}
+          <option value="{{ option.value }}" {% if option.value == language %}selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
     </div>
     <button type="submit" class="auth-btn">Opret admin-konto</button>
   </form>

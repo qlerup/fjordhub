@@ -32,6 +32,36 @@
     </div>
   </div>
 
+  <h2 style="font-size:1rem;font-weight:700;margin:28px 0 14px;">Kontooplysninger</h2>
+
+  {% if info_ok %}
+    <div class="auth-ok" style="margin-bottom:14px;">Kontooplysninger opdateret.</div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('profile_info') }}" autocomplete="off" style="max-width:520px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
+      <div class="auth-field">
+        <label for="profile-first-name">Navn</label>
+        <input id="profile-first-name" name="first_name" type="text" autocomplete="given-name"
+               value="{{ profile_user.first_name or '' }}">
+      </div>
+      <div class="auth-field">
+        <label for="profile-last-name">Efternavn</label>
+        <input id="profile-last-name" name="last_name" type="text" autocomplete="family-name"
+               value="{{ profile_user.last_name or '' }}">
+      </div>
+    </div>
+    <div class="auth-field">
+      <label for="profile-language">Sprog</label>
+      <select id="profile-language" name="language" class="auth-select">
+        {% for option in language_options %}
+          <option value="{{ option.value }}" {% if option.value == profile_user.language %}selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn-install" style="margin-top:4px;">Gem oplysninger</button>
+  </form>
+
   <h2 style="font-size:1rem;font-weight:700;margin:28px 0 14px;">Skift adgangskode</h2>
 
   {% if pw_error %}
