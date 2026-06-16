@@ -514,6 +514,7 @@ def users():
         users=_auth.get_all_users_with_access(),
         admin_count=_auth.admin_count(),
         hub_apps=_installed_hub_apps(),
+        language_options=LANGUAGE_OPTIONS,
         msg=msg,
     )
 
@@ -552,6 +553,7 @@ def create_user():
             users=_auth.get_all_users_with_access(),
             admin_count=_auth.admin_count(),
             hub_apps=_installed_hub_apps(),
+            language_options=LANGUAGE_OPTIONS,
             modal_error=str(exc),
         )
 
@@ -584,12 +586,23 @@ def hub_user_sync():
     username = str(data.get("username") or "").strip()
     role = str(data.get("role") or "user").strip()
     password = str(data.get("password") or "").strip()
+    first_name = str(data.get("first_name") or "").strip()
+    last_name = str(data.get("last_name") or "").strip()
+    language = _normalize_language(data.get("language"))
     if role not in ("admin", "user"):
         role = "user"
     if not username:
         return jsonify({"ok": False, "error": "username påkrævet"}), 400
     try:
-        user = _auth.create_or_grant_app_user(app_id, username, password, role)
+        user = _auth.create_or_grant_app_user(
+            app_id,
+            username,
+            password,
+            role,
+            first_name=first_name,
+            last_name=last_name,
+            language=language,
+        )
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     return jsonify({"ok": True, "user": user, "user_id": user["id"]})
@@ -636,8 +649,19 @@ def api_hub_app_users():
     username = str(data.get("username") or "").strip()
     password = str(data.get("password") or "")
     role = str(data.get("role") or "user").strip()
+    first_name = str(data.get("first_name") or "").strip()
+    last_name = str(data.get("last_name") or "").strip()
+    language = _normalize_language(data.get("language"))
     try:
-        user = _auth.create_or_grant_app_user(app_id, username, password, role)
+        user = _auth.create_or_grant_app_user(
+            app_id,
+            username,
+            password,
+            role,
+            first_name=first_name,
+            last_name=last_name,
+            language=language,
+        )
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     return jsonify({"ok": True, "user": user, "item": user}), 201
