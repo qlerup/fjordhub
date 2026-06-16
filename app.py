@@ -270,9 +270,13 @@ def logout():
 
 @app.route("/")
 def dashboard():
+    all_apps = _get_apps()
+    if not current_user.is_admin:
+        user_app_ids = {a["app_id"] for a in _auth.get_user_app_access(current_user.id)}
+        all_apps = [a for a in all_apps if a.get("id") in user_app_ids]
     return render_template(
         "dashboard.html",
-        apps=_get_apps(),
+        apps=all_apps,
         reg_status=_remote_registry.get_status(),
         active_page="apps",
     )
