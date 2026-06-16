@@ -90,6 +90,16 @@
   var pollTimer = null;
   var updateRunning = false;
 
+  function updateApiUrl(path) {
+    var sep = path.indexOf('?') >= 0 ? '&' : '?';
+    return path + sep + '_ts=' + Date.now();
+  }
+
+  function requestUpdateStatus(path, options) {
+    var req = Object.assign({ cache: 'no-store' }, options || {});
+    return fetch(updateApiUrl(path), req).then(function (r) { return r.json(); });
+  }
+
   function badgeCls(state) {
     if (state === 'up_to_date')       return 'badge badge-ok';
     if (state === 'update_available') return 'badge badge-warn';
@@ -119,6 +129,9 @@
   }
 
   function apply(data) {
+    statusEl.hidden = true;
+    statusEl.textContent = '';
+
     badge.textContent = data.label || '-';
     badge.className = badgeCls(data.state);
 
@@ -193,8 +206,7 @@
     if (pollTimer) return;
     pollTimer = setTimeout(function () {
       pollTimer = null;
-      fetch('/api/hub/self/update/status')
-        .then(function (r) { return r.json(); })
+      requestUpdateStatus('/api/hub/self/update/status')
         .then(apply)
         .catch(function () {
           if (updateRunning) {
@@ -213,8 +225,7 @@
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
   }
 
-  fetch('/api/hub/self/update/status')
-    .then(function (r) { return r.json(); })
+  requestUpdateStatus('/api/hub/self/update/status')
     .then(apply)
     .catch(function () { badge.textContent = 'Fejl'; badge.className = 'badge badge-err'; });
 
@@ -222,8 +233,7 @@
     checkBtn.disabled = true;
     badge.textContent = 'Tjekker...';
     badge.className = 'badge badge-info';
-    fetch('/api/hub/self/update/check', { method: 'POST' })
-      .then(function (r) { return r.json(); })
+    requestUpdateStatus('/api/hub/self/update/check', { method: 'POST' })
       .then(apply)
       .catch(function () {
         badge.textContent = 'Fejl';
