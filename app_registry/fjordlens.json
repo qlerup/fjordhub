@@ -33,18 +33,6 @@
           "hint": "Region/By-format, f.eks. Europe/Copenhagen"
         },
         {
-          "key": "AI_DEVICE",
-          "label": "AI-enhed",
-          "type": "select",
-          "default": "auto",
-          "hint": "auto bruger GPU hvis tilgængeligt og falder tilbage til CPU",
-          "options": [
-            {"value": "auto", "label": "Auto (anbefalet)"},
-            {"value": "cpu", "label": "CPU"},
-            {"value": "cuda", "label": "CUDA (NVIDIA GPU)"}
-          ]
-        },
-        {
           "key": "LOG_LEVEL",
           "label": "Log-niveau",
           "type": "select",
@@ -53,6 +41,32 @@
           "options": [
             {"value": "INFO", "label": "INFO (anbefalet)"},
             {"value": "DEBUG", "label": "DEBUG"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gpu",
+      "title": "GPU (valgfrit)",
+      "gpu_helper": true,
+      "fields": [
+        {
+          "key": "ENABLE_GPU_COMPOSE",
+          "label": "Aktiver NVIDIA GPU passthrough",
+          "type": "toggle",
+          "default": "0",
+          "hint": "Slå kun til efter GPU-testen er OK. Ellers installeres FjordLens sikkert på CPU."
+        },
+        {
+          "key": "AI_DEVICE",
+          "label": "AI-enhed",
+          "type": "select",
+          "default": "cpu",
+          "hint": "CPU virker på alle hosts. Auto/CUDA bruges sammen med GPU passthrough.",
+          "options": [
+            {"value": "cpu", "label": "CPU (anbefalet)"},
+            {"value": "auto", "label": "Auto"},
+            {"value": "cuda", "label": "CUDA (NVIDIA GPU)"}
           ]
         }
       ]
