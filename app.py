@@ -1288,10 +1288,20 @@ def _gpu_setup_worker() -> None:
         if not ok:
             _gpu_setup_finish(False, "Kunne ikke detektere NVIDIA driver major version i LXC-systemet.")
             return
-        env_major = str(os.environ.get("NVIDIA_DRIVER_MAJOR", "")).strip()
+        env_major = ""
+        ok_env, env_out = _gpu_setup_run_step(
+            "tr '\\0' '\\n' </proc/1/environ | sed -n 's/^NVIDIA_DRIVER_MAJOR=//p' | head -n1",
+            timeout=60,
+            in_lxc_host=True,
+        )
+        if ok_env:
+            env_lines = (env_out or "").strip().splitlines()
+            if env_lines:
+                env_major = env_lines[-1].strip()
+
         if env_major.isdigit():
             major = env_major
-            _gpu_setup_append(f"[info] Bruger NVIDIA_DRIVER_MAJOR fra LXC miljø: {major}")
+            _gpu_setup_append(f"[info] Bruger NVIDIA_DRIVER_MAJOR fra LXC PID1 miljø: {major}")
         else:
             major_lines = (major_out or "").strip().splitlines()
             major = major_lines[-1].strip() if major_lines else ""
