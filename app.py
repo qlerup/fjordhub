@@ -1195,14 +1195,45 @@ def _gpu_setup_worker() -> None:
             _gpu_setup_finish(False, "FjordHub-processen skal køre som root for at kunne installere pakker.")
             return
 
-        steps = [
-            "export DEBIAN_FRONTEND=noninteractive; apt-get update",
-            "export DEBIAN_FRONTEND=noninteractive; apt-get install -y curl gnupg ca-certificates",
-            "curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg",
-            "curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' > /etc/apt/sources.list.d/nvidia-container-toolkit.list",
-            "export DEBIAN_FRONTEND=noninteractive; apt-get update",
-            "export DEBIAN_FRONTEND=noninteractive; apt-get install -y nvidia-container-toolkit",
-        ]
+        has_apt = shutil.which("apt-get") is not None
+        has_apk = shutil.which("apk") is not None
+        has_dnf = shutil.which("dnf") is not None
+        has_yum = shutil.which("yum") is not None
+        has_zypper = shutil.which("zypper") is not None
+
+        steps: list[str] = []
+        distro_hint = ""
+
+        if has_apt:
+            distro_hint = "apt"
+            steps = [
+                "export DEBIAN_FRONTEND=noninteractive; apt-get update",
+                "export DEBIAN_FRONTEND=noninteractive; apt-get install -y curl gnupg ca-certificates",
+                "curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg",
+                "curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' > /etc/apt/sources.list.d/nvidia-container-toolkit.list",
+                "export DEBIAN_FRONTEND=noninteractive; apt-get update",
+                "export DEBIAN_FRONTEND=noninteractive; apt-get install -y nvidia-container-toolkit",
+            ]
+        elif has_apk:
+            distro_hint = "apk"
+            # Alpine distributions typically do not have a straightforward, stable NVIDIA toolkit path.
+            _gpu_setup_append("[info] Detekteret apk/alpine-baseret container.")
+            _gpu_setup_finish(
+                False,
+                "Automatisk GPU-opsætning understøtter pt. kun Debian/Ubuntu (apt). Din container er apk/alpine-baseret.",
+            )
+            return
+        elif has_dnf or has_yum or has_zypper:
+            distro_hint = "rpm"
+            _gpu_setup_append("[info] Detekteret RPM-baseret container.")
+            _gpu_setup_finish(
+                False,
+                "Automatisk GPU-opsætning understøtter pt. kun Debian/Ubuntu (apt). Din container er ikke apt-baseret.",
+            )
+            return
+        else:
+            _gpu_setup_finish(False, "Ingen understøttet package manager fundet i containeren (apt/apk/dnf/yum/zypper).")
+            return
 
         for cmd in steps:
             if not _gpu_setup_run_step(cmd, timeout=900):
@@ -1215,10 +1246,11 @@ def _gpu_setup_worker() -> None:
             _gpu_setup_finish(False, "Kunne ikke auto-detektere NVIDIA driver version. Kontroller at NVIDIA devices er mappet korrekt ind i containeren.")
             return
 
-        libs_cmd = f"export DEBIAN_FRONTEND=noninteractive; apt-get install -y libnvidia-compute-{major} nvidia-utils-{major}"
-        if not _gpu_setup_run_step(libs_cmd, timeout=900):
-            _gpu_setup_finish(False, f"Installation af NVIDIA userspace-biblioteker fejlede for major {major}.", major)
-            return
+        if distro_hint == "apt":
+            libs_cmd = f"export DEBIAN_FRONTEND=noninteractive; apt-get install -y libnvidia-compute-{major} nvidia-utils-{major}"
+            if not _gpu_setup_run_step(libs_cmd, timeout=900):
+                _gpu_setup_finish(False, f"Installation af NVIDIA userspace-biblioteker fejlede for major {major}.", major)
+                return
 
         tail_steps = [
             "ldconfig",
