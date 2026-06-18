@@ -1286,12 +1286,36 @@ def _gpu_setup_worker() -> None:
             _gpu_setup_finish(False, "Kunne ikke auto-detektere NVIDIA driver version. Kontroller at NVIDIA devices er mappet korrekt ind i LXC-systemet.")
             return
 
+        _gpu_setup_append(f"[info] Detekteret NVIDIA driver major i LXC: {major}")
+
         if distro_hint == "apt":
-            libs_cmd = f"export DEBIAN_FRONTEND=noninteractive; apt-get install -y libnvidia-compute-{major} nvidia-utils-{major}"
+            # Remove conflicting installed NVIDIA userspace package versions first,
+            # then force reinstall the version matching the detected host driver major.
+            cleanup_cmd = (
+                "for p in $(dpkg-query -W -f='${Package}\\n' 'libnvidia-compute-*' 'nvidia-utils-*' 2>/dev/null | "
+                "grep -E '^(libnvidia-compute-|nvidia-utils-)'); do "
+                f"case \"$p\" in libnvidia-compute-{major}|nvidia-utils-{major}) ;; "
+                "*) export DEBIAN_FRONTEND=noninteractive; apt-get remove -y \"$p\" || true ;; "
+                "esac; "
+                "done"
+            )
+            _gpu_setup_run_step(cleanup_cmd, timeout=900, in_lxc_host=True)
+
+            libs_cmd = (
+                f"export DEBIAN_FRONTEND=noninteractive; apt-get install -y --reinstall "
+                f"libnvidia-compute-{major} nvidia-utils-{major}"
+            )
             ok, _ = _gpu_setup_run_step(libs_cmd, timeout=900, in_lxc_host=True)
             if not ok:
                 _gpu_setup_finish(False, f"Installation af NVIDIA userspace-biblioteker fejlede for major {major}.", major)
                 return
+
+            # Helpful diagnostic in live log before docker test.
+            _gpu_setup_run_step(
+                "dpkg-query -W 'libnvidia-compute-*' 'nvidia-utils-*' 2>/dev/null | sed 's/^/[pkg] /'",
+                timeout=120,
+                in_lxc_host=True,
+            )
 
         tail_steps = [
             "ldconfig",
