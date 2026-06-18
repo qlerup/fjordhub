@@ -1,9 +1,0 @@
-.env
-data/
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.venv/
-venv/
-.17track_profile/
-
