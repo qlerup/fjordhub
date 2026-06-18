@@ -67,6 +67,11 @@
         <button type="button" class="btn-nfs-helper" onclick='openNfsHelper([{% for f in path_fields %}{key: {{ f.key|tojson }}, label: {{ f.label|tojson }}, recommended: {{ "true" if f.nfs_recommended else "false" }}}{% if not loop.last %},{% endif %}{% endfor %}])'>🗄 NFS mount hjælper</button>
       </div>
       {% endif %}
+      {% if step.gpu_helper %}
+      <div style="margin-bottom:16px;">
+        <button type="button" class="btn-nfs-helper" onclick="openGpuHelper()">GPU passthrough hjælper</button>
+      </div>
+      {% endif %}
       {% for field in step.fields %}
       <div class="form-field {% if field.show_if %}conditional{% endif %}"
            {% if field.show_if %}
@@ -205,6 +210,36 @@
   </div>
 
   {# ── Navigation ── #}
+  <div id="gpu-modal" class="nfs-modal-overlay" style="display:none;" onclick="if(event.target===this)closeGpuHelper()">
+    <div class="nfs-modal">
+      <h3>GPU passthrough hjælper — {{ app.name }}</h3>
+      <p class="nfs-modal-desc">Brug denne før installation, hvis AI-containeren skal starte med NVIDIA GPU. Hvis testen ikke går igennem, skal installationen køre CPU.</p>
+      <div class="nfs-input-row">
+        <label>Proxmox LXC VMID</label>
+        <input id="gpu-vmid" type="text" placeholder="100" oninput="renderGpuCommands()">
+      </div>
+      <div>
+        <p style="font-size:.8rem;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Kommandoer til PVE-hosten</p>
+        <div class="nfs-code-section">
+          <div class="nfs-section-header">
+            <span class="nfs-block-location">PVE-host</span>
+            <button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button>
+          </div>
+          <div class="nfs-code-block" id="gpu-code-block"></div>
+        </div>
+      </div>
+      <div class="nfs-input-row">
+        <button type="button" class="btn btn-open" id="gpu-test-btn" onclick="runGpuPreflight()">Kør Docker GPU-test</button>
+        <div id="gpu-test-result" style="font-size:.8rem;margin-top:8px;white-space:pre-wrap;"></div>
+      </div>
+      <div class="nfs-modal-actions">
+        <button type="button" class="btn btn-open" id="gpu-use-btn" onclick="useGpuSettings()" disabled style="opacity:.35;cursor:not-allowed;">Brug GPU til installation</button>
+        <button type="button" class="btn btn-toggle" onclick="useCpuSettings()">Brug CPU</button>
+        <button type="button" class="btn btn-toggle" onclick="closeGpuHelper()">Luk</button>
+      </div>
+    </div>
+  </div>
+
   <div class="wizard-nav" id="wizard-nav">
     <button type="button" class="btn btn-toggle" id="btn-back" onclick="wizardBack()" style="display:none;">← Tilbage</button>
     <div style="flex:1"></div>
@@ -222,6 +257,7 @@
 const APP_ID    = {{ app.id | tojson }};
 const APP_NAME  = {{ app.name | tojson }};
 const TOTAL_STEPS = {{ steps | length + 2 }};  // intro + steps + summary
+const RUNTIME_INFO = {{ (nfs_runtime or {}) | tojson }};
 
 // Field values store
 const VALUES = {};
@@ -291,6 +327,15 @@ function wizardBack() {
 function onFieldChange(key, value) {
   VALUES[key] = value;
   updateConditionals();
+}
+
+function setWizardField(key, value) {
+  const input = document.getElementById(`f-${key}`);
+  if (input) {
+    if (input.type === 'checkbox') input.checked = value === '1';
+    else input.value = value;
+  }
+  onFieldChange(key, value);
 }
 
 function updateConditionals() {
@@ -394,6 +439,104 @@ function appendLog(line) {
 
 // Init
 showPanel(0);
+
+// GPU helper
+function openGpuHelper() {
+  const vmidInput = document.getElementById('gpu-vmid');
+  if (vmidInput && !vmidInput.value && RUNTIME_INFO.vmid) vmidInput.value = RUNTIME_INFO.vmid;
+  const resultEl = document.getElementById('gpu-test-result');
+  if (resultEl) resultEl.textContent = '';
+  const useBtn = document.getElementById('gpu-use-btn');
+  if (useBtn) {
+    useBtn.disabled = true;
+    useBtn.style.opacity = '.35';
+    useBtn.style.cursor = 'not-allowed';
+  }
+  renderGpuCommands();
+  document.getElementById('gpu-modal').style.display = 'flex';
+}
+
+function closeGpuHelper() {
+  document.getElementById('gpu-modal').style.display = 'none';
+}
+
+function renderGpuCommands() {
+  const vmid = document.getElementById('gpu-vmid')?.value.trim() || RUNTIME_INFO.vmid || '<VMID>';
+  const lines = [
+    '# Koer paa PVE-hosten, ikke inde i FjordHub-containeren',
+    `ctid="${vmid}"`,
+    'conf="/etc/pve/lxc/${ctid}.conf"',
+    'cp "$conf" "$conf.bak.$(date +%Y%m%d%H%M%S)"',
+    'set_line() { key="$1"; value="$2"; if grep -q "^${key}:" "$conf"; then sed -i "s|^${key}:.*|${key}: ${value}|" "$conf"; else printf "%s: %s\\n" "$key" "$value" >> "$conf"; fi; }',
+    'add_line() { grep -qxF "$1" "$conf" || printf "%s\\n" "$1" >> "$conf"; }',
+    'set_line features "nesting=1,keyctl=1"',
+    'set_line lxc.apparmor.profile "unconfined"',
+    'add_line "lxc.cgroup2.devices.allow: c 195:* rwm"',
+    'add_line "lxc.cgroup2.devices.allow: c 510:* rwm"',
+    'add_line "lxc.cgroup2.devices.allow: c 235:* rwm"',
+    'add_line "lxc.mount.entry: /dev/nvidia0 dev/nvidia0 none bind,optional,create=file"',
+    'add_line "lxc.mount.entry: /dev/nvidiactl dev/nvidiactl none bind,optional,create=file"',
+    'add_line "lxc.mount.entry: /dev/nvidia-uvm dev/nvidia-uvm none bind,optional,create=file"',
+    'add_line "lxc.mount.entry: /dev/nvidia-uvm-tools dev/nvidia-uvm-tools none bind,optional,create=file"',
+    'add_line "lxc.mount.entry: /dev/nvidia-caps dev/nvidia-caps none bind,optional,create=dir"',
+    'add_line "lxc.mount.entry: /dev/nvidia-modeset dev/nvidia-modeset none bind,optional,create=file"',
+    'add_line "lxc.mount.entry: /sys/class/drm sys/class/drm none ro,bind,optional,create=dir"',
+    'pct restart "$ctid"',
+    '',
+    '# Efter genstart: koer Docker GPU-testen i denne helper.',
+  ];
+  const block = document.getElementById('gpu-code-block');
+  if (block) block.textContent = lines.join('\n');
+}
+
+async function runGpuPreflight() {
+  const btn = document.getElementById('gpu-test-btn');
+  const resultEl = document.getElementById('gpu-test-result');
+  const useBtn = document.getElementById('gpu-use-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Tester...';
+  }
+  if (resultEl) resultEl.textContent = 'Starter nvidia-smi test med Docker...';
+  if (useBtn) {
+    useBtn.disabled = true;
+    useBtn.style.opacity = '.35';
+    useBtn.style.cursor = 'not-allowed';
+  }
+  try {
+    const res = await fetch('/api/gpu-preflight', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({})});
+    const data = await res.json();
+    if (data.ok) {
+      if (resultEl) resultEl.innerHTML = `<span style="color:#22c55e">GPU-test OK. Docker kan starte med --gpus all.</span>\n${_escapeHtml(data.output || '')}`;
+      if (useBtn) {
+        useBtn.disabled = false;
+        useBtn.style.opacity = '1';
+        useBtn.style.cursor = 'pointer';
+      }
+    } else {
+      if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">GPU-test fejlede. Brug CPU eller koer PVE-kommandoerne og test igen.</span>\n${_escapeHtml(data.error || data.output || 'Ukendt fejl')}`;
+    }
+  } catch (e) {
+    if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">Netvaerksfejl: ${_escapeHtml(e.message)}</span>`;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Kør Docker GPU-test';
+    }
+  }
+}
+
+function useGpuSettings() {
+  setWizardField('ENABLE_GPU_COMPOSE', '1');
+  setWizardField('AI_DEVICE', 'auto');
+  closeGpuHelper();
+}
+
+function useCpuSettings() {
+  setWizardField('ENABLE_GPU_COMPOSE', '0');
+  setWizardField('AI_DEVICE', 'cpu');
+  closeGpuHelper();
+}
 
 // ── NFS helper ───────────────────────────────────────────────────────────────
 

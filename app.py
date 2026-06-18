@@ -975,6 +975,38 @@ def api_lxc_type():
     return jsonify(_nfs_runtime_info())
 
 
+@app.route("/api/gpu-preflight", methods=["POST"])
+@login_required
+def api_gpu_preflight():
+    command = [
+        "docker", "run", "--rm", "--gpus", "all",
+        "nvidia/cuda:12.4.1-base-ubuntu22.04",
+        "nvidia-smi",
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    except subprocess.TimeoutExpired:
+        return jsonify({"ok": False, "error": "GPU-test timeout", "command": " ".join(command)}), 504
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc), "command": " ".join(command)}), 500
+
+    output = "\n".join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
+    return jsonify(
+        {
+            "ok": result.returncode == 0,
+            "returncode": result.returncode,
+            "command": " ".join(command),
+            "output": output[-4000:],
+            "error": "" if result.returncode == 0 else (output[-1200:] or "GPU-test fejlede"),
+        }
+    )
+
+
 def _nfs_runtime_options(options: str) -> str:
     fstab_only = {"_netdev", "nofail", "noauto", "auto"}
     runtime_options = []

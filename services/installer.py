@@ -29,6 +29,10 @@ def _stringify_env(values: dict) -> dict[str, str]:
     }
 
 
+def _is_truthy(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _normalize_host_path_for_linux_client(path: str) -> str:
     match = WINDOWS_DRIVE_RE.match(str(path))
     if not match:
@@ -254,5 +258,10 @@ class Installer:
         install_dir = APPS_BASE / app_def["id"]
         if not str(resolved.get("APP_REPO_DIR", "")).strip():
             resolved["APP_REPO_DIR"] = _container_path_to_host_path(install_dir) or str(install_dir)
+
+        if _is_truthy(resolved.get("ENABLE_GPU_COMPOSE")):
+            resolved["COMPOSE_FILE"] = "docker-compose.yml:docker-compose.gpu.yml"
+            if str(resolved.get("AI_DEVICE", "")).strip().lower() == "cpu":
+                resolved["AI_DEVICE"] = "auto"
 
         return resolved
