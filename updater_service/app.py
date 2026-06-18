@@ -173,7 +173,7 @@ def _is_ignored_dirty_path(path: str) -> bool:
     return False
 
 
-def _split_dirty_lines(raw_dirty: str) -> tuple[list[str], list[str]]:
+def _split_dirty_lines(raw_dirty: str, gitlink_paths: set[str] | None = None) -> tuple[list[str], list[str]]:
     relevant: list[str] = []
     ignored: list[str] = []
     for line in str(raw_dirty or "").splitlines():
@@ -181,7 +181,7 @@ def _split_dirty_lines(raw_dirty: str) -> tuple[list[str], list[str]]:
         if not line:
             continue
         path = _normalize_porcelain_path(line)
-        if path and _is_ignored_dirty_path(path):
+        if path and (_is_ignored_dirty_path(path) or (gitlink_paths is not None and path in gitlink_paths)):
             ignored.append(line)
         else:
             relevant.append(line)
@@ -242,7 +242,11 @@ def git_info(fetch: bool = False) -> Dict[str, Any]:
         branch = current_branch()
         current = cmd_output(["git", "rev-parse", "HEAD"], timeout=20)
         dirty_raw = cmd_output(["git", "status", "--porcelain", "--untracked-files=no"], timeout=20)
-        dirty_lines, dirty_ignored_lines = _split_dirty_lines(dirty_raw)
+        try:
+            gitlink_paths: set[str] | None = set(_head_gitlinks().keys())
+        except Exception:
+            gitlink_paths = None
+        dirty_lines, dirty_ignored_lines = _split_dirty_lines(dirty_raw, gitlink_paths)
         fetch_error = ""
         if fetch:
             fetched = run_cmd(["git", "fetch", "origin", branch], timeout=180)
