@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import time
 import warnings
+import threading
 from pathlib import Path
 import requests
 from flask import Flask, render_template, jsonify, request, redirect, url_for
@@ -1109,113 +1110,156 @@ def _detect_nvidia_driver_major() -> str:
     return ""
 
 
+_gpu_setup_lock = threading.Lock()
+_gpu_setup_state = {
+    "running": False,
+    "ok": None,
+    "error": "",
+    "nvidia_major": "",
+    "logs": [],
+    "started_at": 0.0,
+    "finished_at": 0.0,
+}
+
+
+def _gpu_setup_reset_state() -> None:
+    with _gpu_setup_lock:
+        _gpu_setup_state.update(
+            {
+                "running": True,
+                "ok": None,
+                "error": "",
+                "nvidia_major": "",
+                "logs": [],
+                "started_at": time.time(),
+                "finished_at": 0.0,
+            }
+        )
+
+
+def _gpu_setup_append(line: str) -> None:
+    with _gpu_setup_lock:
+        logs = _gpu_setup_state.setdefault("logs", [])
+        logs.append(str(line))
+        if len(logs) > 400:
+            del logs[:-400]
+
+
+def _gpu_setup_snapshot() -> dict:
+    with _gpu_setup_lock:
+        state = dict(_gpu_setup_state)
+        state["logs"] = list(_gpu_setup_state.get("logs") or [])
+    state["output"] = "\n\n".join(state.get("logs") or [])[-12000:]
+    return state
+
+
+def _gpu_setup_finish(ok: bool, error: str = "", nvidia_major: str = "") -> None:
+    with _gpu_setup_lock:
+        _gpu_setup_state["running"] = False
+        _gpu_setup_state["ok"] = bool(ok)
+        _gpu_setup_state["error"] = str(error or "")
+        _gpu_setup_state["nvidia_major"] = str(nvidia_major or "")
+        _gpu_setup_state["finished_at"] = time.time()
+
+
+def _gpu_setup_run_step(cmd: str, timeout: int = 600) -> bool:
+    _gpu_setup_append(f"$ {cmd}")
+    try:
+        result = subprocess.run(
+            ["sh", "-lc", cmd],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        _gpu_setup_append("[timeout]")
+        return False
+    except Exception as exc:
+        _gpu_setup_append(str(exc))
+        return False
+
+    out = "\n".join(part for part in ((result.stdout or "").strip(), (result.stderr or "").strip()) if part).strip()
+    if out:
+        _gpu_setup_append(out[-4000:])
+    return result.returncode == 0
+
+
+def _gpu_setup_worker() -> None:
+    major = ""
+    try:
+        if _nfs_runtime_info().get("runtime") == "docker_desktop":
+            _gpu_setup_finish(False, "Automatisk GPU-opsætning understøttes ikke på Docker Desktop/WSL2.")
+            return
+
+        if os.geteuid() != 0:
+            _gpu_setup_finish(False, "FjordHub-processen skal køre som root for at kunne installere pakker.")
+            return
+
+        steps = [
+            "export DEBIAN_FRONTEND=noninteractive; apt-get update",
+            "export DEBIAN_FRONTEND=noninteractive; apt-get install -y curl gnupg ca-certificates",
+            "curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg",
+            "curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' > /etc/apt/sources.list.d/nvidia-container-toolkit.list",
+            "export DEBIAN_FRONTEND=noninteractive; apt-get update",
+            "export DEBIAN_FRONTEND=noninteractive; apt-get install -y nvidia-container-toolkit",
+        ]
+
+        for cmd in steps:
+            if not _gpu_setup_run_step(cmd, timeout=900):
+                _gpu_setup_finish(False, "GPU-opsætning stoppede under installation af NVIDIA toolkit.")
+                return
+
+        major = _detect_nvidia_driver_major()
+        if not major:
+            _gpu_setup_append("[error] Kunne ikke auto-detektere NVIDIA driver major version.")
+            _gpu_setup_finish(False, "Kunne ikke auto-detektere NVIDIA driver version. Kontroller at NVIDIA devices er mappet korrekt ind i containeren.")
+            return
+
+        libs_cmd = f"export DEBIAN_FRONTEND=noninteractive; apt-get install -y libnvidia-compute-{major} nvidia-utils-{major}"
+        if not _gpu_setup_run_step(libs_cmd, timeout=900):
+            _gpu_setup_finish(False, f"Installation af NVIDIA userspace-biblioteker fejlede for major {major}.", major)
+            return
+
+        tail_steps = [
+            "ldconfig",
+            "nvidia-ctk runtime configure --runtime=docker",
+            "systemctl restart docker || service docker restart",
+            "docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi",
+        ]
+
+        for cmd in tail_steps:
+            if not _gpu_setup_run_step(cmd, timeout=300):
+                _gpu_setup_finish(False, "GPU-opsætning blev kørt, men den afsluttende verifikation fejlede.", major)
+                return
+
+        _gpu_setup_finish(True, "", major)
+    except Exception as exc:
+        _gpu_setup_append(str(exc))
+        _gpu_setup_finish(False, "Uventet fejl under GPU-opsætning.", major)
+
+
 @app.route("/api/gpu-setup", methods=["POST"])
 @login_required
 def api_gpu_setup():
     if not current_user.is_admin:
         return jsonify({"ok": False, "error": "Kun administratorer kan køre GPU-opsætning."}), 403
 
-    if _nfs_runtime_info().get("runtime") == "docker_desktop":
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Automatisk GPU-opsætning understøttes ikke på Docker Desktop/WSL2.",
-            }
-        ), 400
+    state = _gpu_setup_snapshot()
+    if state.get("running"):
+        return jsonify({"ok": False, "error": "GPU-opsætning kører allerede.", **state}), 409
 
-    if os.geteuid() != 0:
-        return jsonify({"ok": False, "error": "FjordHub-processen skal køre som root for at kunne installere pakker."}), 500
+    _gpu_setup_reset_state()
+    thread = threading.Thread(target=_gpu_setup_worker, daemon=True)
+    thread.start()
+    return jsonify({"ok": True, "started": True, **_gpu_setup_snapshot()}), 202
 
-    logs: list[str] = []
 
-    def run_step(cmd: str, timeout: int = 600) -> tuple[bool, str]:
-        try:
-            result = subprocess.run(
-                ["sh", "-lc", cmd],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-        except subprocess.TimeoutExpired:
-            return False, f"$ {cmd}\n[timeout]"
-        except Exception as exc:
-            return False, f"$ {cmd}\n{exc}"
-
-        out = "\n".join(part for part in ((result.stdout or "").strip(), (result.stderr or "").strip()) if part).strip()
-        rendered = f"$ {cmd}" + (f"\n{out}" if out else "")
-        return result.returncode == 0, rendered
-
-    steps = [
-        "export DEBIAN_FRONTEND=noninteractive; apt-get update",
-        "export DEBIAN_FRONTEND=noninteractive; apt-get install -y curl gnupg ca-certificates",
-        "curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg",
-        "curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' > /etc/apt/sources.list.d/nvidia-container-toolkit.list",
-        "export DEBIAN_FRONTEND=noninteractive; apt-get update",
-        "export DEBIAN_FRONTEND=noninteractive; apt-get install -y nvidia-container-toolkit",
-    ]
-
-    for cmd in steps:
-        ok, rendered = run_step(cmd, timeout=900)
-        logs.append(rendered)
-        if not ok:
-            return jsonify(
-                {
-                    "ok": False,
-                    "error": "GPU-opsætning stoppede under installation af NVIDIA toolkit.",
-                    "output": "\n\n".join(logs)[-12000:],
-                }
-            ), 500
-
-    major = _detect_nvidia_driver_major()
-    if not major:
-        logs.append("[error] Kunne ikke auto-detektere NVIDIA driver major version.")
-        return jsonify(
-            {
-                "ok": False,
-                "error": "Kunne ikke auto-detektere NVIDIA driver version. Kontroller at NVIDIA devices er mappet korrekt ind i containeren.",
-                "output": "\n\n".join(logs)[-12000:],
-            }
-        ), 500
-
-    libs_cmd = f"export DEBIAN_FRONTEND=noninteractive; apt-get install -y libnvidia-compute-{major} nvidia-utils-{major}"
-    ok, rendered = run_step(libs_cmd, timeout=900)
-    logs.append(rendered)
-    if not ok:
-        return jsonify(
-            {
-                "ok": False,
-                "error": f"Installation af NVIDIA userspace-biblioteker fejlede for major {major}.",
-                "output": "\n\n".join(logs)[-12000:],
-            }
-        ), 500
-
-    tail_steps = [
-        "ldconfig",
-        "nvidia-ctk runtime configure --runtime=docker",
-        "systemctl restart docker || service docker restart",
-        "docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi",
-    ]
-
-    for cmd in tail_steps:
-        ok, rendered = run_step(cmd, timeout=300)
-        logs.append(rendered)
-        if not ok:
-            return jsonify(
-                {
-                    "ok": False,
-                    "error": "GPU-opsætning blev kørt, men den afsluttende verifikation fejlede.",
-                    "nvidia_major": major,
-                    "output": "\n\n".join(logs)[-12000:],
-                }
-            ), 500
-
-    return jsonify(
-        {
-            "ok": True,
-            "nvidia_major": major,
-            "output": "\n\n".join(logs)[-12000:],
-        }
-    )
+@app.route("/api/gpu-setup/status")
+@login_required
+def api_gpu_setup_status():
+    if not current_user.is_admin:
+        return jsonify({"ok": False, "error": "Kun administratorer kan se GPU-opsætningsstatus."}), 403
+    return jsonify({"ok": True, **_gpu_setup_snapshot()})
 
 
 def _nfs_runtime_options(options: str) -> str:

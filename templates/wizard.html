@@ -243,17 +243,15 @@
         </div>
         <div class="nfs-code-section" style="margin-top:10px;">
           <div class="nfs-section-header">
-            <span class="nfs-block-location">FjordHub-container (kør efter genstart)</span>
-            <button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button>
+            <span class="nfs-block-location">FjordHub-container (automatisk)</span>
           </div>
           <div style="font-size:.78rem;color:var(--text-muted);padding:8px 0 6px;">
             Hvorfor: Hvis Docker GPU-testen fejler med "no known GPU vendor found" eller "libnvidia-ml.so.1 not found", mangler NVIDIA runtime og/eller NVIDIA userspace-biblioteker i containeren.
           </div>
           <div style="padding:2px 0 8px;">
-            <button type="button" class="btn btn-open" id="gpu-auto-container-btn" onclick="autoGpuContainerSetup()">⚡ Kør automatisk i containeren</button>
+            <button type="button" class="btn btn-open" id="gpu-auto-container-btn" onclick="autoGpuContainerSetup()">⚡ Installer GPU-forudsætninger automatisk</button>
             <div id="gpu-auto-container-status" style="font-size:.8rem;margin-top:8px;white-space:pre-wrap;"></div>
           </div>
-          <div class="nfs-code-block" id="gpu-container-setup-block"></div>
         </div>
       </div>
       <div class="nfs-input-row">
@@ -524,30 +522,6 @@ function renderGpuCommands() {
   const enterBlock = document.getElementById('gpu-enter-block');
   if (enterBlock) enterBlock.textContent = `pct enter ${vmid}`;
 
-  const containerSetupBlock = document.getElementById('gpu-container-setup-block');
-  if (containerSetupBlock) {
-    containerSetupBlock.textContent = [
-      '# Koer inde i fjordhub-containeren:',
-      'apt update',
-      'apt install -y curl gnupg ca-certificates',
-      'curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg',
-      'curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed "s#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g" > /etc/apt/sources.list.d/nvidia-container-toolkit.list',
-      'apt update',
-      'apt install -y nvidia-container-toolkit',
-      '',
-      '# PAAKRAEVET: installer NVIDIA userspace-biblioteker (giver bl.a. libnvidia-ml.so.1)',
-      'NVIDIA_MAJOR="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1 | cut -d. -f1)"',
-      '[ -n "$NVIDIA_MAJOR" ] || NVIDIA_MAJOR="$(sed -nE "s/.*Kernel Module[[:space:]]+([0-9]+)\..*/\1/p" /proc/driver/nvidia/version 2>/dev/null | head -n1)"',
-      'if [ -z "$NVIDIA_MAJOR" ]; then echo "Kunne ikke auto-detektere NVIDIA major version"; exit 1; fi',
-      'apt install -y "libnvidia-compute-${NVIDIA_MAJOR}" "nvidia-utils-${NVIDIA_MAJOR}"',
-      'ldconfig',
-      'nvidia-ctk runtime configure --runtime=docker',
-      'systemctl restart docker',
-      'docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi',
-      '',
-      '# Naar denne virker: gaa tilbage til helperen og klik "Koer Docker GPU-test" igen.',
-    ].join('\n');
-  }
 }
 
 async function autoGpuContainerSetup() {
@@ -557,7 +531,38 @@ async function autoGpuContainerSetup() {
     btn.disabled = true;
     btn.textContent = 'Kører...';
   }
-  if (statusEl) statusEl.innerHTML = '<span style="color:var(--text-muted)">Kører automatisk opsætning i containeren... dette kan tage et par minutter.</span>';
+  if (statusEl) statusEl.innerHTML = '<span style="color:var(--text-muted)">Starter automatisk opsætning i containeren...</span>';
+
+  const renderState = (state) => {
+    const output = _escapeHtml(state.output || '');
+    if (state.running) {
+      if (statusEl) statusEl.innerHTML = `<span style="color:var(--text-muted)">⏳ Kører... du kan følge output live herunder.</span>\n${output}`;
+      return;
+    }
+    if (state.ok) {
+      if (statusEl) statusEl.innerHTML = `<span style="color:#22c55e">✓ GPU-forudsætninger er sat op automatisk. Klik nu "Kør Docker GPU-test".</span>\n${output}`;
+      return;
+    }
+    if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ Automatisk opsætning fejlede.</span>\n${_escapeHtml(state.error || '')}\n${output}`;
+  };
+
+  const poll = async () => {
+    try {
+      const res = await fetch('/api/gpu-setup/status');
+      const data = await res.json();
+      if (!data.ok) {
+        if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ Kunne ikke hente status.</span>\n${_escapeHtml(data.error || 'Ukendt fejl')}`;
+        return;
+      }
+      renderState(data);
+      if (data.running) {
+        setTimeout(poll, 1200);
+      }
+    } catch (e) {
+      if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ Netværksfejl under status-opdatering: ${_escapeHtml(e.message)}</span>`;
+    }
+  };
+
   try {
     const res = await fetch('/api/gpu-setup', {
       method: 'POST',
@@ -565,18 +570,30 @@ async function autoGpuContainerSetup() {
       body: JSON.stringify({}),
     });
     const data = await res.json();
-    if (data.ok) {
-      if (statusEl) statusEl.innerHTML = `<span style="color:#22c55e">✓ GPU-forudsætninger er sat op automatisk. Klik nu "Kør Docker GPU-test".</span>\n${_escapeHtml(data.output || '')}`;
-    } else {
-      if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ Automatisk opsætning fejlede.</span>\n${_escapeHtml(data.error || data.output || 'Ukendt fejl')}`;
+    if (!data.ok) {
+      if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ Kunne ikke starte automatisk opsætning.</span>\n${_escapeHtml(data.error || data.output || 'Ukendt fejl')}`;
+      return;
     }
+    renderState(data);
+    setTimeout(poll, 500);
   } catch (e) {
     if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ Netværksfejl: ${_escapeHtml(e.message)}</span>`;
   } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = '⚡ Kør automatisk i containeren';
-    }
+    const releaseBtn = async () => {
+      try {
+        const res = await fetch('/api/gpu-setup/status');
+        const data = await res.json();
+        if (data.ok && data.running) {
+          setTimeout(releaseBtn, 1200);
+          return;
+        }
+      } catch (_) {}
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '⚡ Installer GPU-forudsætninger automatisk';
+      }
+    };
+    setTimeout(releaseBtn, 1200);
   }
 }
 
