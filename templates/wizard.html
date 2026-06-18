@@ -522,6 +522,7 @@ function renderGpuCommands() {
 async function autoGpuContainerSetup() {
   const btn = document.getElementById('gpu-auto-container-btn');
   const statusEl = document.getElementById('gpu-auto-container-status');
+  let transientNetErrors = 0;
   const setStatus = (html) => {
     if (!statusEl) return;
     statusEl.innerHTML = html;
@@ -551,6 +552,7 @@ async function autoGpuContainerSetup() {
     try {
       const res = await fetch('/api/gpu-setup/status');
       const data = await res.json();
+      transientNetErrors = 0;
       if (!data.api_ok) {
         setStatus(`<span style="color:#ef4444">✗ Kunne ikke hente status.</span>\n${_escapeHtml(data.error || 'Ukendt fejl')}`);
         return;
@@ -560,6 +562,12 @@ async function autoGpuContainerSetup() {
         setTimeout(poll, 1200);
       }
     } catch (e) {
+      transientNetErrors += 1;
+      if (transientNetErrors <= 25) {
+        setStatus(`<span style="color:var(--text-muted)">⏳ Midlertidig netværksafbrydelse (typisk under Docker genstart). Forsøger igen...</span>\n${_escapeHtml(e.message)}`);
+        setTimeout(poll, 1200);
+        return;
+      }
       setStatus(`<span style="color:#ef4444">✗ Netværksfejl under status-opdatering: ${_escapeHtml(e.message)}</span>`);
     }
   };
