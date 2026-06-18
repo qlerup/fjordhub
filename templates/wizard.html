@@ -247,7 +247,11 @@
             <button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button>
           </div>
           <div style="font-size:.78rem;color:var(--text-muted);padding:8px 0 6px;">
-            Hvorfor: Hvis Docker GPU-testen fejler med "no known GPU vendor found", mangler NVIDIA Container Toolkit typisk i containeren.
+            Hvorfor: Hvis Docker GPU-testen fejler med "no known GPU vendor found" eller "libnvidia-ml.so.1 not found", mangler NVIDIA runtime og/eller NVIDIA userspace-biblioteker i containeren.
+          </div>
+          <div style="padding:2px 0 8px;">
+            <button type="button" class="btn btn-open" id="gpu-auto-container-btn" onclick="autoGpuContainerSetup()">⚡ Kør automatisk i containeren</button>
+            <div id="gpu-auto-container-status" style="font-size:.8rem;margin-top:8px;white-space:pre-wrap;"></div>
           </div>
           <div class="nfs-code-block" id="gpu-container-setup-block"></div>
         </div>
@@ -530,12 +534,49 @@ function renderGpuCommands() {
       'curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed "s#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g" > /etc/apt/sources.list.d/nvidia-container-toolkit.list',
       'apt update',
       'apt install -y nvidia-container-toolkit',
+      '',
+      '# PAAKRAEVET: installer NVIDIA userspace-biblioteker (giver bl.a. libnvidia-ml.so.1)',
+      'NVIDIA_MAJOR="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1 | cut -d. -f1)"',
+      '[ -n "$NVIDIA_MAJOR" ] || NVIDIA_MAJOR="$(awk '\''/NVRM version:/ {for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+$/){split($i,a,"."); print a[1]; exit}}'\'' /proc/driver/nvidia/version 2>/dev/null)"',
+      'if [ -z "$NVIDIA_MAJOR" ]; then echo "Kunne ikke auto-detektere NVIDIA major version"; exit 1; fi',
+      'apt install -y "libnvidia-compute-${NVIDIA_MAJOR}" "nvidia-utils-${NVIDIA_MAJOR}"',
+      'ldconfig',
       'nvidia-ctk runtime configure --runtime=docker',
       'systemctl restart docker',
       'docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi',
       '',
       '# Naar denne virker: gaa tilbage til helperen og klik "Koer Docker GPU-test" igen.',
     ].join('\n');
+  }
+}
+
+async function autoGpuContainerSetup() {
+  const btn = document.getElementById('gpu-auto-container-btn');
+  const statusEl = document.getElementById('gpu-auto-container-status');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Kører...';
+  }
+  if (statusEl) statusEl.innerHTML = '<span style="color:var(--text-muted)">Kører automatisk opsætning i containeren... dette kan tage et par minutter.</span>';
+  try {
+    const res = await fetch('/api/gpu-setup', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (statusEl) statusEl.innerHTML = `<span style="color:#22c55e">✓ GPU-forudsætninger er sat op automatisk. Klik nu "Kør Docker GPU-test".</span>\n${_escapeHtml(data.output || '')}`;
+    } else {
+      if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ Automatisk opsætning fejlede.</span>\n${_escapeHtml(data.error || data.output || 'Ukendt fejl')}`;
+    }
+  } catch (e) {
+    if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ Netværksfejl: ${_escapeHtml(e.message)}</span>`;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '⚡ Kør automatisk i containeren';
+    }
   }
 }
 
