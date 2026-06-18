@@ -1126,6 +1126,33 @@ _gpu_setup_state = {
     "started_at": 0.0,
     "finished_at": 0.0,
 }
+_gpu_setup_state_file = DATA_DIR / "gpu_setup_state.json"
+
+
+def _gpu_setup_write_state_unlocked() -> None:
+    try:
+        _gpu_setup_state_file.write_text(
+            json.dumps(_gpu_setup_state, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
+def _gpu_setup_load_state() -> dict:
+    if not _gpu_setup_state_file.exists():
+        return dict(_gpu_setup_state)
+    try:
+        data = json.loads(_gpu_setup_state_file.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            base = dict(_gpu_setup_state)
+            base.update(data)
+            if not isinstance(base.get("logs"), list):
+                base["logs"] = []
+            return base
+    except Exception:
+        pass
+    return dict(_gpu_setup_state)
 
 
 def _gpu_setup_reset_state() -> None:
@@ -1141,6 +1168,7 @@ def _gpu_setup_reset_state() -> None:
                 "finished_at": 0.0,
             }
         )
+        _gpu_setup_write_state_unlocked()
 
 
 def _gpu_setup_append(line: str) -> None:
@@ -1149,12 +1177,13 @@ def _gpu_setup_append(line: str) -> None:
         logs.append(str(line))
         if len(logs) > 400:
             del logs[:-400]
+        _gpu_setup_write_state_unlocked()
 
 
 def _gpu_setup_snapshot() -> dict:
     with _gpu_setup_lock:
-        state = dict(_gpu_setup_state)
-        state["logs"] = list(_gpu_setup_state.get("logs") or [])
+        state = _gpu_setup_load_state()
+        state["logs"] = list(state.get("logs") or [])
     state["output"] = "\n\n".join(state.get("logs") or [])[-12000:]
     return state
 
@@ -1166,6 +1195,7 @@ def _gpu_setup_finish(ok: bool, error: str = "", nvidia_major: str = "") -> None
         _gpu_setup_state["error"] = str(error or "")
         _gpu_setup_state["nvidia_major"] = str(nvidia_major or "")
         _gpu_setup_state["finished_at"] = time.time()
+        _gpu_setup_write_state_unlocked()
 
 
 def _gpu_setup_run_step(cmd: str, timeout: int = 600, in_lxc_host: bool = False) -> tuple[bool, str]:
