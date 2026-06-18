@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 import re
 import threading
 import time
@@ -12,6 +13,8 @@ CACHE_FILE = "registry_cache.json"
 REFRESH_INTERVAL_SEC = 3600  # 1 hour
 REQUEST_TIMEOUT_SEC = 10
 FETCH_HEADERS = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
+if os.environ.get("GITHUB_TOKEN"):
+    FETCH_HEADERS["Authorization"] = f"Bearer {os.environ['GITHUB_TOKEN']}"
 
 # raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>
 _RAW_RE = re.compile(
@@ -112,11 +115,15 @@ class RemoteRegistry:
         if m:
             owner, repo, ref, path = m.groups()
             api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={ref}"
-            resp = requests.get(api_url, timeout=REQUEST_TIMEOUT_SEC, headers=FETCH_HEADERS)
-            resp.raise_for_status()
-            data = resp.json()
-            content = base64.b64decode(data["content"]).decode("utf-8")
-            return json.loads(content)
+            try:
+                resp = requests.get(api_url, timeout=REQUEST_TIMEOUT_SEC, headers=FETCH_HEADERS)
+                resp.raise_for_status()
+                data = resp.json()
+                content = base64.b64decode(data["content"]).decode("utf-8")
+                return json.loads(content)
+            except requests.RequestException:
+                # Fallback to raw URL when GitHub API rate limits/forbids anonymous requests.
+                pass
         resp = requests.get(url, timeout=REQUEST_TIMEOUT_SEC, headers=FETCH_HEADERS)
         resp.raise_for_status()
         return resp.json()
