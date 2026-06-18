@@ -1246,7 +1246,7 @@ def api_gpu_setup():
 
     state = _gpu_setup_snapshot()
     if state.get("running"):
-        return jsonify({"ok": False, "error": "GPU-opsætning kører allerede.", **state}), 409
+        return jsonify({**state, "ok": False, "error": "GPU-opsætning kører allerede."}), 409
 
     _gpu_setup_reset_state()
     thread = threading.Thread(target=_gpu_setup_worker, daemon=True)

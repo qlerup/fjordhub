@@ -236,13 +236,6 @@
         </div>
         <div class="nfs-code-section" style="margin-top:10px;">
           <div class="nfs-section-header">
-            <span class="nfs-block-location">Gå ind i containeren</span>
-            <button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button>
-          </div>
-          <div class="nfs-code-block" id="gpu-enter-block"></div>
-        </div>
-        <div class="nfs-code-section" style="margin-top:10px;">
-          <div class="nfs-section-header">
             <span class="nfs-block-location">FjordHub-container (automatisk)</span>
           </div>
           <div style="font-size:.78rem;color:var(--text-muted);padding:8px 0 6px;">
@@ -518,9 +511,6 @@ function renderGpuCommands() {
 
   const restartBlock = document.getElementById('gpu-restart-block');
   if (restartBlock) restartBlock.textContent = `pct reboot ${vmid} || (pct stop ${vmid} && pct start ${vmid})`;
-
-  const enterBlock = document.getElementById('gpu-enter-block');
-  if (enterBlock) enterBlock.textContent = `pct enter ${vmid}`;
 
 }
 
