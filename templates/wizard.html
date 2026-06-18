@@ -517,24 +517,29 @@ function renderGpuCommands() {
 async function autoGpuContainerSetup() {
   const btn = document.getElementById('gpu-auto-container-btn');
   const statusEl = document.getElementById('gpu-auto-container-status');
+  const setStatus = (html) => {
+    if (!statusEl) return;
+    statusEl.innerHTML = html;
+    statusEl.scrollTop = statusEl.scrollHeight;
+  };
   if (statusEl) statusEl.style.display = 'block';
   if (btn) {
     btn.disabled = true;
     btn.textContent = 'Kører...';
   }
-  if (statusEl) statusEl.innerHTML = '<span style="color:var(--text-muted)">Starter automatisk opsætning i containeren...</span>';
+  setStatus('<span style="color:var(--text-muted)">Starter automatisk opsætning i containeren...</span>');
 
   const renderState = (state) => {
     const output = _escapeHtml(state.output || '');
     if (state.running) {
-      if (statusEl) statusEl.innerHTML = `<span style="color:var(--text-muted)">⏳ Kører... du kan følge output live herunder.</span>\n${output}`;
+      setStatus(`<span style="color:var(--text-muted)">⏳ Kører... du kan følge output live herunder.</span>\n${output}`);
       return;
     }
     if (state.ok) {
-      if (statusEl) statusEl.innerHTML = `<span style="color:#22c55e">✓ GPU-forudsætninger er sat op automatisk. Klik nu "Kør Docker GPU-test".</span>\n${output}`;
+      setStatus(`<span style="color:#22c55e">✓ GPU-forudsætninger er sat op automatisk. Klik nu "Kør Docker GPU-test".</span>\n${output}`);
       return;
     }
-    if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ Automatisk opsætning fejlede.</span>\n${_escapeHtml(state.error || '')}\n${output}`;
+    setStatus(`<span style="color:#ef4444">✗ Automatisk opsætning fejlede.</span>\n${_escapeHtml(state.error || '')}\n${output}`);
   };
 
   const poll = async () => {
@@ -542,7 +547,7 @@ async function autoGpuContainerSetup() {
       const res = await fetch('/api/gpu-setup/status');
       const data = await res.json();
       if (!data.api_ok) {
-        if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ Kunne ikke hente status.</span>\n${_escapeHtml(data.error || 'Ukendt fejl')}`;
+        setStatus(`<span style="color:#ef4444">✗ Kunne ikke hente status.</span>\n${_escapeHtml(data.error || 'Ukendt fejl')}`);
         return;
       }
       renderState(data);
@@ -550,7 +555,7 @@ async function autoGpuContainerSetup() {
         setTimeout(poll, 1200);
       }
     } catch (e) {
-      if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ Netværksfejl under status-opdatering: ${_escapeHtml(e.message)}</span>`;
+      setStatus(`<span style="color:#ef4444">✗ Netværksfejl under status-opdatering: ${_escapeHtml(e.message)}</span>`);
     }
   };
 
@@ -562,13 +567,13 @@ async function autoGpuContainerSetup() {
     });
     const data = await res.json();
     if (!data.api_ok) {
-      if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ Kunne ikke starte automatisk opsætning.</span>\n${_escapeHtml(data.error || data.output || 'Ukendt fejl')}`;
+      setStatus(`<span style="color:#ef4444">✗ Kunne ikke starte automatisk opsætning.</span>\n${_escapeHtml(data.error || data.output || 'Ukendt fejl')}`);
       return;
     }
     renderState(data);
     setTimeout(poll, 500);
   } catch (e) {
-    if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ Netværksfejl: ${_escapeHtml(e.message)}</span>`;
+    setStatus(`<span style="color:#ef4444">✗ Netværksfejl: ${_escapeHtml(e.message)}</span>`);
   } finally {
     const releaseBtn = async () => {
       try {
@@ -613,7 +618,12 @@ async function runGpuPreflight() {
         useBtn.style.cursor = 'pointer';
       }
     } else {
-      if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">GPU-test fejlede. Brug CPU eller koer PVE-kommandoerne og test igen.</span>\n${_escapeHtml(data.error || data.output || 'Ukendt fejl')}`;
+      const raw = String(data.error || data.output || 'Ukendt fejl');
+      let extra = '';
+      if (/driver\/library version mismatch|nvml error/i.test(raw)) {
+        extra = '\n\nTip: NVIDIA libs i LXC matcher ikke host-driveren endnu. Kør auto-knappen igen og se at den når helt til docker nvidia-smi uden fejl.';
+      }
+      if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">GPU-test fejlede. Brug CPU eller koer PVE-kommandoerne og test igen.</span>\n${_escapeHtml(raw + extra)}`;
     }
   } catch (e) {
     if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">Netvaerksfejl: ${_escapeHtml(e.message)}</span>`;
