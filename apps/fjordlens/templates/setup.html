@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Første opsætning · FjordLens{% endblock %}
+{% block body %}
+  {% set en = (ui_lang == 'en') %}
+  <div class="center-screen">
+    <form class="login-card" method="post">
+      <h2 style="margin:0 0 10px;">{{ 'First setup' if en else 'Første opsætning' }}</h2>
+      <p>{{ 'No users exist yet. Create the first admin user.' if en else 'Der er endnu ingen brugere. Opret den første admin‑bruger.' }}</p>
+      {% if require_token %}
+        <p style="color:var(--muted);">{{ 'Enter setup token to continue (set ' if en else 'Indtast setup‑token for at fortsætte (sæt ' }}<code>SETUP_TOKEN</code>{{ ' in environment).' if en else ' i miljøet).' }}</p>
+        <div class="form-row"><input name="token" placeholder="Setup token" required></div>
+      {% endif %}
+      {% if error %}<div class="err">{{ error }}</div>{% endif %}
+      {% if ok %}<div class="ok">{{ 'User created. You can sign in now.' if en else 'Bruger oprettet. Du kan nu logge ind.' }}</div>{% endif %}
+      <div class="form-row"><input name="username" placeholder="{{ 'Username' if en else 'Brugernavn' }}" required></div>
+      <div class="form-row reveal-wrap">
+        <input id="setupPw1" name="password" placeholder="{{ 'Password' if en else 'Adgangskode' }}" required type="password" autocomplete="new-password" style="padding-right:42px;">
+        <button id="setupReveal1" type="button" class="reveal-btn" aria-label="{{ 'Show password' if en else 'Vis adgangskode' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5c4.5 0 8.4 2.9 10 7-1.6 4.1-5.5 7-10 7s-8.4-2.9-10-7c1.6-4.1 5.5-7 10-7zm0 2c-3.3 0-6.3 2.1-7.6 5 1.3 2.9 4.3 5 7.6 5s6.3-2.1 7.6-5c-1.3-2.9-4.3-5-7.6-5zm0 2.5a2.5 2.5 0 110 5 2.5 2.5 0 010-5z"/></svg>
+        </button>
+      </div>
+      <div class="form-row reveal-wrap">
+        <input id="setupPw2" name="password2" placeholder="{{ 'Repeat password' if en else 'Gentag adgangskode' }}" required type="password" autocomplete="new-password" style="padding-right:42px;">
+        <button id="setupReveal2" type="button" class="reveal-btn" aria-label="{{ 'Show password' if en else 'Vis adgangskode' }}">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5c4.5 0 8.4 2.9 10 7-1.6 4.1-5.5 7-10 7s-8.4-2.9-10-7c1.6-4.1 5.5-7 10-7zm0 2c-3.3 0-6.3 2.1-7.6 5 1.3 2.9 4.3 5 7.6 5s6.3-2.1 7.6-5c-1.3-2.9-4.3-5-7.6-5zm0 2.5a2.5 2.5 0 110 5 2.5 2.5 0 010-5z"/></svg>
+        </button>
+      </div>
+      <div class="actions">
+        <a class="mini-link" href="/">{{ 'Back' if en else 'Tilbage' }}</a>
+        <button class="btn primary">{{ 'Create admin' if en else 'Opret admin' }}</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  function wire(btnId, inputId){ const b=document.getElementById(btnId), i=document.getElementById(inputId); if(!b||!i) return; b.addEventListener('click',()=>{ i.type=(i.type==='password')?'text':'password'; i.focus({preventScroll:true}); }); }
+  wire('setupReveal1','setupPw1');
+  wire('setupReveal2','setupPw2');
+})();
+</script>
+{% endblock %}

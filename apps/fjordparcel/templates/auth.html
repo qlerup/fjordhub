@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% if mode == 'setup' %}Opret admin bruger{% elif mode == 'setup_locked' %}Recovery kraeves{% else %}Log ind{% endif %} – FjordParcel</title>
+    <link rel="icon" href="{{ url_for('static', filename='logos/web/favicon.ico', v=app_build) }}" sizes="any">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=app_build) }}">
+  </head>
+  <body class="auth-body">
+    <div class="auth-wrap">
+      <div class="auth-card">
+        <a href="{{ url_for('index') }}" class="auth-brand" tabindex="-1">
+          <img src="{{ url_for('static', filename='logos/logos/fjordparcel-logo-horizontal-transparent.png', v=app_build) }}" alt="FjordParcel" class="auth-logo">
+        </a>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flash-stack" aria-live="polite">
+              {% for category, message in messages %}
+                <div class="flash flash-{{ category }}">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        {% if mode == 'setup_locked' %}
+          <h1 class="auth-heading">Recovery kraeves</h1>
+          <p class="auth-sub">FjordParcel er allerede initialiseret, men databasen mangler eller er tom.</p>
+          <div class="flash-stack" aria-live="polite">
+            <div class="flash flash-error">
+              Af sikkerhedsgrunde er foerste opsaetning lukket. Gendan databasen fra backup eller kontroller data-mountet.
+            </div>
+          </div>
+          <p class="auth-sub">Database: {{ db_path }}</p>
+        {% elif mode == 'setup' %}
+          <h1 class="auth-heading">Opret admin bruger</h1>
+          <p class="auth-sub">Opret den første bruger for at komme i gang.</p>
+          <form method="post" action="{{ url_for('setup') }}" class="auth-form" autocomplete="off" accept-charset="UTF-8">
+            <div class="auth-field">
+              <label for="name">Navn</label>
+              <input id="name" name="name" type="text" autocomplete="name" required value="{{ form_name or '' }}" placeholder="Dit fulde navn">
+            </div>
+            <div class="auth-field">
+              <label for="username">Brugernavn</label>
+              <input id="username" name="username" type="text" autocomplete="username" required value="{{ form_username or '' }}" placeholder="fx admin">
+            </div>
+            <div class="auth-field">
+              <label for="password">Adgangskode</label>
+              <input id="password" name="password" type="password" autocomplete="new-password" required placeholder="Mindst 6 tegn">
+            </div>
+            <div class="auth-field">
+              <label for="password2">Gentag adgangskode</label>
+              <input id="password2" name="password2" type="password" autocomplete="new-password" required placeholder="Gentag adgangskoden">
+            </div>
+            <button type="submit" class="auth-submit">Opret bruger</button>
+          </form>
+        {% else %}
+          <h1 class="auth-heading">Log ind</h1>
+          <form method="post" action="{{ url_for('login') }}" class="auth-form" accept-charset="UTF-8">
+            <div class="auth-field">
+              <label for="username">Brugernavn</label>
+              <input id="username" name="username" type="text" autocomplete="username" required placeholder="Dit brugernavn">
+            </div>
+            <div class="auth-field">
+              <label for="password">Adgangskode</label>
+              <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Din adgangskode">
+            </div>
+            <button type="submit" class="auth-submit">Log ind</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </body>
+</html>

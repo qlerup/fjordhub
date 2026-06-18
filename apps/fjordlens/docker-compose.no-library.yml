@@ -1,0 +1,7 @@
+services:
+  fjordlens:
+    volumes:
+      - "${DATA_DIR:-/volume1/docker/fjordlens/data}:/data"
+      - "${UPLOADS_HOST_DIR:-/volume1/docker/fjordlens/data/uploads}:/uploads"
+      - "${THUMBS_HOST_DIR:-/volume1/docker/fjordlens/data/thumbs}:/thumbs"
+      # Note: /photos mount intentionally omitted for uploads-only setups

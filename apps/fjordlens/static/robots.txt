@@ -1,0 +1,9 @@
+User-agent: *
+Disallow: /admin
+Disallow: /admin/
+Disallow: /api/
+Disallow: /login
+Disallow: /logout
+Disallow: /setup
+
+Sitemap: https://fjord3d.gleruphub.dk/sitemap.xml

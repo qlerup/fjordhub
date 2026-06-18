@@ -1,0 +1,118 @@
+services:
+  fjordlens:
+    build: .
+    container_name: fjordlens
+    ports:
+      - "${APP_PORT:-9080}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Keep 1 worker: background jobs use in-process state/events and are not safe across multiple workers.
+    command: >
+      gunicorn wsgi:application
+      --worker-class gthread
+      --workers ${GUNICORN_WORKERS:-1}
+      --threads 8
+      --bind 0.0.0.0:8080
+      --timeout 120 --graceful-timeout 30 --keep-alive 5
+      --max-requests 1000 --max-requests-jitter 100
+      --access-logfile - --log-level ${GUNICORN_LOG_LEVEL:-info}
+    environment:
+      PHOTO_DIR: /photos
+      DATA_DIR: /data
+      UPLOAD_DIR: /uploads
+      THUMB_DIR: /thumbs
+      AI_URL: http://fjordlens-ai:8000
+      AI_DESC_MODEL: ${AI_DESC_MODEL:-qwen}
+      AI_DESC_REQUEST_TIMEOUT_SEC: ${AI_DESC_REQUEST_TIMEOUT_SEC:-120}
+      AI_INGEST_THROTTLE_SEC: ${AI_INGEST_THROTTLE_SEC:-0.04}
+      FACES_INDEX_THROTTLE_SEC: ${FACES_INDEX_THROTTLE_SEC:-0.06}
+      TZ: ${TZ:-Europe/Copenhagen}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PHOTOFRAME_TEXT_ONLY: ${PHOTOFRAME_TEXT_ONLY:-0}
+      PHOTOFRAME_UPDATE_UPLOAD_MAX_BYTES: ${PHOTOFRAME_UPDATE_UPLOAD_MAX_BYTES:-314572800}
+      SQLITE_JOURNAL_MODE: ${SQLITE_JOURNAL_MODE:-}
+      SQLITE_BUSY_TIMEOUT_MS: ${SQLITE_BUSY_TIMEOUT_MS:-10000}
+      ENABLE_LIBRARY_SOURCE: ${ENABLE_LIBRARY_SOURCE:-0}
+      ENABLE_SCAN_FEATURES: ${ENABLE_SCAN_FEATURES:-0}
+      RAW_CONVERT_ON_UPLOAD: ${RAW_CONVERT_ON_UPLOAD:-1}
+      MOV_CONVERT_ON_UPLOAD: ${MOV_CONVERT_ON_UPLOAD:-1}
+      MOV_CONVERT_PRESET: ${MOV_CONVERT_PRESET:-veryfast}
+      MOV_CONVERT_CRF: ${MOV_CONVERT_CRF:-23}
+      MOV_CONVERT_AUDIO_BITRATE: ${MOV_CONVERT_AUDIO_BITRATE:-128k}
+      MOV_CONVERT_TIMEOUT_SEC: ${MOV_CONVERT_TIMEOUT_SEC:-7200}
+      FJORDLENS_UPDATER_URL: http://fjordlens-updater:8090
+      FJORDHUB_URL: ${FJORDHUB_URL:-}
+      FJORDHUB_APP_ID: ${FJORDHUB_APP_ID:-fjordlens}
+      FJORDHUB_API_KEY: ${FJORDHUB_API_KEY:-}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      fjordlens-ai:
+        condition: service_healthy
+    volumes:
+      - "${PHOTO_DIR:-/tmp/fjordlens-unused-library}:/photos:ro"
+      - "${DATA_DIR:-/volume1/docker/fjordlens/data}:/data"
+      - "${UPLOADS_HOST_DIR:-/volume1/docker/fjordlens/data/uploads}:/uploads"
+      - "${THUMBS_HOST_DIR:-/volume1/docker/fjordlens/data/thumbs}:/thumbs"
+    restart: unless-stopped
+
+  fjordlens-ai:
+    build: ./ai_service
+    container_name: fjordlens-ai
+    gpus: all
+    environment:
+      CLIP_MODEL: ViT-B-32
+      CLIP_PRETRAINED: openai
+      AI_DEVICE: ${AI_DEVICE:-auto}
+      QWEN_VL_MODEL: ${QWEN_VL_MODEL:-Qwen/Qwen2.5-VL-3B-Instruct}
+      QWEN_VL_4BIT: ${QWEN_VL_4BIT:-1}
+      QWEN_VL_4BIT_QUANT_TYPE: ${QWEN_VL_4BIT_QUANT_TYPE:-fp4}
+      QWEN_VL_RESERVE_GPU: ${QWEN_VL_RESERVE_GPU:-1}
+      QWEN_VL_CPU_FALLBACK: ${QWEN_VL_CPU_FALLBACK:-0}
+      QWEN_VL_LOW_CPU_MEM_USAGE: ${QWEN_VL_LOW_CPU_MEM_USAGE:-1}
+      QWEN_VL_MAX_NEW_TOKENS: ${QWEN_VL_MAX_NEW_TOKENS:-120}
+      QWEN_VL_MAX_IMAGE_SIDE: ${QWEN_VL_MAX_IMAGE_SIDE:-1280}
+      QWEN_VL_MAX_IMAGE_PIXELS: ${QWEN_VL_MAX_IMAGE_PIXELS:-1500000}
+      PORT: "8000"
+      # Persist model/weights downloads between restarts
+      XDG_CACHE_HOME: /cache
+    ports:
+      # Optional: expose for debugging from host
+      - "${AI_DEBUG_PORT:-8001}:8000"
+    volumes:
+      - ai_cache:/cache
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys;\n\ntry:\n    r=urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)\n    sys.exit(0 if r.getcode()==200 else 1)\nexcept Exception:\n    sys.exit(1)\n\" "]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+    restart: unless-stopped
+
+  fjordlens-updater:
+    build:
+      context: .
+      dockerfile: updater_service/Dockerfile
+    container_name: fjordlens-updater
+    working_dir: /repo
+    environment:
+      APP_DIR: /repo
+      SERVICE_NAME: fjordlens
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-fjordlens}
+      COMPOSE_SERVICES: "fjordlens fjordlens-ai"
+      FJORDLENS_UPDATER_STATE_DIR: /state
+      FJORDLENS_AUTO_UPDATE_CHECK: ${FJORDLENS_AUTO_UPDATE_CHECK:-1}
+      FJORDLENS_AUTO_UPDATE_CHECK_INTERVAL_MINUTES: ${FJORDLENS_AUTO_UPDATE_CHECK_INTERVAL_MINUTES:-30}
+      TZ: ${TZ:-Europe/Copenhagen}
+    volumes:
+      - "${APP_REPO_DIR:-.}:/repo"
+      - "${DATA_DIR:-/volume1/docker/fjordlens/data}/updater:/state"
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+volumes:
+  ai_cache:

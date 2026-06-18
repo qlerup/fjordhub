@@ -1,0 +1,682 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="workspace-heading">
+    <div>
+      <p class="eyebrow">Konfiguration</p>
+      <h1>Indstillinger</h1>
+    </div>
+  </section>
+
+  <section class="settings-switch" aria-label="Settings sections" id="tab-bar">
+    <span class="tab-indicator" id="tab-indicator"></span>
+    <a class="settings-switch-item {% if section == 'general' %}active{% endif %}" href="{{ url_for('settings', section='general') }}" data-tab="general">Indstillinger</a>
+    <a class="settings-switch-item {% if section == 'mails' %}active{% endif %}" href="{{ url_for('settings', section='mails') }}" data-tab="mails">Mails</a>
+    <a class="settings-switch-item {% if section == 'carriers' %}active{% endif %}" href="{{ url_for('settings', section='carriers', carrier=active_carrier) }}" data-tab="carriers">Fragtfirmaer</a>
+    <a class="settings-switch-item {% if section == 'users' %}active{% endif %}" href="{{ url_for('settings', section='users') }}" data-tab="users">Brugere</a>
+    <a class="settings-switch-item {% if section == 'update' %}active{% endif %}" href="{{ url_for('settings', section='update') }}" data-tab="update" id="settingsTabUpdate">Opdatering</a>
+  </section>
+
+  {# ── General ──────────────────────────────────────────── #}
+  <div id="pane-general" {% if section != 'general' %}hidden{% endif %}>
+    <section class="settings-grid single-panel">
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Automatisk tracking-opdatering</h2>
+          {% if automation.auto_refresh_enabled %}
+            <span class="badge success">Aktiv</span>
+          {% else %}
+            <span class="badge">Sl&aring;et fra</span>
+          {% endif %}
+        </div>
+        <form class="settings-form" method="post" action="{{ url_for('save_automation_config') }}" accept-charset="UTF-8">
+          <input type="hidden" name="section" value="general">
+          <input type="hidden" name="auto_refresh_present" value="1">
+          <label>
+            <span>Aktiv&eacute;r automatisk tracking-opdatering</span>
+            <input type="checkbox" name="auto_refresh_enabled" {% if automation.auto_refresh_enabled %}checked{% endif %}>
+          </label>
+          <small class="setting-line">Tracking opdateres hvert 30. minut, n&aring;r funktionen er sl&aring;et til.</small>
+          <button type="submit">Gem tracking-automatisering</button>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  {# ── Mails ────────────────────────────────────────────── #}
+  <div id="pane-mails" {% if section != 'mails' %}hidden{% endif %}>
+    {% set selected_provider = active_mail_account.provider if active_mail_account else requested_mail_provider %}
+    <section class="mail-settings-layout">
+      <aside class="panel mail-sidebar">
+        <div class="panel-heading">
+          <h2>Mailkonti</h2>
+          {% if mail_accounts %}
+            <span class="badge success">{{ mail_accounts|length }} forbundet</span>
+          {% elif microsoft_configured or google_configured %}
+            <span class="badge">Klar</span>
+          {% else %}
+            <span class="badge warning">Mangler app</span>
+          {% endif %}
+        </div>
+
+        {% if mail_accounts %}
+          <ul class="mail-account-list">
+            {% for account in mail_accounts %}
+              {% set is_active = active_mail_account and active_mail_account.account_key == account.account_key %}
+              <li>
+                <a class="mail-account-item {% if is_active %}active{% endif %}" href="{{ url_for('settings', section='mails', provider=account.provider, account=account.username) }}">
+                  <span>
+                    <strong>{{ account.username }}</strong>
+                    <small>{{ account.provider_label }} {{ account.method }}</small>
+                  </span>
+                  <span class="mail-account-chevron" aria-hidden="true">&#8594;</span>
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="setting-line">Tilf&oslash;j Microsoft- eller Gmail-konti, der skal scannes for pakker.</p>
+        {% endif %}
+
+        <div class="provider-actions">
+          <a class="button-link secondary-button {% if selected_provider == 'microsoft' and setup_provider %}active-light{% endif %}" href="{{ url_for('settings', section='mails', provider='microsoft', setup='1') }}">Konfigur&eacute;r Hotmail</a>
+          <a class="button-link secondary-button {% if selected_provider == 'gmail' and setup_provider %}active-light{% endif %}" href="{{ url_for('settings', section='mails', provider='gmail', setup='1') }}">Konfigur&eacute;r Gmail</a>
+        </div>
+      </aside>
+
+      {% if active_mail_account or setup_provider %}
+        <div class="mail-detail-grid">
+          {% if active_mail_account %}
+            <div class="panel">
+              <div class="panel-heading">
+                <h2>{{ active_mail_account.username }}</h2>
+                <span class="badge success">{{ active_mail_account.provider_label }}</span>
+              </div>
+              <div class="button-row">
+                <form method="post" action="{{ url_for('disconnect_mail_account', provider=active_mail_account.provider, username=active_mail_account.username) }}" accept-charset="UTF-8">
+                  <button class="danger-button" type="submit">Afbryd konto</button>
+                </form>
+              </div>
+              <hr>
+              <div class="group-head">Manuel scanning</div>
+              <form accept-charset="UTF-8"
+                class="scan-form"
+                method="post"
+                action="{{ url_for('scan_mail') }}"
+                data-scan-start-url="{{ url_for('start_scan_mail') }}"
+                data-scan-status-url-template="{{ url_for('scan_mail_status', job_id='__JOB_ID__') }}"
+              >
+                <input type="hidden" name="provider" value="{{ active_mail_account.provider }}">
+                <input type="hidden" name="username" value="{{ active_mail_account.username }}">
+                <label>
+                  <span>Scanperiode</span>
+                  <select name="days">
+                    <option value="7">1 uge (7 dage)</option>
+                    <option value="14" selected>2 uger (14 dage)</option>
+                    <option value="21">3 uger (21 dage)</option>
+                  </select>
+                </label>
+                <button type="submit" {% if not mail_accounts %}disabled{% endif %}>Scan mails</button>
+                <small class="scan-support">DAO, PostNord, Bring, GLS</small>
+                <div class="scan-progress" data-scan-progress hidden>
+                  <div class="scan-progress-header">
+                    <strong data-scan-stage>Klar</strong>
+                    <span data-scan-count>0 scannet</span>
+                  </div>
+                  <div class="progress-track" aria-hidden="true">
+                    <span data-scan-bar style="width: 0%"></span>
+                  </div>
+                  <p data-scan-detail>Venter p&aring; scanning.</p>
+                </div>
+              </form>
+              <div class="group-head">Automatisk mailscan</div>
+              <form class="settings-form" method="post" action="{{ url_for('save_mail_account_automation_config') }}" accept-charset="UTF-8">
+                <input type="hidden" name="provider" value="{{ active_mail_account.provider }}">
+                <input type="hidden" name="username" value="{{ active_mail_account.username }}">
+                <label>
+                  <span>Aktiv&eacute;r automatisk mailscan</span>
+                  <input type="checkbox" name="auto_scan_enabled" {% if account_automation.auto_scan_enabled %}checked{% endif %}>
+                </label>
+                <label>
+                  <span>Scan-interval (minutter)</span>
+                  <input name="auto_scan_minutes" inputmode="numeric" autocomplete="off" value="{{ account_automation.auto_scan_minutes }}" placeholder="30">
+                </label>
+                <button type="submit">Gem mail-automatisering</button>
+              </form>
+            </div>
+          {% else %}
+            <div class="panel mail-empty-detail">
+              {% if selected_provider == 'gmail' %}
+                <h2>Gmail ops&aelig;tning</h2>
+                <p>Opret en Google OAuth-klient, gem klientoplysningerne her, og forbind derefter Gmail.</p>
+                <div class="connect-action">
+                  {% if google_configured %}
+                    <a class="button-link" href="{{ url_for('google_mail_connect') }}">Forbind Gmail-konto</a>
+                    <small>Den gemte Google app-registrering bruges til alle Gmail-konti. Hver mailkonto gemmes separat.</small>
+                  {% else %}
+                    <span class="button-link disabled" aria-disabled="true">Forbind Gmail-konto</span>
+                    <small>Gem Google app-registreringen f&oslash;r knappen bliver aktiv.</small>
+                  {% endif %}
+                </div>
+              {% else %}
+                <h2>Microsoft ops&aelig;tning</h2>
+                <p>Opret en Microsoft app-registrering, gem klientoplysningerne her, og forbind derefter Hotmail.</p>
+                <div class="connect-action">
+                  {% if microsoft_configured %}
+                    <a class="button-link" href="{{ url_for('microsoft_mail_connect') }}">Forbind Hotmail-konto</a>
+                    <small>Den gemte Microsoft app-registrering bruges til alle Hotmail-konti. Hver mailkonto gemmes separat.</small>
+                  {% else %}
+                    <span class="button-link disabled" aria-disabled="true">Forbind Hotmail-konto</span>
+                    <small>Gem Microsoft app-registreringen f&oslash;r knappen bliver aktiv.</small>
+                  {% endif %}
+                </div>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          <div class="panel">
+            <div class="panel-heading">
+              <h2>{% if selected_provider == 'gmail' %}Google app-registrering{% else %}Microsoft app-registrering{% endif %}</h2>
+            </div>
+            {% if selected_provider == 'gmail' %}
+              {% if google_configured and not edit_app_registration %}
+                <div class="app-registration-status">
+                  <strong>Google app-registrering er gemt</strong>
+                  <p>Den bruges kun til at starte OAuth-login. Gmail-konti og tokens gemmes separat pr. mailkonto.</p>
+                  <a class="button-link secondary-button" href="{{ url_for('settings', section='mails', provider='gmail', setup='1', edit_app='1') }}">Rediger app-registrering</a>
+                </div>
+              {% else %}
+                <form class="settings-form" method="post" action="{{ url_for('save_google_config') }}" accept-charset="UTF-8">
+                  <label>
+                    <span>Klient-ID</span>
+                    <input name="client_id" autocomplete="off" value="{{ google_config.client_id if edit_app_registration else '' }}" placeholder="OAuth client ID">
+                  </label>
+                  <label>
+                    <span>Klienthemmelighed</span>
+                    <input name="client_secret" type="password" autocomplete="off" placeholder="{% if google_config.client_secret and edit_app_registration %}Lad v&aelig;re tom for at beholde gemt hemmelighed{% else %}V&aelig;rdi af klienthemmelighed{% endif %}">
+                  </label>
+                  <label>
+                    <span>Maks. mails pr. scanning</span>
+                    <input name="max_scan_messages" inputmode="numeric" autocomplete="off" value="{{ google_config.max_scan_messages }}" placeholder="1000">
+                  </label>
+                  <div class="button-row">
+                    <button type="submit">Gem Google-indstillinger</button>
+                    {% if google_configured %}
+                      <a class="secondary-action" href="{{ url_for('settings', section='mails', provider='gmail', setup='1') }}">Annuller</a>
+                    {% endif %}
+                  </div>
+                </form>
+              {% endif %}
+              <dl class="config-list">
+                <div>
+                  <dt class="redirect-uri-dt">
+                    <span>Omdirigerings-URI</span>
+                    <button type="button" class="archive-switch redirect-uri-toggle {% if not public_base_url %}is-on{% endif %}" data-redirect-toggle="google" aria-pressed="{{ 'true' if not public_base_url else 'false' }}">
+                      <span>{{ 'Brug localhost' if not public_base_url else 'Brug eget domæne' }}</span>
+                      <span class="archive-switch-track" aria-hidden="true"><span class="archive-switch-thumb"></span></span>
+                    </button>
+                  </dt>
+                  <dd>
+                    <code data-redirect-localhost="google" {% if public_base_url %}hidden{% endif %}>{{ localhost_google_redirect_uri }}</code>
+                    <div data-redirect-domain="google" {% if not public_base_url %}hidden{% endif %} class="redirect-domain-edit">
+                      <div class="redirect-domain-row">
+                        <input type="text" class="redirect-domain-input" data-domain-input="google" data-callback-path="/auth/google/callback" value="{{ public_base_url }}" placeholder="https://dit-domæne.dk">
+                        <button type="button" class="redirect-save-btn" data-domain-copy="google" hidden title="Anvend domæne"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></button>
+                      </div>
+                      <code data-domain-preview="google" {% if not public_base_url %}hidden{% endif %} class="redirect-domain-preview">{{ google_redirect_uri if public_base_url else '' }}</code>
+                      <p class="redirect-save-status" data-save-status="google" hidden></p>
+                    </div>
+                  </dd>
+                </div>
+                <div><dt>Client ID</dt><dd>{{ "Gemt krypteret" if google_config.client_id else "Mangler" }}</dd></div>
+                <div><dt>Client secret</dt><dd>{{ "Gemt krypteret" if google_config.client_secret else "Mangler" }}</dd></div>
+                <div><dt>Gmail API scope</dt><dd><code>https://www.googleapis.com/auth/gmail.readonly</code></dd></div>
+              </dl>
+            {% else %}
+              {% if microsoft_configured and not edit_app_registration %}
+                <div class="app-registration-status">
+                  <strong>Microsoft app-registrering er gemt</strong>
+                  <p>Den bruges kun til at starte OAuth-login. Hotmail-konti og tokens gemmes separat pr. mailkonto.</p>
+                  <a class="button-link secondary-button" href="{{ url_for('settings', section='mails', provider='microsoft', setup='1', edit_app='1') }}">Rediger app-registrering</a>
+                </div>
+              {% else %}
+                <form class="settings-form" method="post" action="{{ url_for('save_microsoft_config') }}" accept-charset="UTF-8">
+                  <label>
+                    <span>Klient-ID</span>
+                    <input name="client_id" autocomplete="off" value="{{ microsoft_config.client_id if edit_app_registration else '' }}" placeholder="Application (client) ID">
+                  </label>
+                  <label>
+                    <span>Klienthemmelighed</span>
+                    <input name="client_secret" type="password" autocomplete="off" placeholder="{% if microsoft_config.client_secret and edit_app_registration %}Lad v&aelig;re tom for at beholde gemt hemmelighed{% else %}V&aelig;rdi af klienthemmelighed{% endif %}">
+                  </label>
+                  <label>
+                    <span>Lejer (tenant)</span>
+                    <input name="tenant" autocomplete="off" value="{{ microsoft_config.tenant }}" placeholder="consumers">
+                  </label>
+                  <div class="split-fields">
+                    <label>
+                      <span>IMAP-v&aelig;rt</span>
+                      <input name="imap_host" autocomplete="off" value="{{ microsoft_config.imap_host }}" placeholder="outlook.office365.com">
+                    </label>
+                    <label>
+                      <span>IMAP-port</span>
+                      <input name="imap_port" inputmode="numeric" autocomplete="off" value="{{ microsoft_config.imap_port }}" placeholder="993">
+                    </label>
+                  </div>
+                  <label>
+                    <span>Maks. mails pr. scanning</span>
+                    <input name="max_scan_messages" inputmode="numeric" autocomplete="off" value="{{ microsoft_config.max_scan_messages }}" placeholder="1000">
+                  </label>
+                  <div class="button-row">
+                    <button type="submit">Gem Microsoft-indstillinger</button>
+                    {% if microsoft_configured %}
+                      <a class="secondary-action" href="{{ url_for('settings', section='mails', provider='microsoft', setup='1') }}">Annuller</a>
+                    {% endif %}
+                  </div>
+                </form>
+              {% endif %}
+              <dl class="config-list">
+                <div>
+                  <dt class="redirect-uri-dt">
+                    <span>Omdirigerings-URI</span>
+                    <button type="button" class="archive-switch redirect-uri-toggle {% if not public_base_url %}is-on{% endif %}" data-redirect-toggle="ms" aria-pressed="{{ 'true' if not public_base_url else 'false' }}">
+                      <span>{{ 'Brug localhost' if not public_base_url else 'Brug eget domæne' }}</span>
+                      <span class="archive-switch-track" aria-hidden="true"><span class="archive-switch-thumb"></span></span>
+                    </button>
+                  </dt>
+                  <dd>
+                    <code data-redirect-localhost="ms" {% if public_base_url %}hidden{% endif %}>{{ localhost_redirect_uri }}</code>
+                    <div data-redirect-domain="ms" {% if not public_base_url %}hidden{% endif %} class="redirect-domain-edit">
+                      <div class="redirect-domain-row">
+                        <input type="text" class="redirect-domain-input" data-domain-input="ms" data-callback-path="/auth/microsoft/callback" value="{{ public_base_url }}" placeholder="https://dit-domæne.dk">
+                        <button type="button" class="redirect-save-btn" data-domain-copy="ms" hidden title="Anvend domæne"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></button>
+                      </div>
+                      <code data-domain-preview="ms" {% if not public_base_url %}hidden{% endif %} class="redirect-domain-preview">{{ redirect_uri if public_base_url else '' }}</code>
+                      <p class="redirect-save-status" data-save-status="ms" hidden></p>
+                    </div>
+                  </dd>
+                </div>
+                <div><dt>Client ID</dt><dd>{{ "Gemt krypteret" if microsoft_config.client_id else "Mangler" }}</dd></div>
+                <div><dt>Client secret</dt><dd>{{ "Gemt krypteret" if microsoft_config.client_secret else "Mangler" }}</dd></div>
+                <div><dt>IMAP-server</dt><dd><code>{{ microsoft_config.imap_host }}:{{ microsoft_config.imap_port }}</code></dd></div>
+                <div><dt>OAuth-scope</dt><dd><code>https://outlook.office.com/IMAP.AccessAsUser.All</code></dd></div>
+              </dl>
+            {% endif %}
+          </div>
+        </div>
+      {% elif mail_accounts %}
+        <div class="panel mail-empty-detail">
+          <h2>V&aelig;lg en mailkonto</h2>
+          <p>V&aelig;lg en konto i listen for at se scanning, automatisering og app-indstillinger.</p>
+        </div>
+      {% else %}
+        <div class="panel mail-empty-detail">
+          <h2>Ingen mailkonti endnu</h2>
+          <p>V&aelig;lg Microsoft eller Gmail i menuen til venstre for at komme i gang.</p>
+        </div>
+      {% endif %}
+    </section>
+  </div>
+
+  {# ── Carriers ─────────────────────────────────────────── #}
+  <div id="pane-carriers" {% if section != 'carriers' %}hidden{% endif %}>
+    <section class="carrier-settings-layout">
+      <aside class="panel carrier-panel">
+        <div class="panel-heading">
+          <h2>Fragtfirmaer</h2>
+        </div>
+        <nav class="carrier-list" aria-label="Carrier list">
+          {% for carrier_name in carrier_names %}
+            <a
+              class="carrier-item {% if active_carrier == carrier_name %}active{% endif %}"
+              href="{{ url_for('settings', section='carriers', carrier=carrier_name) }}"
+            >
+              <strong>{{ carrier_name }}</strong>
+            </a>
+          {% endfor %}
+        </nav>
+      </aside>
+
+      {% if active_carrier == 'PostNord' %}
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>17TRACK API-nøgle</h2>
+
+          {% if track17_api_key_set %}
+            <span class="badge success">Konfigureret</span>
+          {% else %}
+            <span class="badge error">Mangler</span>
+          {% endif %}
+        </div>
+        {% if track17_api_key_set %}
+        <p class="setting-line">
+          API-nøglen er konfigureret og krypteret. PostNord-tracking er aktiv via 17TRACK API. Du kan opdatere nøglen nedenfor hvis nødvendigt.
+        </p>
+        {% else %}
+        <p class="setting-line">
+          PostNord-tracking kræver en 17TRACK API-nøgle. Opret en gratis konto på <a href="https://www.17track.net/en/api" target="_blank" rel="noreferrer">17track.net/en/api</a>, find din nøgle under Settings og indsæt den herunder.
+        </p>
+        {% endif %}
+        <form class="settings-form" method="post" action="{{ url_for('save_track17_api_key') }}" accept-charset="UTF-8">
+          <label>
+            <span>API-nøgle</span>
+            <input type="password" name="api_key" autocomplete="off" placeholder="Indsæt din 17TRACK API-nøgle her...">
+          </label>
+          <button type="submit">Gem API-nøgle</button>
+        </form>
+      </div>
+      {% else %}
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>{{ active_carrier }}</h2>
+        </div>
+        <p class="setting-line muted-text">Ingen indstillinger tilgængelige for {{ active_carrier }}.</p>
+      </div>
+      {% endif %}
+
+    </section>
+  </div>
+
+  {# ── Users ────────────────────────────────────────────── #}
+  <div id="pane-users" {% if section != 'users' %}hidden{% endif %}>
+    <section class="settings-grid single-panel">
+      <div class="panel">
+        <div class="panel-heading">
+          <h2>Brugere</h2>
+          <div class="panel-badges">
+            <span class="badge success">{{ users|length }} bruger{{ 'e' if users|length != 1 else '' }}</span>
+          </div>
+        </div>
+        {% if fjordhub_managed %}
+          <p class="managed-note">Håndteret sammen med FjordHub (2-vejs). Brugere oprettet her synces til FjordHub, og brugere fra FjordHub vises her.</p>
+        {% endif %}
+        <table class="user-table">
+          <thead>
+            <tr>
+              <th>Navn</th>
+              <th>Brugernavn</th>
+              <th>Rolle</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for user in users %}
+              <tr>
+                <td>{{ user.name }}</td>
+                <td><code>{{ user.username }}</code></td>
+                <td>
+                  <span class="badge {% if user.role == 'admin' %}success{% endif %}">
+                    {{ 'Admin' if user.role == 'admin' else 'Bruger' }}
+                  </span>
+                </td>
+                <td class="user-actions">
+                  <form method="post" action="{{ url_for('delete_user_settings', user_id=user.id) }}" accept-charset="UTF-8" onsubmit="return confirm('Slet {{ user.name }}?')">
+                    <button class="danger-button small-button" type="submit">Slet</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="button-row" style="margin-top:18px">
+          <button type="button" class="button-link" onclick="document.getElementById('create-user-modal').showModal()">Opret bruger</button>
+        </div>
+      </div>
+    </section>
+
+      <dialog id="create-user-modal" class="user-modal">
+        <div class="user-modal-inner">
+          <div class="user-modal-head">
+            <h2>Opret bruger</h2>
+            <button type="button" class="modal-close" onclick="document.getElementById('create-user-modal').close()" aria-label="Luk">&times;</button>
+          </div>
+          <form method="post" action="{{ url_for('create_user_settings') }}" class="auth-form" autocomplete="off" accept-charset="UTF-8">
+            <div class="auth-field">
+              <label for="cu-name">Navn</label>
+              <input id="cu-name" name="name" type="text" required placeholder="Fulde navn">
+            </div>
+            <div class="auth-field">
+              <label for="cu-username">Brugernavn</label>
+              <input id="cu-username" name="username" type="text" required placeholder="fx bruger1">
+            </div>
+            <div class="auth-field">
+              <label for="cu-password">Adgangskode</label>
+              <input id="cu-password" name="password" type="password" required placeholder="Mindst 6 tegn">
+            </div>
+            <div class="auth-field">
+              <label for="cu-password2">Gentag adgangskode</label>
+              <input id="cu-password2" name="password2" type="password" required placeholder="Gentag adgangskoden">
+            </div>
+            <div class="auth-field">
+              <label for="cu-role">Rolle</label>
+              <select id="cu-role" name="role">
+                <option value="admin">Admin – fuld adgang</option>
+                <option value="user" selected>Bruger – ingen adgang til indstillinger</option>
+              </select>
+            </div>
+            <div class="button-row" style="margin-top:6px">
+              <button type="submit">Opret bruger</button>
+              <button type="button" class="button-link secondary-button" onclick="document.getElementById('create-user-modal').close()">Annuller</button>
+            </div>
+          </form>
+        </div>
+      </dialog>
+  </div>
+
+  {# ── Update ───────────────────────────────────────────── #}
+  <div id="pane-update" {% if section != 'update' %}hidden{% endif %}>
+    <section class="settings-grid single-panel">
+      <div class="panel" id="appUpdatePanel">
+        <div class="panel-heading">
+          <h2>FjordParcel opdatering</h2>
+          <span class="badge" id="appUpdateStateBadge">Klar</span>
+        </div>
+
+        <dl class="config-list" style="margin-bottom:1rem">
+          <div><dt>Branch</dt><dd><strong id="appUpdateBranch">-</strong></dd></div>
+          <div><dt>Installeret</dt><dd><strong id="appUpdateCurrent">-</strong></dd></div>
+          <div><dt>Nyeste</dt><dd><strong id="appUpdateRemote">-</strong></dd></div>
+        </dl>
+
+        <div class="settings-form" style="margin-bottom:1rem">
+          <label style="display:flex;align-items:center;gap:.5rem">
+            <input id="appUpdateAutoCheckToggle" type="checkbox">
+            <span>Automatisk tjek for opdateringer</span>
+          </label>
+          <label style="margin-top:.5rem">
+            <span>Tjek-interval (minutter)</span>
+            <input id="appUpdateIntervalInput" type="number" min="5" max="1440" value="30" style="width:100px">
+          </label>
+          <div class="button-row" style="margin-top:.5rem">
+            <button type="button" id="appUpdateSettingsSaveBtn">Gem indstillinger</button>
+          </div>
+          <small id="appUpdateAutoMeta" style="color:var(--text-muted,#888)"></small>
+        </div>
+
+        <div class="button-row">
+          <button type="button" id="appUpdateCheckBtn">Tjek for opdatering</button>
+          <button type="button" id="appUpdateStartBtn" class="button-link">Opdater nu</button>
+          <button type="button" id="appUpdateForceStopBtn" class="danger-button" hidden>Force stop</button>
+        </div>
+
+        <div id="appUpdateStatus" style="display:none;margin-top:.75rem;padding:.5rem .75rem;border-radius:6px;font-size:.9rem"></div>
+        <pre id="appUpdateLog" style="display:none;margin-top:.75rem;background:var(--surface-alt,#1a1a1a);color:#e0e0e0;padding:.75rem;border-radius:6px;font-size:.78rem;overflow-x:auto;max-height:400px;overflow-y:auto;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </section>
+
+    <div id="appUpdateChoiceModal" style="display:none;position:fixed;inset:0;z-index:1000;align-items:center;justify-content:center">
+      <div style="position:absolute;inset:0;background:rgba(0,0,0,.5)" id="appUpdateChoiceBackdrop"></div>
+      <div style="position:relative;background:var(--surface,#fff);border-radius:10px;padding:1.5rem;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.18)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+          <h3 style="margin:0">V&aelig;lg opdateringstype</h3>
+          <button type="button" id="appUpdateChoiceClose" style="background:none;border:none;font-size:1.4rem;cursor:pointer;padding:0 .25rem">&times;</button>
+        </div>
+        <p style="margin-bottom:1rem">V&aelig;lg om Docker skal ryddes op f&oslash;r opdatering (bruger l&aelig;ngere tid, men frigiver diskplads) eller en hurtig opdatering.</p>
+        <div class="button-row">
+          <button type="button" id="appUpdateChoiceCleanupBtn">Ryd plads og opdater</button>
+          <button type="button" id="appUpdateChoiceFastBtn" class="button-link">Hurtig opdatering</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var bar = document.getElementById('tab-bar');
+      var indicator = document.getElementById('tab-indicator');
+      var items = Array.from(bar.querySelectorAll('.settings-switch-item'));
+      var active = bar.querySelector('.settings-switch-item.active');
+      if (!active) return;
+
+      function getPos(el) {
+        var barRect = bar.getBoundingClientRect();
+        var elRect = el.getBoundingClientRect();
+        return { x: elRect.left - barRect.left - 6, w: elRect.width };
+      }
+
+      function setIndicator(el, animate) {
+        var pos = getPos(el);
+        if (!animate) indicator.style.transition = 'none';
+        indicator.style.width = pos.w + 'px';
+        indicator.style.transform = 'translateX(' + pos.x + 'px)';
+        if (!animate) requestAnimationFrame(function () { indicator.style.transition = ''; });
+      }
+
+      setIndicator(active, false);
+
+      items.forEach(function (item) {
+        item.addEventListener('click', function (e) {
+          var tab = item.getAttribute('data-tab');
+          var pane = document.getElementById('pane-' + tab);
+          if (!pane) return; // fall through to normal navigation
+
+          e.preventDefault();
+
+          // Animate indicator
+          setIndicator(item, true);
+
+          // Update active class
+          items.forEach(function (i) { i.classList.remove('active'); });
+          item.classList.add('active');
+
+          // Show/hide panes instantly
+          document.querySelectorAll('[id^="pane-"]').forEach(function (p) { p.hidden = true; });
+          pane.hidden = false;
+
+          // Update URL without page reload
+          history.pushState(null, '', item.getAttribute('href'));
+        });
+      });
+    })();
+
+    // Redirect URI toggle + custom domain input
+    (function () {
+      var CHECK_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+
+      function buildUri(key) {
+        var input = document.querySelector('[data-domain-input="' + key + '"]');
+        if (!input) return '';
+        var base = (input.value || '').trim().replace(/\/+$/, '');
+        var path = input.dataset.callbackPath || '';
+        return base ? base + path : '';
+      }
+
+      function updatePreview(key) {
+        var preview = document.querySelector('[data-domain-preview="' + key + '"]');
+        if (!preview) return;
+        var uri = buildUri(key);
+        preview.textContent = uri;
+        preview.hidden = !uri;
+      }
+
+      document.querySelectorAll('[data-redirect-toggle]').forEach(function (btn) {
+        var key = btn.dataset.redirectToggle;
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var isOn = btn.classList.toggle('is-on');
+          btn.setAttribute('aria-pressed', isOn ? 'true' : 'false');
+          var domain = document.querySelector('[data-redirect-domain="' + key + '"]');
+          var local = document.querySelector('[data-redirect-localhost="' + key + '"]');
+          if (domain) domain.hidden = isOn;
+          if (local) local.hidden = !isOn;
+          btn.querySelector('span').textContent = isOn ? 'Brug localhost' : 'Brug eget domæne';
+        });
+      });
+
+      document.querySelectorAll('[data-domain-input]').forEach(function (input) {
+        var key = input.dataset.domainInput;
+        var saveBtn = document.querySelector('[data-domain-copy="' + key + '"]');
+        input._committed = input.value.trim();
+        updatePreview(key);
+        input.addEventListener('input', function () {
+          var changed = input.value.trim() !== input._committed;
+          if (saveBtn) saveBtn.hidden = !changed || !input.value.trim();
+        });
+        input.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { e.preventDefault(); if (saveBtn && !saveBtn.hidden) saveBtn.click(); }
+        });
+      });
+
+      function showStatus(key, type, msg) {
+        var el = document.querySelector('[data-save-status="' + key + '"]');
+        if (!el) return;
+        el.textContent = msg;
+        el.className = 'redirect-save-status redirect-save-status--' + type;
+        el.hidden = false;
+      }
+
+      function hideStatusLater(key) {
+        setTimeout(function () {
+          var el = document.querySelector('[data-save-status="' + key + '"]');
+          if (el) el.hidden = true;
+        }, 2200);
+      }
+
+      function applySavedDomain(base) {
+        document.querySelectorAll('[data-domain-input]').forEach(function (input) {
+          var key = input.dataset.domainInput;
+          var saveBtn = document.querySelector('[data-domain-copy="' + key + '"]');
+          input.value = base;
+          input._committed = base;
+          if (saveBtn) {
+            saveBtn.hidden = true;
+            saveBtn.disabled = false;
+          }
+          updatePreview(key);
+        });
+      }
+
+      document.querySelectorAll('[data-domain-copy]').forEach(function (btn) {
+        var key = btn.dataset.domainCopy;
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          var input = document.querySelector('[data-domain-input="' + key + '"]');
+          var base = input ? (input.value || '').trim().replace(/\/+$/, '') : '';
+          if (!base) return;
+
+          btn.disabled = true;
+          showStatus(key, 'saving', 'Gemmer...');
+
+          fetch('/api/settings/public-base-url', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({public_base_url: base})
+          })
+          .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+          .then(function(res) {
+            if (!res.ok || !res.data.ok) throw new Error(res.data.error || 'Kunne ikke gemme');
+            applySavedDomain(res.data.public_base_url || base);
+            showStatus(key, 'saving', 'Gemt.');
+            hideStatusLater(key);
+          })
+          .catch(function(err) {
+            btn.disabled = false;
+            showStatus(key, 'error', 'Fejl: ' + err.message);
+          });
+        });
+      });
+    })();
+  </script>
+{% endblock %}

@@ -1,5 +1,0 @@
-[submodule "apps/fjordparcel"]
-	path = apps/fjordparcel
-	url = https://github.com/qlerup/fjordparcel
-	branch = main
-	ignore = dirty

@@ -1,0 +1,12 @@
+fastapi>=0.110,<1.0
+uvicorn>=0.23,<1.0
+python-multipart>=0.0.9,<1.0
+open_clip_torch>=2.24,<3.0
+Pillow>=10.0,<12.0
+numpy>=1.25,<2.0
+pillow-heif>=0.16,<1.0
+insightface>=0.7.3,<1.0
+opencv-python>=4.8,<5.0
+transformers==4.51.3
+accelerate==0.34.2
+bitsandbytes==0.43.3; platform_system == "Linux" and platform_machine == "x86_64"

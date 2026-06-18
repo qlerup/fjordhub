@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Brugere · FjordLens{% endblock %}
+{% block body %}
+  {% set en = (ui_lang == 'en') %}
+  <div class="page-wrap">
+    <h1 style="margin:0 0 10px;">{{ 'Users' if en else 'Brugere' }}</h1>
+    {% if msg %}<div class="status ok">{{ msg }}</div>{% endif %}
+
+    <div class="panel" style="margin-bottom:12px;">
+      <div class="toolbar">
+        <button id="openCreateModal" class="btn primary">{{ 'Add user' if en else 'Tilføj bruger' }}</button>
+        <div class="mini-label" style="margin-left:auto;">{{ 'Total' if en else 'I alt' }}: <strong>{{ users|length }}</strong></div>
+      </div>
+    </div>
+
+    <!-- Opret bruger modal -->
+    <div id="createModal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;">
+      <div style="width:520px;max-width:92vw;background:var(--panel,#0f1115);border:1px solid var(--border,#2a2f3a);border-radius:12px;padding:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <h3 style="margin:0;">{{ 'Add user' if en else 'Tilføj bruger' }}</h3>
+          <button id="closeCreateModal" class="btn">{{ 'Close' if en else 'Luk' }}</button>
+        </div>
+        <form method="post" style="display:grid;gap:10px;">
+          <input type="hidden" name="action" value="create">
+          <label>
+            <div class="mini-label">{{ 'Username' if en else 'Brugernavn' }}</div>
+            <input name="username" placeholder="{{ 'Username' if en else 'Brugernavn' }}" required class="input-number" style="width:100%;">
+          </label>
+          <label class="reveal-wrap">
+            <div class="mini-label">{{ 'Password' if en else 'Adgangskode' }}</div>
+            <div class="pwd-field">
+              <input id="createPassword" name="password" placeholder="{{ 'Password' if en else 'Adgangskode' }}" required class="input-number" style="width:100%;padding-right:42px;" type="password" autocomplete="new-password">
+              <button id="toggleCreatePassword" type="button" class="reveal-btn" aria-label="{{ 'Show password' if en else 'Vis adgangskode' }}">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 5c4.5 0 8.4 2.9 10 7-1.6 4.1-5.5 7-10 7s-8.4-2.9-10-7c1.6-4.1 5.5-7 10-7zm0 2c-3.3 0-6.3 2.1-7.6 5 1.3 2.9 4.3 5 7.6 5s6.3-2.1 7.6-5c-1.3-2.9-4.3-5-7.6-5zm0 2.5a2.5 2.5 0 110 5 2.5 2.5 0 010-5z"/></svg>
+              </button>
+            </div>
+          </label>
+          <label>
+            <div class="mini-label">{{ 'Role' if en else 'Rolle' }}</div>
+            <select name="role" class="select" style="width:100%;">
+              <option value="admin">Admin</option>
+              <option value="user" selected>{{ 'User' if en else 'Bruger' }}</option>
+            </select>
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" name="enforce_2fa" />
+            <span>{{ 'Enable 2FA from start (setup required at first login)' if en else 'Aktivér 2FA fra start (kræver opsætning ved første login)' }}</span>
+          </label>
+          <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button type="button" id="cancelCreate" class="btn">{{ 'Cancel' if en else 'Annuller' }}</button>
+            <button class="btn primary" type="submit">{{ 'Create' if en else 'Opret' }}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="data-table" style="margin-top:8px;">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>{{ 'User' if en else 'Bruger' }}</th>
+            <th>{{ 'Role' if en else 'Rolle' }}</th>
+            <th>2FA</th>
+            <th>{{ 'Action' if en else 'Handling' }}</th>
+            <th>{{ 'Created' if en else 'Oprettet' }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td class="muted">#{{ u.id }}</td>
+            <td><strong>{{ u.username }}</strong></td>
+            <td>
+              {% set role = (u.role or (u.is_admin and 'admin' or 'user')) %}
+              {% if role == 'admin' %}
+                <span class="badge admin">Admin</span>
+              {% elif role == 'manager' %}
+                <span class="badge">Manager</span>
+              {% else %}
+                <span class="badge">{{ 'User' if en else 'Bruger' }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if u.totp_enabled %}
+                <span class="badge twofa">2FA</span>
+              {% else %}
+                <span class="badge muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              <form method="post" onsubmit="return confirm('{{ 'Delete user' if en else 'Slet bruger' }} \"{{ u.username }}\"?');" style="margin:0;">
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
+                {% set role = (u.role or (u.is_admin and 'admin' or 'user')) %}
+                {% if role == 'admin' and users|selectattr('role', 'equalto', 'admin')|list|length <= 1 %}
+                  <button class="btn danger" disabled>{{ 'Cannot delete last admin' if en else 'Kan ikke slette sidste admin' }}</button>
+                {% else %}
+                  <button class="btn danger" {% if u.id|string == current_user.id|string %}disabled{% endif %}>{{ 'Delete' if en else 'Slet' }}</button>
+                {% endif %}
+              </form>
+            </td>
+            <td class="muted">{{ u.created_at }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}
+{% block scripts %}
+  <script>
+  (function(){
+    const modal = document.getElementById('createModal');
+    const openBtn = document.getElementById('openCreateModal');
+    const closeBtn = document.getElementById('closeCreateModal');
+    const cancelBtn = document.getElementById('cancelCreate');
+    function open(){ if(modal) modal.classList.remove('hidden'); }
+    function close(){ if(modal) modal.classList.add('hidden'); }
+    openBtn && openBtn.addEventListener('click', open);
+    closeBtn && closeBtn.addEventListener('click', close);
+    cancelBtn && cancelBtn.addEventListener('click', close);
+    // Close on backdrop click
+    modal && modal.addEventListener('click', (e)=>{ if(e.target === modal) close(); });
+    document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') close(); });
+
+    // Password reveal
+    const pw = document.getElementById('createPassword');
+    const toggle = document.getElementById('toggleCreatePassword');
+    function togglePw(){ if(!pw) return; pw.type = (pw.type === 'password') ? 'text' : 'password'; pw.focus({preventScroll:true}); }
+    if(toggle){ toggle.addEventListener('click', togglePw); }
+  })();
+  </script>
+{% endblock %}

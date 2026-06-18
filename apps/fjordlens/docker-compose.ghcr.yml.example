@@ -1,0 +1,16 @@
+# Use this if you later publish prebuilt images to GitHub Container Registry (GHCR)
+services:
+  fjordlens:
+    image: ghcr.io/YOUR_GITHUB_USERNAME/fjordlens:latest
+    container_name: fjordlens
+    ports:
+      - "${APP_PORT:-9080}:8080"
+    environment:
+      PHOTO_DIR: /photos
+      DATA_DIR: /data
+      TZ: ${TZ:-Europe/Copenhagen}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - "${PHOTO_DIR:-/volume1/photos}:/photos:ro"
+      - "${DATA_DIR:-/volume1/docker/fjordlens/data}:/data"
+    restart: unless-stopped

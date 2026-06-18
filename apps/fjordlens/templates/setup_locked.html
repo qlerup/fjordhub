@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Recovery kraeves - {{ app_name }}{% endblock %}
+{% block body %}
+  <div class="center-screen">
+    <div class="login-card small">
+      <div class="login-title">
+        <span>Recovery kraeves</span>
+      </div>
+      <p>{{ app_name }} er allerede initialiseret, men databasen mangler eller er tom.</p>
+      <div class="err">
+        Af sikkerhedsgrunde er foerste opsaetning lukket. Gendan databasen fra backup eller kontroller data-mountet.
+      </div>
+      <p style="color:var(--muted); font-size:0.85rem;">Database: {{ db_path }}</p>
+    </div>
+  </div>
+{% endblock %}
