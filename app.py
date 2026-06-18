@@ -1083,6 +1083,11 @@ def api_gpu_preflight():
 def _detect_nvidia_driver_major() -> str:
     import re
 
+    # Preferred explicit override from LXC config environment.
+    env_major = str(os.environ.get("NVIDIA_DRIVER_MAJOR", "")).strip()
+    if env_major.isdigit():
+        return env_major
+
     # Preferred: kernel driver version file exposed through NVIDIA device mounts.
     try:
         text = Path("/proc/driver/nvidia/version").read_text(encoding="utf-8", errors="ignore")
