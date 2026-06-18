@@ -546,6 +546,10 @@ async function autoGpuContainerSetup() {
       setStatus(`<span style="color:var(--text-muted)">⏳ Kører... du kan følge output live herunder.</span>\n${output}`);
       return;
     }
+    if ((state.ok === null || typeof state.ok === 'undefined') && !state.error) {
+      setStatus(`<span style="color:var(--text-muted)">⏳ Afventer status fra backend...</span>\n${output}`);
+      return;
+    }
     if (state.ok) {
       setStatus(`<span style="color:#22c55e">✓ GPU-forudsætninger er sat op automatisk. Klik nu "Kør Docker GPU-test".</span>\n${output}`);
       return;
