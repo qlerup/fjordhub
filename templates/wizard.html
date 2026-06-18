@@ -227,6 +227,13 @@
           </div>
           <div class="nfs-code-block" id="gpu-code-block"></div>
         </div>
+        <div class="nfs-code-section" style="margin-top:10px;">
+          <div class="nfs-section-header">
+            <span class="nfs-block-location">Genstart LXC (kør til sidst)</span>
+            <button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button>
+          </div>
+          <div class="nfs-code-block" id="gpu-restart-block"></div>
+        </div>
       </div>
       <div class="nfs-input-row">
         <button type="button" class="btn btn-open" id="gpu-test-btn" onclick="runGpuPreflight()">Kør Docker GPU-test</button>
@@ -483,12 +490,15 @@ function renderGpuCommands() {
     'for dev in /dev/nvidiactl /dev/nvidia-uvm /dev/nvidia-uvm-tools /dev/nvidia-modeset /dev/nvidia[0-9]*; do [ -e "$dev" ] || continue; rel="${dev#/}"; add_line "lxc.mount.entry: ${dev} ${rel} none bind,optional,create=file"; done',
     '[ -d /dev/nvidia-caps ] && add_line "lxc.mount.entry: /dev/nvidia-caps dev/nvidia-caps none bind,optional,create=dir"',
     '[ -d /sys/class/drm ] && add_line "lxc.mount.entry: /sys/class/drm sys/class/drm none ro,bind,optional,create=dir"',
-    'pct restart "$ctid"',
     '',
+    '# Koer derefter genstart-kommandoen i boksen nedenfor.',
     '# Efter genstart: koer Docker GPU-testen i denne helper.',
   ];
   const block = document.getElementById('gpu-code-block');
   if (block) block.textContent = lines.join('\n');
+
+  const restartBlock = document.getElementById('gpu-restart-block');
+  if (restartBlock) restartBlock.textContent = `pct restart ${vmid}`;
 }
 
 async function runGpuPreflight() {
