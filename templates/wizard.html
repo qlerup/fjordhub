@@ -234,6 +234,16 @@
           </div>
           <div class="nfs-code-block" id="gpu-restart-block"></div>
         </div>
+        <div class="nfs-code-section" style="margin-top:10px;">
+          <div class="nfs-section-header">
+            <span class="nfs-block-location">FjordHub-container (kør efter genstart)</span>
+            <button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button>
+          </div>
+          <div style="font-size:.78rem;color:var(--text-muted);padding:8px 0 6px;">
+            Hvorfor: Hvis Docker GPU-testen fejler med "no known GPU vendor found", mangler NVIDIA Container Toolkit typisk i containeren.
+          </div>
+          <div class="nfs-code-block" id="gpu-container-setup-block"></div>
+        </div>
       </div>
       <div class="nfs-input-row">
         <button type="button" class="btn btn-open" id="gpu-test-btn" onclick="runGpuPreflight()">Kør Docker GPU-test</button>
@@ -491,14 +501,32 @@ function renderGpuCommands() {
     '[ -d /dev/nvidia-caps ] && add_line "lxc.mount.entry: /dev/nvidia-caps dev/nvidia-caps none bind,optional,create=dir"',
     '[ -d /sys/class/drm ] && add_line "lxc.mount.entry: /sys/class/drm sys/class/drm none ro,bind,optional,create=dir"',
     '',
-    '# Koer derefter genstart-kommandoen i boksen nedenfor.',
+    '# Koer derefter reset/genstart-kommandoen i boksen nedenfor.',
     '# Efter genstart: koer Docker GPU-testen i denne helper.',
   ];
   const block = document.getElementById('gpu-code-block');
   if (block) block.textContent = lines.join('\n');
 
   const restartBlock = document.getElementById('gpu-restart-block');
-  if (restartBlock) restartBlock.textContent = `pct restart ${vmid}`;
+  if (restartBlock) restartBlock.textContent = `pct reboot ${vmid} || (pct stop ${vmid} && pct start ${vmid})`;
+
+  const containerSetupBlock = document.getElementById('gpu-container-setup-block');
+  if (containerSetupBlock) {
+    containerSetupBlock.textContent = [
+      '# Koer inde i fjordhub-containeren (pct enter ' + vmid + ')',
+      'apt update',
+      'apt install -y curl gnupg ca-certificates',
+      'curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg',
+      'curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed "s#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g" > /etc/apt/sources.list.d/nvidia-container-toolkit.list',
+      'apt update',
+      'apt install -y nvidia-container-toolkit',
+      'nvidia-ctk runtime configure --runtime=docker',
+      'systemctl restart docker',
+      'docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi',
+      '',
+      '# Naar denne virker: gaa tilbage til helperen og klik "Koer Docker GPU-test" igen.',
+    ].join('\\n');
+  }
 }
 
 async function runGpuPreflight() {
