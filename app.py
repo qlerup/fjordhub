@@ -5,6 +5,7 @@ import subprocess
 import time
 import warnings
 import threading
+import shlex
 from pathlib import Path
 import requests
 from flask import Flask, render_template, jsonify, request, redirect, url_for
@@ -1162,26 +1163,46 @@ def _gpu_setup_finish(ok: bool, error: str = "", nvidia_major: str = "") -> None
         _gpu_setup_state["finished_at"] = time.time()
 
 
-def _gpu_setup_run_step(cmd: str, timeout: int = 600) -> bool:
+def _gpu_setup_run_step(cmd: str, timeout: int = 600, in_lxc_host: bool = False) -> tuple[bool, str]:
     _gpu_setup_append(f"$ {cmd}")
     try:
-        result = subprocess.run(
-            ["sh", "-lc", cmd],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
+        if in_lxc_host:
+            wrapped = f"nsenter -t 1 -m -u -n -i /bin/sh -lc {shlex.quote(cmd)}"
+            result = subprocess.run(
+                [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "--privileged",
+                    "--pid=host",
+                    "--network=host",
+                    FJORDHUB_IMAGE,
+                    "sh",
+                    "-lc",
+                    wrapped,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        else:
+            result = subprocess.run(
+                ["sh", "-lc", cmd],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
     except subprocess.TimeoutExpired:
         _gpu_setup_append("[timeout]")
-        return False
+        return False, ""
     except Exception as exc:
         _gpu_setup_append(str(exc))
-        return False
+        return False, ""
 
     out = "\n".join(part for part in ((result.stdout or "").strip(), (result.stderr or "").strip()) if part).strip()
     if out:
         _gpu_setup_append(out[-4000:])
-    return result.returncode == 0
+    return result.returncode == 0, out
 
 
 def _gpu_setup_worker() -> None:
@@ -1195,17 +1216,27 @@ def _gpu_setup_worker() -> None:
             _gpu_setup_finish(False, "FjordHub-processen skal køre som root for at kunne installere pakker.")
             return
 
-        has_apt = shutil.which("apt-get") is not None
-        has_apk = shutil.which("apk") is not None
-        has_dnf = shutil.which("dnf") is not None
-        has_yum = shutil.which("yum") is not None
-        has_zypper = shutil.which("zypper") is not None
+        _gpu_setup_append("[info] Kører auto-opsætning i LXC-systemet via nsenter (ikke i FjordHub-containerens eget OS).")
+
+        ok, pm_out = _gpu_setup_run_step(
+            "if command -v apt-get >/dev/null 2>&1; then echo apt; "
+            "elif command -v apk >/dev/null 2>&1; then echo apk; "
+            "elif command -v dnf >/dev/null 2>&1; then echo dnf; "
+            "elif command -v yum >/dev/null 2>&1; then echo yum; "
+            "elif command -v zypper >/dev/null 2>&1; then echo zypper; "
+            "else echo none; fi",
+            timeout=120,
+            in_lxc_host=True,
+        )
+        if not ok:
+            _gpu_setup_finish(False, "Kunne ikke detektere package manager i LXC-systemet.")
+            return
+        pm = (pm_out or "").strip().splitlines()[-1].strip().lower()
 
         steps: list[str] = []
-        distro_hint = ""
+        distro_hint = pm
 
-        if has_apt:
-            distro_hint = "apt"
+        if pm == "apt":
             steps = [
                 "export DEBIAN_FRONTEND=noninteractive; apt-get update",
                 "export DEBIAN_FRONTEND=noninteractive; apt-get install -y curl gnupg ca-certificates",
@@ -1214,41 +1245,50 @@ def _gpu_setup_worker() -> None:
                 "export DEBIAN_FRONTEND=noninteractive; apt-get update",
                 "export DEBIAN_FRONTEND=noninteractive; apt-get install -y nvidia-container-toolkit",
             ]
-        elif has_apk:
-            distro_hint = "apk"
-            # Alpine distributions typically do not have a straightforward, stable NVIDIA toolkit path.
-            _gpu_setup_append("[info] Detekteret apk/alpine-baseret container.")
+        elif pm == "apk":
+            _gpu_setup_append("[info] Detekteret apk/alpine-baseret LXC-system.")
             _gpu_setup_finish(
                 False,
-                "Automatisk GPU-opsætning understøtter pt. kun Debian/Ubuntu (apt). Din container er apk/alpine-baseret.",
+                "Automatisk GPU-opsætning understøtter pt. kun Debian/Ubuntu (apt) i LXC-systemet.",
             )
             return
-        elif has_dnf or has_yum or has_zypper:
-            distro_hint = "rpm"
-            _gpu_setup_append("[info] Detekteret RPM-baseret container.")
+        elif pm in {"dnf", "yum", "zypper"}:
+            _gpu_setup_append("[info] Detekteret RPM/SUSE-baseret LXC-system.")
             _gpu_setup_finish(
                 False,
-                "Automatisk GPU-opsætning understøtter pt. kun Debian/Ubuntu (apt). Din container er ikke apt-baseret.",
+                "Automatisk GPU-opsætning understøtter pt. kun Debian/Ubuntu (apt) i LXC-systemet.",
             )
             return
         else:
-            _gpu_setup_finish(False, "Ingen understøttet package manager fundet i containeren (apt/apk/dnf/yum/zypper).")
+            _gpu_setup_finish(False, "Ingen understøttet package manager fundet i LXC-systemet (apt/apk/dnf/yum/zypper).")
             return
 
         for cmd in steps:
-            if not _gpu_setup_run_step(cmd, timeout=900):
+            ok, _ = _gpu_setup_run_step(cmd, timeout=900, in_lxc_host=True)
+            if not ok:
                 _gpu_setup_finish(False, "GPU-opsætning stoppede under installation af NVIDIA toolkit.")
                 return
 
-        major = _detect_nvidia_driver_major()
-        if not major:
+        ok, major_out = _gpu_setup_run_step(
+            "DRV=\"$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1)\"; "
+            "if [ -n \"$DRV\" ]; then echo \"$DRV\" | cut -d. -f1; "
+            "else sed -nE 's/.*Kernel Module[[:space:]]+([0-9]+)\\..*/\\1/p' /proc/driver/nvidia/version 2>/dev/null | head -n1; fi",
+            timeout=120,
+            in_lxc_host=True,
+        )
+        if not ok:
+            _gpu_setup_finish(False, "Kunne ikke detektere NVIDIA driver major version i LXC-systemet.")
+            return
+        major = (major_out or "").strip().splitlines()[-1].strip()
+        if not major.isdigit():
             _gpu_setup_append("[error] Kunne ikke auto-detektere NVIDIA driver major version.")
-            _gpu_setup_finish(False, "Kunne ikke auto-detektere NVIDIA driver version. Kontroller at NVIDIA devices er mappet korrekt ind i containeren.")
+            _gpu_setup_finish(False, "Kunne ikke auto-detektere NVIDIA driver version. Kontroller at NVIDIA devices er mappet korrekt ind i LXC-systemet.")
             return
 
         if distro_hint == "apt":
             libs_cmd = f"export DEBIAN_FRONTEND=noninteractive; apt-get install -y libnvidia-compute-{major} nvidia-utils-{major}"
-            if not _gpu_setup_run_step(libs_cmd, timeout=900):
+            ok, _ = _gpu_setup_run_step(libs_cmd, timeout=900, in_lxc_host=True)
+            if not ok:
                 _gpu_setup_finish(False, f"Installation af NVIDIA userspace-biblioteker fejlede for major {major}.", major)
                 return
 
@@ -1260,7 +1300,8 @@ def _gpu_setup_worker() -> None:
         ]
 
         for cmd in tail_steps:
-            if not _gpu_setup_run_step(cmd, timeout=300):
+            ok, _ = _gpu_setup_run_step(cmd, timeout=300, in_lxc_host=True)
+            if not ok:
                 _gpu_setup_finish(False, "GPU-opsætning blev kørt, men den afsluttende verifikation fejlede.", major)
                 return
 
