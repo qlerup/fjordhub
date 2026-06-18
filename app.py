@@ -1271,9 +1271,12 @@ def _gpu_setup_worker() -> None:
                 return
 
         ok, major_out = _gpu_setup_run_step(
+            "DRV=\"\"; "
             "DRV=\"$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1)\"; "
-            "if [ -n \"$DRV\" ]; then echo \"$DRV\" | cut -d. -f1; "
-            "else sed -nE 's/.*Kernel Module[[:space:]]+([0-9]+)\\..*/\\1/p' /proc/driver/nvidia/version 2>/dev/null | head -n1; fi",
+            "if [ -z \"$DRV\" ] && [ -r /sys/module/nvidia/version ]; then DRV=\"$(cat /sys/module/nvidia/version 2>/dev/null | head -n1)\"; fi; "
+            "if [ -z \"$DRV\" ] && command -v modinfo >/dev/null 2>&1; then DRV=\"$(modinfo -F version nvidia 2>/dev/null | head -n1)\"; fi; "
+            "if [ -z \"$DRV\" ] && [ -r /proc/driver/nvidia/version ]; then DRV=\"$(sed -nE 's/.*Kernel Module[[:space:]]+([0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/p' /proc/driver/nvidia/version 2>/dev/null | head -n1)\"; fi; "
+            "echo \"$DRV\" | sed -nE 's/^([0-9]+).*/\\1/p' | head -n1",
             timeout=120,
             in_lxc_host=True,
         )
@@ -1283,7 +1286,8 @@ def _gpu_setup_worker() -> None:
         major = (major_out or "").strip().splitlines()[-1].strip()
         if not major.isdigit():
             _gpu_setup_append("[error] Kunne ikke auto-detektere NVIDIA driver major version.")
-            _gpu_setup_finish(False, "Kunne ikke auto-detektere NVIDIA driver version. Kontroller at NVIDIA devices er mappet korrekt ind i LXC-systemet.")
+            _gpu_setup_append("[hint] Forsøgte nvidia-smi, /sys/module/nvidia/version, modinfo og /proc/driver/nvidia/version.")
+            _gpu_setup_finish(False, "Kunne ikke auto-detektere NVIDIA driver version. Kontroller at NVIDIA kernel module/device-mounts er tilgængelige i LXC-systemet.")
             return
 
         _gpu_setup_append(f"[info] Detekteret NVIDIA driver major i LXC: {major}")
