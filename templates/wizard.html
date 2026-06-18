@@ -537,7 +537,7 @@ function renderGpuCommands() {
       '',
       '# PAAKRAEVET: installer NVIDIA userspace-biblioteker (giver bl.a. libnvidia-ml.so.1)',
       'NVIDIA_MAJOR="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1 | cut -d. -f1)"',
-      '[ -n "$NVIDIA_MAJOR" ] || NVIDIA_MAJOR="$(awk '\''/NVRM version:/ {for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+$/){split($i,a,"."); print a[1]; exit}}'\'' /proc/driver/nvidia/version 2>/dev/null)"',
+      '[ -n "$NVIDIA_MAJOR" ] || NVIDIA_MAJOR="$(sed -nE "s/.*Kernel Module[[:space:]]+([0-9]+)\..*/\1/p" /proc/driver/nvidia/version 2>/dev/null | head -n1)"',
       'if [ -z "$NVIDIA_MAJOR" ]; then echo "Kunne ikke auto-detektere NVIDIA major version"; exit 1; fi',
       'apt install -y "libnvidia-compute-${NVIDIA_MAJOR}" "nvidia-utils-${NVIDIA_MAJOR}"',
       'ldconfig',
