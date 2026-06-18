@@ -1283,9 +1283,12 @@ def _gpu_setup_worker() -> None:
         if not ok:
             _gpu_setup_finish(False, "Kunne ikke detektere NVIDIA driver major version i LXC-systemet.")
             return
-        major = (major_out or "").strip().splitlines()[-1].strip()
+        major_lines = (major_out or "").strip().splitlines()
+        major = major_lines[-1].strip() if major_lines else ""
         if not major.isdigit():
             _gpu_setup_append("[error] Kunne ikke auto-detektere NVIDIA driver major version.")
+            if not major:
+                _gpu_setup_append("[error] Versions-kald returnerede tomt output.")
             _gpu_setup_append("[hint] Forsøgte nvidia-smi, /sys/module/nvidia/version, modinfo og /proc/driver/nvidia/version.")
             _gpu_setup_finish(False, "Kunne ikke auto-detektere NVIDIA driver version. Kontroller at NVIDIA kernel module/device-mounts er tilgængelige i LXC-systemet.")
             return
