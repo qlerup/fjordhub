@@ -423,6 +423,16 @@ a { color: inherit; text-decoration: none; }
 .btn-refresh:disabled { opacity: .5; cursor: not-allowed; }
 .btn-refresh svg { width: 14px; height: 14px; flex-shrink: 0; }
 
+.btn-cleanup {
+  color: var(--yellow);
+  border-color: color-mix(in srgb, var(--yellow) 38%, var(--border));
+}
+.btn-cleanup:hover {
+  color: var(--yellow);
+  background: color-mix(in srgb, var(--yellow) 12%, var(--surface-2));
+  border-color: var(--yellow);
+}
+
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinning { animation: spin .7s linear infinite; }
 

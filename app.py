@@ -300,6 +300,77 @@ def api_resources():
     return jsonify(resource_monitor.collect(_apps_with_install_dirs()))
 
 
+DOCKER_CLEANUP_COMMANDS = (
+    ("Docker diskforbrug foer oprydning", ["docker", "system", "df"], 60),
+    ("Rydder Docker build-cache", ["docker", "builder", "prune", "-af"], 600),
+    ("Rydder ubrugte images", ["docker", "image", "prune", "-af"], 600),
+    ("Rydder stoppede containere", ["docker", "container", "prune", "-f"], 300),
+    ("Rydder ubrugte networks", ["docker", "network", "prune", "-f"], 300),
+    ("Docker diskforbrug efter oprydning", ["docker", "system", "df"], 60),
+)
+
+
+def _append_command_output(log: list[str], output: str, max_lines: int = 180) -> None:
+    lines = [line.rstrip() for line in str(output or "").splitlines() if line.rstrip()]
+    if not lines:
+        log.append("(ingen output)")
+        return
+    if len(lines) > max_lines:
+        hidden = len(lines) - max_lines
+        log.append(f"... {hidden} linjer skjult ...")
+        lines = lines[-max_lines:]
+    log.extend(lines)
+
+
+@app.route("/api/docker-cleanup", methods=["POST"])
+@login_required
+def api_docker_cleanup():
+    if not current_user.is_admin:
+        return jsonify({"ok": False, "error": "Kraever admin."}), 403
+
+    log: list[str] = [
+        "Starter Docker oprydning.",
+        "Bevarer Docker volumes og monterede data-mapper.",
+    ]
+    ok = True
+    for label, command, timeout in DOCKER_CLEANUP_COMMANDS:
+        log.extend(["", f"=== {label} ===", "$ " + " ".join(command)])
+        try:
+            result = subprocess.run(
+                command,
+                env=build_compose_env(),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except FileNotFoundError:
+            return jsonify(
+                {
+                    "ok": False,
+                    "message": "Docker blev ikke fundet.",
+                    "log": [*log, "Fejl: docker blev ikke fundet i PATH."],
+                }
+            ), 500
+        except subprocess.TimeoutExpired:
+            ok = False
+            log.append(f"Fejl: kommandoen timeoutede efter {timeout}s.")
+            continue
+        except Exception as exc:
+            ok = False
+            log.append(f"Fejl: {exc}")
+            continue
+
+        output = "\n".join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
+        _append_command_output(log, output)
+        if result.returncode != 0:
+            ok = False
+            log.append(f"Fejl: returncode {result.returncode}")
+
+    log.extend(["", "Oprydning faerdig." if ok else "Oprydning sluttede med fejl."])
+    message = "Docker oprydning faerdig." if ok else "Docker oprydning sluttede med fejl."
+    return jsonify({"ok": ok, "message": message, "log": log[-600:]}), 200 if ok else 500
+
+
 # ── Settings ─────────────────────────────────────────────────────────────────
 
 @app.route("/settings")
@@ -1236,6 +1307,10 @@ def api_apps_status():
     result = {}
     for a in _get_apps():
         status = docker_mgr.get_status(a)
+        app_state = _install_state.get(a["id"])
+        if status.get("state") == "not_installed" and app_state.get("state") == "installed":
+            status["state"] = "exited"
+            status["message"] = "Installeret, men containeren mangler. Start genskaber den."
         status["hub_linked"] = bool(_auth.get_hub_key(a["id"]))
         result[a["id"]] = status
     return jsonify(result)

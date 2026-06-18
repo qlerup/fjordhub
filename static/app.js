@@ -222,11 +222,42 @@ function openUpdateModal(appId, appName) {
   const title   = document.getElementById('update-log-title');
   const footer  = document.getElementById('update-log-footer');
   const pre     = document.getElementById('update-log-output');
+  const doneBtn = document.getElementById('update-log-done');
   if (!overlay) return;
   if (title)  title.textContent = `Opdaterer ${appName}…`;
   if (footer) { footer.textContent = ''; footer.className = 'terminal-footer'; }
   if (pre)    pre.innerHTML = '';
+  if (doneBtn) doneBtn.style.display = 'none';
   overlay.classList.add('is-open');
+}
+
+function openUtilityLogModal(titleText, lines = []) {
+  _terminalAppId = null;
+  _terminalDone = false;
+  const overlay = document.getElementById('update-log-modal');
+  const title   = document.getElementById('update-log-title');
+  const footer  = document.getElementById('update-log-footer');
+  const doneBtn = document.getElementById('update-log-done');
+  if (!overlay) return;
+  if (title) title.textContent = titleText;
+  if (footer) { footer.textContent = ''; footer.className = 'terminal-footer'; }
+  if (doneBtn) doneBtn.style.display = 'none';
+  renderUpdateLog(lines);
+  overlay.classList.add('is-open');
+}
+
+function finishUtilityLogModal(titleText, ok, lines, footerText) {
+  _terminalDone = true;
+  const title   = document.getElementById('update-log-title');
+  const footer  = document.getElementById('update-log-footer');
+  const doneBtn = document.getElementById('update-log-done');
+  renderUpdateLog(lines || []);
+  if (title) title.textContent = titleText;
+  if (footer) {
+    footer.textContent = footerText;
+    footer.className = 'terminal-footer ' + (ok ? 'ok' : 'err');
+  }
+  if (doneBtn) doneBtn.style.display = '';
 }
 
 function closeUpdateModal() {
@@ -292,6 +323,59 @@ async function refreshRegistry() {
 }
 
 // ── "Last updated" relative time ──────────────────────────────────────────
+
+async function cleanupDocker() {
+  const btn = document.getElementById('cleanup-btn');
+  const icon = document.getElementById('cleanup-icon');
+  const label = document.getElementById('cleanup-label');
+  if (!btn || btn.disabled) return;
+
+  const confirmed = confirm(
+    'Ryd ubrugte Docker-ting nu?\n\n' +
+    'Dette fjerner build-cache, ubrugte images, stoppede containere og ubrugte networks.\n' +
+    'Docker volumes og monterede data-mapper bevares.'
+  );
+  if (!confirmed) return;
+
+  btn.disabled = true;
+  if (icon) icon.classList.add('spinning');
+  if (label) label.textContent = 'Rydder...';
+  openUtilityLogModal('Docker oprydning', [
+    'Starter Docker oprydning...',
+    'Volumes og monterede data-mapper bevares.',
+  ]);
+
+  try {
+    const res = await fetch('/api/docker-cleanup', { method: 'POST' });
+    let data = {};
+    try {
+      data = await res.json();
+    } catch (_) {
+      data = { ok: false, message: 'Serveren svarede ikke med JSON.', log: [] };
+    }
+    const ok = Boolean(res.ok && data.ok);
+    const lines = Array.isArray(data.log) && data.log.length
+      ? data.log
+      : [data.error || data.message || 'Docker oprydning fejlede.'];
+    const message = data.message || (ok ? 'Docker oprydning faerdig.' : 'Docker oprydning fejlede.');
+    finishUtilityLogModal(
+      ok ? 'Docker oprydning faerdig' : 'Docker oprydning fejlede',
+      ok,
+      lines,
+      message
+    );
+    showToast(ok ? `OK ${message}` : `Fejl: ${message}`, ok ? 'ok' : 'err');
+    setTimeout(fetchStatuses, 1000);
+  } catch (_) {
+    const message = 'Kunne ikke naa serveren.';
+    finishUtilityLogModal('Docker oprydning fejlede', false, [message], message);
+    showToast(`Fejl: ${message}`, 'err');
+  } finally {
+    btn.disabled = false;
+    if (icon) icon.classList.remove('spinning');
+    if (label) label.textContent = 'Ryd op';
+  }
+}
 
 function formatAgo(seconds) {
   if (seconds == null) return '';

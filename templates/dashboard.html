@@ -3,6 +3,18 @@
 {% block title %}FjordHub — Dashboard{% endblock %}
 
 {% block topbar_right %}
+  {% if current_user.is_admin %}
+  <button class="btn-refresh btn-cleanup" id="cleanup-btn" onclick="cleanupDocker()" title="Ryd ubrugte Docker images, build-cache, stoppede containere og networks. Volumes bevares.">
+    <svg id="cleanup-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 6h18"/>
+      <path d="M8 6V4h8v2"/>
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+      <path d="M10 11v6"/>
+      <path d="M14 11v6"/>
+    </svg>
+    <span class="refresh-label" id="cleanup-label">Ryd op</span>
+  </button>
+  {% endif %}
   <button class="btn-refresh" id="refresh-btn" onclick="refreshRegistry()" title="Opdatér app-liste fra GitHub">
     <svg id="refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="23 4 23 10 17 10"/>
