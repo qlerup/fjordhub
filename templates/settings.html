@@ -176,7 +176,12 @@
 
     if (data.error && !running) {
       statusEl.hidden = false;
-      statusEl.textContent = data.error;
+      var errorText = data.error;
+      var dirtyLines = data.git && data.git.dirty_lines;
+      if (dirtyLines && dirtyLines.length) {
+        errorText += '\n' + dirtyLines.join('\n');
+      }
+      statusEl.textContent = errorText;
       statusEl.style.background = 'color-mix(in srgb,var(--red) 10%,var(--surface-2))';
       statusEl.style.color = 'var(--red)';
       statusEl.style.borderColor = 'color-mix(in srgb,var(--red) 30%,var(--border))';

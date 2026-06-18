@@ -112,7 +112,7 @@ sync_gitlinks_to_head() {
 	git ls-files -s | awk '$1=="160000" {print $2" "$4}' | while IFS=' ' read -r sha path; do
 		[ -n "$sha" ] || continue
 		[ -n "$path" ] || continue
-		if [ ! -d "$path/.git" ]; then
+		if [ ! -e "$path/.git" ]; then
 			continue
 		fi
 
@@ -152,7 +152,8 @@ filter_relevant_dirty_lines() {
 		case "$path" in
 			*" -> "*) path="${path##* -> }" ;;
 		esac
-		if ! is_ignored_dirty_path "$path"; then
+		norm="$(printf '%s' "$path" | sed 's#\\#/#g; s#^\./##')"
+		if ! is_ignored_dirty_path "$path" && ! printf '%s\n' "$GITLINK_PATHS" | grep -qxF "$norm"; then
 			printf '%s\n' "$line"
 		fi
 	done
@@ -439,6 +440,7 @@ if [ ! -d .git ]; then
 fi
 
 sync_gitlinks_to_head
+GITLINK_PATHS="$(git ls-files -s | awk '$1=="160000" {print $4}')"
 
 dirty="$(git status --porcelain --untracked-files=no)"
 dirty_relevant="$(printf '%s\n' "$dirty" | filter_relevant_dirty_lines || true)"
