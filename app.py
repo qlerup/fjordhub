@@ -1242,24 +1242,24 @@ def _gpu_setup_worker() -> None:
 @login_required
 def api_gpu_setup():
     if not current_user.is_admin:
-        return jsonify({"ok": False, "error": "Kun administratorer kan køre GPU-opsætning."}), 403
+        return jsonify({"api_ok": False, "error": "Kun administratorer kan køre GPU-opsætning."}), 403
 
     state = _gpu_setup_snapshot()
     if state.get("running"):
-        return jsonify({**state, "ok": False, "error": "GPU-opsætning kører allerede."}), 409
+        return jsonify({**state, "api_ok": False, "error": "GPU-opsætning kører allerede."}), 409
 
     _gpu_setup_reset_state()
     thread = threading.Thread(target=_gpu_setup_worker, daemon=True)
     thread.start()
-    return jsonify({"ok": True, "started": True, **_gpu_setup_snapshot()}), 202
+    return jsonify({**_gpu_setup_snapshot(), "api_ok": True, "started": True}), 202
 
 
 @app.route("/api/gpu-setup/status")
 @login_required
 def api_gpu_setup_status():
     if not current_user.is_admin:
-        return jsonify({"ok": False, "error": "Kun administratorer kan se GPU-opsætningsstatus."}), 403
-    return jsonify({"ok": True, **_gpu_setup_snapshot()})
+        return jsonify({"api_ok": False, "error": "Kun administratorer kan se GPU-opsætningsstatus."}), 403
+    return jsonify({**_gpu_setup_snapshot(), "api_ok": True})
 
 
 def _nfs_runtime_options(options: str) -> str:

@@ -540,7 +540,7 @@ async function autoGpuContainerSetup() {
     try {
       const res = await fetch('/api/gpu-setup/status');
       const data = await res.json();
-      if (!data.ok) {
+      if (!data.api_ok) {
         if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ Kunne ikke hente status.</span>\n${_escapeHtml(data.error || 'Ukendt fejl')}`;
         return;
       }
@@ -560,7 +560,7 @@ async function autoGpuContainerSetup() {
       body: JSON.stringify({}),
     });
     const data = await res.json();
-    if (!data.ok) {
+    if (!data.api_ok) {
       if (statusEl) statusEl.innerHTML = `<span style="color:#ef4444">✗ Kunne ikke starte automatisk opsætning.</span>\n${_escapeHtml(data.error || data.output || 'Ukendt fejl')}`;
       return;
     }
@@ -573,7 +573,7 @@ async function autoGpuContainerSetup() {
       try {
         const res = await fetch('/api/gpu-setup/status');
         const data = await res.json();
-        if (data.ok && data.running) {
+        if (data.api_ok && data.running) {
           setTimeout(releaseBtn, 1200);
           return;
         }
