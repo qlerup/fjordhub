@@ -182,6 +182,7 @@
         errorText += '\n' + dirtyLines.join('\n');
       }
       statusEl.textContent = errorText;
+      statusEl.style.whiteSpace = 'pre-wrap';
       statusEl.style.background = 'color-mix(in srgb,var(--red) 10%,var(--surface-2))';
       statusEl.style.color = 'var(--red)';
       statusEl.style.borderColor = 'color-mix(in srgb,var(--red) 30%,var(--border))';
