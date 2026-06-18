@@ -243,7 +243,7 @@
           </div>
           <div style="padding:2px 0 8px;">
             <button type="button" class="btn btn-open" id="gpu-auto-container-btn" onclick="autoGpuContainerSetup()">⚡ Installer GPU-forudsætninger automatisk</button>
-            <div id="gpu-auto-container-status" style="font-size:.8rem;margin-top:8px;white-space:pre-wrap;"></div>
+            <div id="gpu-auto-container-status" class="nfs-code-block" style="display:none;margin-top:8px;max-height:220px;overflow:auto;white-space:pre-wrap;"></div>
           </div>
         </div>
       </div>
@@ -517,6 +517,7 @@ function renderGpuCommands() {
 async function autoGpuContainerSetup() {
   const btn = document.getElementById('gpu-auto-container-btn');
   const statusEl = document.getElementById('gpu-auto-container-status');
+  if (statusEl) statusEl.style.display = 'block';
   if (btn) {
     btn.disabled = true;
     btn.textContent = 'Kører...';

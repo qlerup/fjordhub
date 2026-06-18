@@ -1240,7 +1240,8 @@ def _gpu_setup_worker() -> None:
             steps = [
                 "export DEBIAN_FRONTEND=noninteractive; apt-get update",
                 "export DEBIAN_FRONTEND=noninteractive; apt-get install -y curl gnupg ca-certificates",
-                "curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg",
+                "install -d -m 0755 /usr/share/keyrings",
+                "curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --batch --yes --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg",
                 "curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' > /etc/apt/sources.list.d/nvidia-container-toolkit.list",
                 "export DEBIAN_FRONTEND=noninteractive; apt-get update",
                 "export DEBIAN_FRONTEND=noninteractive; apt-get install -y nvidia-container-toolkit",
