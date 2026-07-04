@@ -1358,20 +1358,20 @@ def _gpu_setup_worker() -> None:
 
         _gpu_setup_append(f"[info] Detekteret NVIDIA driver major i LXC: {major}")
 
-        purge_nvidia_userspace_cmd = (
+        purge_nvidia_compute_cmd = (
             "export DEBIAN_FRONTEND=noninteractive; "
-            "pkgs=\"$(dpkg-query -W -f='${Package}\\n' 'libnvidia-compute-*' 'nvidia-utils-*' 2>/dev/null | "
-            "grep -E '^(libnvidia-compute-|nvidia-utils-)' || true)\"; "
+            "pkgs=\"$(dpkg-query -W -f='${Package}\\n' 'libnvidia-compute-*' 2>/dev/null | "
+            "grep -E '^libnvidia-compute-' || true)\"; "
             "[ -z \"$pkgs\" ] || apt-get remove -y $pkgs"
         )
 
         if distro_hint == "apt":
-            # Remove conflicting installed NVIDIA userspace package versions first,
+            # Remove conflicting installed NVIDIA compute package versions first,
             # then prefer the exact version matching the host kernel driver.
             cleanup_cmd = (
-                "for p in $(dpkg-query -W -f='${Package}\\n' 'libnvidia-compute-*' 'nvidia-utils-*' 2>/dev/null | "
-                "grep -E '^(libnvidia-compute-|nvidia-utils-)'); do "
-                f"case \"$p\" in libnvidia-compute-{major}|nvidia-utils-{major}) ;; "
+                "for p in $(dpkg-query -W -f='${Package}\\n' 'libnvidia-compute-*' 2>/dev/null | "
+                "grep -E '^libnvidia-compute-'); do "
+                f"case \"$p\" in libnvidia-compute-{major}) ;; "
                 "*) export DEBIAN_FRONTEND=noninteractive; apt-get remove -y \"$p\" || true ;; "
                 "esac; "
                 "done"
@@ -1385,22 +1385,22 @@ def _gpu_setup_worker() -> None:
                     "awk -v d=\"$drv\" '$3 == d || index($3, d \"-\") == 1 || index($3, d \"+\") == 1 || index($3, d \"~\") == 1 {print $3; exit}')\"; "
                     "if [ -z \"$ver\" ]; then echo \"No exact libnvidia-compute package for driver $drv\"; exit 42; fi; "
                     "export DEBIAN_FRONTEND=noninteractive; apt-get install -y --allow-downgrades --reinstall "
-                    "\"libnvidia-compute-$major=$ver\" \"nvidia-utils-$major=$ver\""
+                    "\"libnvidia-compute-$major=$ver\""
                 )
             else:
                 libs_cmd = (
                     f"export DEBIAN_FRONTEND=noninteractive; apt-get install -y --reinstall "
-                    f"libnvidia-compute-{major} nvidia-utils-{major}"
+                    f"libnvidia-compute-{major}"
                 )
             ok, _ = _gpu_setup_run_step(libs_cmd, timeout=900, in_lxc_host=True)
             if not ok and driver_version:
                 _gpu_setup_append(
                     "[warn] Kunne ikke installere eksakt NVIDIA userspace-version. "
-                    "Fjerner LXC NVIDIA userspace-pakker, så PVE bind-mountede host-libs kan bruges."
+                    "Fjerner LXC NVIDIA compute-pakker, så PVE bind-mountede host-libs kan bruges."
                 )
-                _gpu_setup_run_step(purge_nvidia_userspace_cmd, timeout=900, in_lxc_host=True)
+                _gpu_setup_run_step(purge_nvidia_compute_cmd, timeout=900, in_lxc_host=True)
             elif not ok:
-                _gpu_setup_finish(False, f"Installation af NVIDIA userspace-biblioteker fejlede for major {major}.", major)
+                _gpu_setup_finish(False, f"Installation af NVIDIA compute-biblioteker fejlede for major {major}.", major)
                 return
 
             # Helpful diagnostic in live log before docker test.
@@ -1431,9 +1431,9 @@ def _gpu_setup_worker() -> None:
         if not ok and distro_hint == "apt" and driver_version:
             _gpu_setup_append(
                 "[warn] libnvidia-ml matcher ikke host-driveren. "
-                "Fjerner LXC NVIDIA userspace-pakker og prøver igen med bind-mountede host-libs."
+                "Fjerner LXC NVIDIA compute-pakker og prøver igen med bind-mountede host-libs."
             )
-            _gpu_setup_run_step(purge_nvidia_userspace_cmd, timeout=900, in_lxc_host=True)
+            _gpu_setup_run_step(purge_nvidia_compute_cmd, timeout=900, in_lxc_host=True)
             _gpu_setup_run_step("ldconfig", timeout=120, in_lxc_host=True)
             ok, _ = _gpu_setup_run_step(nvml_diag_cmd, timeout=120, in_lxc_host=True)
         if not ok:
