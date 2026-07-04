@@ -461,11 +461,97 @@ function appendLog(line) {
 showPanel(0);
 
 // GPU helper
-function openGpuHelper() {
+const GPU_HELPER_OPEN_KEY = 'fjordhub_gpu_helper_open';
+const GPU_SETUP_POLL_KEY = 'fjordhub_gpu_setup_poll';
+
+function rememberGpuHelper(open) {
+  try {
+    if (open) localStorage.setItem(GPU_HELPER_OPEN_KEY, '1');
+    else {
+      localStorage.removeItem(GPU_HELPER_OPEN_KEY);
+      localStorage.removeItem(GPU_SETUP_POLL_KEY);
+    }
+  } catch (_) {}
+}
+
+function setGpuAutoStatus(html) {
+  const statusEl = document.getElementById('gpu-auto-container-status');
+  if (!statusEl) return;
+  statusEl.style.display = 'block';
+  statusEl.innerHTML = html;
+  statusEl.scrollTop = statusEl.scrollHeight;
+}
+
+function setGpuAutoButtonRunning(running) {
+  const btn = document.getElementById('gpu-auto-container-btn');
+  if (!btn) return;
+  btn.disabled = !!running;
+  btn.textContent = running ? 'Koerer...' : '⚡ Installer GPU-forudsætninger automatisk';
+}
+
+function renderGpuSetupState(state) {
+  const output = _escapeHtml(state.output || '');
+  if (state.running) {
+    try { localStorage.setItem(GPU_SETUP_POLL_KEY, '1'); } catch (_) {}
+    setGpuAutoButtonRunning(true);
+    setGpuAutoStatus(`<span style="color:var(--text-muted)">⏳ Koerer... du kan foelge output live herunder.</span>\n${output}`);
+    return true;
+  }
+  try { localStorage.removeItem(GPU_SETUP_POLL_KEY); } catch (_) {}
+  setGpuAutoButtonRunning(false);
+  if ((state.ok === null || typeof state.ok === 'undefined') && !state.error) {
+    setGpuAutoStatus(`<span style="color:var(--text-muted)">⏳ Afventer status fra backend...</span>\n${output}`);
+    return false;
+  }
+  if (state.ok) {
+    setGpuAutoStatus(`<span style="color:#22c55e">✓ GPU-forudsætninger er sat op automatisk. Klik nu "Kør Docker GPU-test".</span>\n${output}`);
+    return false;
+  }
+  setGpuAutoStatus(`<span style="color:#ef4444">✗ Automatisk opsætning fejlede.</span>\n${_escapeHtml(state.error || '')}\n${output}`);
+  return false;
+}
+
+async function pollGpuSetupStatus(transientNetErrors = 0) {
+  try {
+    const res = await fetch('/api/gpu-setup/status');
+    const data = await res.json();
+    if (!data.api_ok) {
+      setGpuAutoButtonRunning(false);
+      setGpuAutoStatus(`<span style="color:#ef4444">✗ Kunne ikke hente status.</span>\n${_escapeHtml(data.error || 'Ukendt fejl')}`);
+      return;
+    }
+    const keepPolling = renderGpuSetupState(data);
+    if (keepPolling) setTimeout(() => pollGpuSetupStatus(0), 1200);
+  } catch (e) {
+    if (transientNetErrors <= 25) {
+      setGpuAutoStatus(`<span style="color:var(--text-muted)">⏳ Midlertidig netværksafbrydelse. Forsøger igen...</span>\n${_escapeHtml(e.message)}`);
+      setTimeout(() => pollGpuSetupStatus(transientNetErrors + 1), 1200);
+      return;
+    }
+    try { localStorage.removeItem(GPU_SETUP_POLL_KEY); } catch (_) {}
+    setGpuAutoButtonRunning(false);
+    setGpuAutoStatus(`<span style="color:#ef4444">✗ Netværksfejl under status-opdatering: ${_escapeHtml(e.message)}</span>`);
+  }
+}
+
+function resumeGpuHelperAfterReload() {
+  let shouldOpen = false;
+  try {
+    shouldOpen = localStorage.getItem(GPU_HELPER_OPEN_KEY) === '1' || localStorage.getItem(GPU_SETUP_POLL_KEY) === '1';
+  } catch (_) {}
+  if (!shouldOpen) return;
+  openGpuHelper({remember: false, resetResult: false});
+  setGpuAutoStatus('<span style="color:var(--text-muted)">Genoptager GPU-status...</span>');
+  setTimeout(() => pollGpuSetupStatus(0), 300);
+}
+
+function openGpuHelper(options = {}) {
+  const remember = options.remember !== false;
+  const resetResult = options.resetResult !== false;
   const vmidInput = document.getElementById('gpu-vmid');
   if (vmidInput && !vmidInput.value && RUNTIME_INFO.vmid) vmidInput.value = RUNTIME_INFO.vmid;
   const resultEl = document.getElementById('gpu-test-result');
-  if (resultEl) resultEl.textContent = '';
+  if (resultEl && resetResult) resultEl.textContent = '';
   const useBtn = document.getElementById('gpu-use-btn');
   if (useBtn) {
     useBtn.disabled = true;
@@ -473,10 +559,12 @@ function openGpuHelper() {
     useBtn.style.cursor = 'not-allowed';
   }
   renderGpuCommands();
+  if (remember) rememberGpuHelper(true);
   document.getElementById('gpu-modal').style.display = 'flex';
 }
 
 function closeGpuHelper() {
+  rememberGpuHelper(false);
   document.getElementById('gpu-modal').style.display = 'none';
 }
 
@@ -540,6 +628,8 @@ async function autoGpuContainerSetup() {
     statusEl.scrollTop = statusEl.scrollHeight;
   };
   if (statusEl) statusEl.style.display = 'block';
+  rememberGpuHelper(true);
+  try { localStorage.setItem(GPU_SETUP_POLL_KEY, '1'); } catch (_) {}
   if (btn) {
     btn.disabled = true;
     btn.textContent = 'Kører...';
@@ -674,6 +764,8 @@ function useCpuSettings() {
   setWizardField('AI_DEVICE', 'cpu');
   closeGpuHelper();
 }
+
+setTimeout(resumeGpuHelperAfterReload, 0);
 
 // ── NFS helper ───────────────────────────────────────────────────────────────
 

@@ -1455,17 +1455,23 @@ def _gpu_setup_worker() -> None:
             )
             return
 
-        tail_steps = [
-            "nvidia-ctk runtime configure --runtime=docker",
-            "systemctl restart docker || service docker restart",
-            "docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi",
-        ]
+        ok, _ = _gpu_setup_run_step("nvidia-ctk runtime configure --runtime=docker", timeout=300, in_lxc_host=True)
+        if not ok:
+            _gpu_setup_finish(False, "NVIDIA container runtime kunne ikke konfigureres.", major)
+            return
 
-        for cmd in tail_steps:
-            ok, _ = _gpu_setup_run_step(cmd, timeout=300, in_lxc_host=True)
-            if not ok:
-                _gpu_setup_finish(False, "GPU-opsætning blev kørt, men den afsluttende verifikation fejlede.", major)
-                return
+        restart_cmd = (
+            "systemd-run --unit=fjordhub-gpu-docker-restart --on-active=2 "
+            "/bin/sh -lc 'systemctl restart docker || service docker restart' "
+            "|| (nohup sh -c 'sleep 2; systemctl restart docker || service docker restart' "
+            ">/tmp/fjordhub-gpu-docker-restart.log 2>&1 &)"
+        )
+        ok, _ = _gpu_setup_run_step(restart_cmd, timeout=60, in_lxc_host=True)
+        if not ok:
+            _gpu_setup_finish(False, "Docker kunne ikke planlægges til genstart efter NVIDIA runtime-konfiguration.", major)
+            return
+
+        _gpu_setup_append("[info] Docker genstarter om få sekunder. Vent på at FjordHub kommer tilbage, og kør derefter Docker GPU-testen.")
 
         _gpu_setup_finish(True, "", major)
     except Exception as exc:
