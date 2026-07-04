@@ -1283,6 +1283,15 @@ def _gpu_setup_worker() -> None:
 
         if pm == "apt":
             steps = [
+                "if dpkg --audit 2>/dev/null | grep -qi nvidia; then "
+                "echo '[repair] dpkg har ufærdige NVIDIA-pakkeændringer'; "
+                "if findmnt -rn /usr/bin/nvidia-smi >/dev/null 2>&1; then "
+                "echo '[repair] unmount /usr/bin/nvidia-smi så dpkg kan rette pakken'; "
+                "umount /usr/bin/nvidia-smi || true; "
+                "fi; "
+                "export DEBIAN_FRONTEND=noninteractive; dpkg --configure -a; "
+                "export DEBIAN_FRONTEND=noninteractive; apt-get -f install -y; "
+                "fi",
                 "export DEBIAN_FRONTEND=noninteractive; apt-get update",
                 "export DEBIAN_FRONTEND=noninteractive; apt-get install -y curl gnupg ca-certificates",
                 "install -d -m 0755 /usr/share/keyrings",
