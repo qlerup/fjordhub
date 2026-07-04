@@ -181,6 +181,51 @@ def _get_app(app_id: str) -> dict | None:
     return next((a for a in _get_apps() if a.get("id") == app_id), None)
 
 
+def _candidate_app_dirs(app_def: dict) -> list[Path]:
+    app_id = str(app_def.get("id") or "").strip()
+    candidates: list[Path] = []
+
+    env_key = str(app_def.get("compose_dir_env") or "").strip()
+    env_dir = str(os.environ.get(env_key) or "").strip() if env_key else ""
+    if env_dir:
+        candidates.append(Path(env_dir))
+
+    compose_dir = str(app_def.get("compose_dir") or "").strip()
+    if compose_dir:
+        candidates.append(Path(compose_dir))
+
+    if app_id:
+        candidates.append(APPS_BASE / app_id)
+
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for path in candidates:
+        key = str(path)
+        if key and key not in seen:
+            seen.add(key)
+            unique.append(path)
+    return unique
+
+
+def _ensure_install_state_for_existing_app(app_def: dict) -> None:
+    app_id = str(app_def.get("id") or "").strip()
+    if not app_id or _install_state.get_install_dir(app_id):
+        return
+
+    for install_dir in _candidate_app_dirs(app_def):
+        try:
+            if install_dir.exists() and (install_dir / ".git").exists():
+                _install_state.register(app_id, str(install_dir))
+                return
+        except OSError:
+            continue
+
+
+def _ensure_install_state_for_existing_apps(apps: list[dict]) -> None:
+    for app_def in apps:
+        _ensure_install_state_for_existing_app(app_def)
+
+
 @app.context_processor
 def inject_globals():
     return {"app_name": "FjordHub", "active_page": ""}
@@ -1730,7 +1775,9 @@ def api_check_nfs():
 @app.route("/api/apps-status")
 def api_apps_status():
     result = {}
-    for a in _get_apps():
+    apps = _get_apps()
+    _ensure_install_state_for_existing_apps(apps)
+    for a in apps:
         status = docker_mgr.get_status(a)
         app_state = _install_state.get(a["id"])
         if status.get("state") == "not_installed" and app_state.get("state") == "installed":
@@ -1743,7 +1790,9 @@ def api_apps_status():
 
 @app.route("/api/apps-updates")
 def api_apps_updates():
-    return jsonify(_update_manager.get_all_statuses(_get_apps()))
+    apps = _get_apps()
+    _ensure_install_state_for_existing_apps(apps)
+    return jsonify(_update_manager.get_all_statuses(apps))
 
 
 def _with_compose_dir(app_def: dict, app_id: str) -> dict:
