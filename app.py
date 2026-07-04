@@ -1116,6 +1116,16 @@ def _detect_nvidia_driver_major() -> str:
     return ""
 
 
+def _extract_nvidia_driver_version(output: str) -> str:
+    import re
+
+    for line in reversed(str(output or "").splitlines()):
+        match = re.search(r"\b([0-9]+(?:\.[0-9]+){1,3})\b", line)
+        if match:
+            return match.group(1)
+    return ""
+
+
 _gpu_setup_lock = threading.Lock()
 _gpu_setup_state = {
     "running": False,
@@ -1305,18 +1315,18 @@ def _gpu_setup_worker() -> None:
                 _gpu_setup_finish(False, "GPU-opsætning stoppede under installation af NVIDIA toolkit.")
                 return
 
-        ok, major_out = _gpu_setup_run_step(
-            "DRV=\"\"; "
-            "DRV=\"$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1)\"; "
+        ok, version_out = _gpu_setup_run_step(
+            "DRV=\"$(tr '\\0' '\\n' </proc/1/environ 2>/dev/null | sed -n 's/^NVIDIA_DRIVER_VERSION=//p' | head -n1)\"; "
+            "if [ -z \"$DRV\" ]; then DRV=\"$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1)\"; fi; "
             "if [ -z \"$DRV\" ] && [ -r /sys/module/nvidia/version ]; then DRV=\"$(cat /sys/module/nvidia/version 2>/dev/null | head -n1)\"; fi; "
             "if [ -z \"$DRV\" ] && command -v modinfo >/dev/null 2>&1; then DRV=\"$(modinfo -F version nvidia 2>/dev/null | head -n1)\"; fi; "
             "if [ -z \"$DRV\" ] && [ -r /proc/driver/nvidia/version ]; then DRV=\"$(sed -nE 's/.*Kernel Module[[:space:]]+([0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/p' /proc/driver/nvidia/version 2>/dev/null | head -n1)\"; fi; "
-            "echo \"$DRV\" | sed -nE 's/^([0-9]+).*/\\1/p' | head -n1",
+            "printf '%s\\n' \"$DRV\"",
             timeout=120,
             in_lxc_host=True,
         )
         if not ok:
-            _gpu_setup_finish(False, "Kunne ikke detektere NVIDIA driver major version i LXC-systemet.")
+            _gpu_setup_finish(False, "Kunne ikke detektere NVIDIA driver version i LXC-systemet.")
             return
         env_major = ""
         ok_env, env_out = _gpu_setup_run_step(
@@ -1329,12 +1339,15 @@ def _gpu_setup_worker() -> None:
             if env_lines:
                 env_major = env_lines[-1].strip()
 
-        if env_major.isdigit():
+        driver_version = _extract_nvidia_driver_version(version_out)
+        if driver_version:
+            major = driver_version.split(".", 1)[0].strip()
+            _gpu_setup_append(f"[info] Detekteret NVIDIA driver version i LXC: {driver_version}")
+        elif env_major.isdigit():
             major = env_major
             _gpu_setup_append(f"[info] Bruger NVIDIA_DRIVER_MAJOR fra LXC PID1 miljø: {major}")
         else:
-            major_lines = (major_out or "").strip().splitlines()
-            major = major_lines[-1].strip() if major_lines else ""
+            major = ""
         if not major.isdigit():
             _gpu_setup_append("[error] Kunne ikke auto-detektere NVIDIA driver major version.")
             if not major:
@@ -1345,9 +1358,16 @@ def _gpu_setup_worker() -> None:
 
         _gpu_setup_append(f"[info] Detekteret NVIDIA driver major i LXC: {major}")
 
+        purge_nvidia_userspace_cmd = (
+            "export DEBIAN_FRONTEND=noninteractive; "
+            "pkgs=\"$(dpkg-query -W -f='${Package}\\n' 'libnvidia-compute-*' 'nvidia-utils-*' 2>/dev/null | "
+            "grep -E '^(libnvidia-compute-|nvidia-utils-)' || true)\"; "
+            "[ -z \"$pkgs\" ] || apt-get remove -y $pkgs"
+        )
+
         if distro_hint == "apt":
             # Remove conflicting installed NVIDIA userspace package versions first,
-            # then force reinstall the version matching the detected host driver major.
+            # then prefer the exact version matching the host kernel driver.
             cleanup_cmd = (
                 "for p in $(dpkg-query -W -f='${Package}\\n' 'libnvidia-compute-*' 'nvidia-utils-*' 2>/dev/null | "
                 "grep -E '^(libnvidia-compute-|nvidia-utils-)'); do "
@@ -1358,12 +1378,28 @@ def _gpu_setup_worker() -> None:
             )
             _gpu_setup_run_step(cleanup_cmd, timeout=900, in_lxc_host=True)
 
-            libs_cmd = (
-                f"export DEBIAN_FRONTEND=noninteractive; apt-get install -y --reinstall "
-                f"libnvidia-compute-{major} nvidia-utils-{major}"
-            )
+            if driver_version:
+                libs_cmd = (
+                    f"drv={shlex.quote(driver_version)}; major={shlex.quote(major)}; "
+                    "ver=\"$(apt-cache madison libnvidia-compute-$major 2>/dev/null | "
+                    "awk -v d=\"$drv\" '$3 == d || index($3, d \"-\") == 1 || index($3, d \"+\") == 1 || index($3, d \"~\") == 1 {print $3; exit}')\"; "
+                    "if [ -z \"$ver\" ]; then echo \"No exact libnvidia-compute package for driver $drv\"; exit 42; fi; "
+                    "export DEBIAN_FRONTEND=noninteractive; apt-get install -y --allow-downgrades --reinstall "
+                    "\"libnvidia-compute-$major=$ver\" \"nvidia-utils-$major=$ver\""
+                )
+            else:
+                libs_cmd = (
+                    f"export DEBIAN_FRONTEND=noninteractive; apt-get install -y --reinstall "
+                    f"libnvidia-compute-{major} nvidia-utils-{major}"
+                )
             ok, _ = _gpu_setup_run_step(libs_cmd, timeout=900, in_lxc_host=True)
-            if not ok:
+            if not ok and driver_version:
+                _gpu_setup_append(
+                    "[warn] Kunne ikke installere eksakt NVIDIA userspace-version. "
+                    "Fjerner LXC NVIDIA userspace-pakker, så PVE bind-mountede host-libs kan bruges."
+                )
+                _gpu_setup_run_step(purge_nvidia_userspace_cmd, timeout=900, in_lxc_host=True)
+            elif not ok:
                 _gpu_setup_finish(False, f"Installation af NVIDIA userspace-biblioteker fejlede for major {major}.", major)
                 return
 
@@ -1374,8 +1410,41 @@ def _gpu_setup_worker() -> None:
                 in_lxc_host=True,
             )
 
+        ok, _ = _gpu_setup_run_step("ldconfig", timeout=120, in_lxc_host=True)
+        if not ok:
+            _gpu_setup_finish(False, "ldconfig fejlede efter NVIDIA userspace-opsætning.", major)
+            return
+
+        nvml_diag_cmd = (
+            f"drv={shlex.quote(driver_version)}; "
+            "if [ -z \"$drv\" ]; then drv=\"$(tr '\\0' '\\n' </proc/1/environ 2>/dev/null | sed -n 's/^NVIDIA_DRIVER_VERSION=//p' | head -n1)\"; fi; "
+            "if [ -z \"$drv\" ] && [ -r /proc/driver/nvidia/version ]; then drv=\"$(sed -nE 's/.*Kernel Module[[:space:]]+([0-9]+\\.[0-9]+\\.[0-9]+).*/\\1/p' /proc/driver/nvidia/version 2>/dev/null | head -n1)\"; fi; "
+            "ml=\"$(ldconfig -p 2>/dev/null | grep -m1 -E 'libnvidia-ml\\.so\\.1' | sed -E 's/.* => //')\"; "
+            "target=\"$(readlink -f \"$ml\" 2>/dev/null || printf '%s' \"$ml\")\"; "
+            "libver=\"$(basename \"$target\" | sed -nE 's/^libnvidia-ml\\.so\\.([0-9]+(\\.[0-9]+)+)$/\\1/p')\"; "
+            "echo \"[diag] NVIDIA driver: ${drv:-unknown}\"; "
+            "echo \"[diag] libnvidia-ml: ${target:-not found}\"; "
+            "if [ -z \"$ml\" ]; then echo \"[diag] libnvidia-ml.so.1 not found in ldconfig cache\"; exit 43; fi; "
+            "if [ -n \"$drv\" ] && [ -n \"$libver\" ] && [ \"$drv\" != \"$libver\" ]; then echo \"[diag] NVML mismatch: driver=$drv library=$libver\"; exit 42; fi"
+        )
+        ok, _ = _gpu_setup_run_step(nvml_diag_cmd, timeout=120, in_lxc_host=True)
+        if not ok and distro_hint == "apt" and driver_version:
+            _gpu_setup_append(
+                "[warn] libnvidia-ml matcher ikke host-driveren. "
+                "Fjerner LXC NVIDIA userspace-pakker og prøver igen med bind-mountede host-libs."
+            )
+            _gpu_setup_run_step(purge_nvidia_userspace_cmd, timeout=900, in_lxc_host=True)
+            _gpu_setup_run_step("ldconfig", timeout=120, in_lxc_host=True)
+            ok, _ = _gpu_setup_run_step(nvml_diag_cmd, timeout=120, in_lxc_host=True)
+        if not ok:
+            _gpu_setup_finish(
+                False,
+                "NVIDIA libnvidia-ml.so.1 matcher ikke host-driveren. Kør PVE-kommandoerne i GPU-helperen igen, genstart LXC'en, og kør auto-opsætningen bagefter.",
+                major,
+            )
+            return
+
         tail_steps = [
-            "ldconfig",
             "nvidia-ctk runtime configure --runtime=docker",
             "systemctl restart docker || service docker restart",
             "docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi",
