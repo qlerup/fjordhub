@@ -152,16 +152,33 @@ Apps that can use a GPU (e.g. FjordLens' AI service) get a **GPU helper** in the
 A few facts worth knowing:
 
 - **The GPU model doesn't matter.** All GeForce cards (RTX 20/30/40 series, …) use the same unified NVIDIA driver — the only requirement is that the host's driver is new enough to know the card. Nothing in FjordHub is card-specific.
-- **The GPU is shared, not locked.** Unlike VM PCI passthrough, LXC containers only get *access* to the host's GPU — the host keeps owning it, and any number of containers can use it at the same time (they share VRAM and compute). To give another LXC container the same access:
-
-  ```bash
-  # on the PVE host
-  echo "<CTID>" >> /etc/fjordhub/gpu-cts
-  /usr/local/sbin/fjordhub-gpu-sync
-  pct reboot <CTID>
-  ```
-
+- **The GPU is shared, not locked.** Unlike VM PCI passthrough, LXC containers only get *access* to the host's GPU — the host keeps owning it, and any number of containers can use it at the same time (they share VRAM and compute).
 - **Requirements:** the NVIDIA driver installed on the PVE host (Proxmox doesn't ship it), a privileged LXC container, and a Debian/Ubuntu-based container for the in-container auto-setup.
+
+### Sharing the GPU with another LXC container
+
+Say you have another container with CTID **1010** that should also use the GPU. On the PVE host (e.g. via the Proxmox web UI shell), run:
+
+```bash
+echo "1010" >> /etc/fjordhub/gpu-cts
+/usr/local/sbin/fjordhub-gpu-sync
+pct reboot 1010
+```
+
+What each line does:
+
+1. `echo "1010" >> /etc/fjordhub/gpu-cts` — adds CT 1010 to the list of containers that `fjordhub-gpu-sync` maintains. The FjordHub container is already on this list from the one-time setup.
+2. `/usr/local/sbin/fjordhub-gpu-sync` — runs the sync immediately, writing the GPU lines (device access, driver libraries, environment) into `/etc/pve/lxc/1010.conf`. Without this it would happen at the next host boot instead.
+3. `pct reboot 1010` — restarts the container so it starts with GPU access.
+
+From then on CT 1010 is maintained automatically alongside the others — including after host driver updates.
+
+> **Prerequisite:** the one-time host script from the GPU helper must have been run on this host first — that's what installs `/usr/local/sbin/fjordhub-gpu-sync`.
+
+What to do *inside* the container afterwards depends on what it runs:
+
+- **Docker workloads** (like FjordHub/FjordLens): the container also needs the NVIDIA container toolkit and `no-cgroups = true` — the same steps FjordHub's in-container auto-setup performs.
+- **Programs running directly** (e.g. Jellyfin/Plex transcoding, a Python/CUDA script): the bind-mounted host libraries are usually enough. Verify with `nvidia-smi` inside the container after the reboot.
 
 ## Security notes
 
