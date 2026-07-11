@@ -210,6 +210,125 @@
   </div>
 
   {# ── Navigation ── #}
+  <script type="text/plain" id="gpu-sync-script">
+#!/bin/sh
+# FjordHub GPU sync - holder LXC GPU passthrough i sync med hostens NVIDIA-driver.
+# Installeret af FjordHub GPU-helperen. Koerer ved boot, foer containerne starter.
+set -u
+
+CT_LIST_FILE="/etc/fjordhub/gpu-cts"
+[ -f "$CT_LIST_FILE" ] || exit 0
+
+command -v nvidia-smi >/dev/null 2>&1 || { echo "gpu-sync: nvidia-smi mangler paa hosten - springer over"; exit 0; }
+[ -e /dev/nvidiactl ] || nvidia-modprobe -c0 2>/dev/null || true
+[ -e /dev/nvidia-uvm ] || { modprobe nvidia-uvm 2>/dev/null || true; nvidia-modprobe -u -c0 2>/dev/null || true; }
+
+drv_version="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1 | tr -d '[:space:]')"
+[ -n "$drv_version" ] || drv_version="$(sed -nE 's/.*Kernel Module[[:space:]]+([0-9]+(\.[0-9]+)+).*/\1/p' /proc/driver/nvidia/version 2>/dev/null | head -n1)"
+drv_major="${drv_version%%.*}"
+
+find_lib() {
+  soname="$1"
+  found="$(ldconfig -p 2>/dev/null | grep -m1 -F "$soname" | sed -E 's/.* => //')"
+  [ -n "$found" ] && { printf '%s' "$found"; return 0; }
+  base="${soname%.so.1}"
+  find /usr/lib /lib -type f \( -name "$soname" -o -name "${base}.so.[0-9]*" \) 2>/dev/null | sort -Vr | head -n1
+}
+
+while IFS= read -r ctid || [ -n "$ctid" ]; do
+  case "$ctid" in ''|'#'*) continue ;; esac
+  conf="/etc/pve/lxc/${ctid}.conf"
+  [ -f "$conf" ] || { echo "gpu-sync: CT ${ctid} findes ikke - springer over"; continue; }
+
+  add_line() { grep -qxF "$1" "$conf" || printf '%s\n' "$1" >> "$conf"; }
+  set_env_line() {
+    key="$1"; value="$2"
+    if grep -q "^lxc.environment: ${key}=" "$conf"; then
+      sed -i "s|^lxc.environment: ${key}=.*|lxc.environment: ${key}=${value}|" "$conf"
+    else
+      add_line "lxc.environment: ${key}=${value}"
+    fi
+  }
+
+  # Fjern nvidia mount-linjer hvis kilden ikke findes laengere (fx efter driveropdatering)
+  tmp="$(mktemp)"
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      'lxc.mount.entry: '*nvidia*|'lxc.mount.entry: '*libcuda*)
+        src="${line#lxc.mount.entry: }"; src="${src%% *}"
+        [ -e "$src" ] && printf '%s\n' "$line" >> "$tmp"
+        ;;
+      *) printf '%s\n' "$line" >> "$tmp" ;;
+    esac
+  done < "$conf"
+  cmp -s "$tmp" "$conf" || { cp "$conf" "${conf}.bak.gpu-sync"; cat "$tmp" > "$conf"; }
+  rm -f "$tmp"
+
+  # features: tilfoej nesting/keyctl uden at roere andre flags
+  if grep -q '^features:' "$conf"; then
+    feats="$(sed -n 's/^features: *//p' "$conf" | head -n1)"
+    for f in nesting=1 keyctl=1; do
+      case ",$feats," in *",$f,"*) ;; *) feats="${feats:+$feats,}$f" ;; esac
+    done
+    sed -i "s|^features:.*|features: $feats|" "$conf"
+  else
+    add_line "features: nesting=1,keyctl=1"
+  fi
+  grep -q '^lxc.apparmor.profile:' "$conf" || add_line "lxc.apparmor.profile: unconfined"
+
+  [ -n "$drv_major" ] && set_env_line "NVIDIA_DRIVER_MAJOR" "$drv_major"
+  [ -n "$drv_version" ] && set_env_line "NVIDIA_DRIVER_VERSION" "$drv_version"
+
+  for name in nvidia nvidia-uvm nvidia-caps drm; do
+    maj="$(sed -nE "s/^[[:space:]]*([0-9]+)[[:space:]]+${name}\$/\1/p" /proc/devices | head -n1)"
+    [ -n "$maj" ] && add_line "lxc.cgroup2.devices.allow: c ${maj}:* rwm"
+  done
+
+  add_file_mount() {
+    p="$1"
+    [ -e "$p" ] || return 0
+    real="$(readlink -f "$p" 2>/dev/null || printf '%s' "$p")"
+    for src in "$p" "$real"; do
+      [ -e "$src" ] || continue
+      rel="${src#/}"
+      add_line "lxc.mount.entry: ${src} ${rel} none ro,bind,optional,create=file"
+    done
+  }
+  for so in libnvidia-ml.so.1 libcuda.so.1 libnvidia-compiler.so.1 libnvidia-ptxjitcompiler.so.1; do
+    add_file_mount "$(find_lib "$so")"
+  done
+  nvsmi="$(command -v nvidia-smi 2>/dev/null || true)"
+  [ -n "$nvsmi" ] && add_file_mount "$nvsmi"
+
+  for dev in /dev/nvidiactl /dev/nvidia-uvm /dev/nvidia-uvm-tools /dev/nvidia-modeset /dev/nvidia[0-9]*; do
+    [ -e "$dev" ] || continue
+    rel="${dev#/}"
+    add_line "lxc.mount.entry: ${dev} ${rel} none bind,optional,create=file"
+  done
+  [ -d /dev/nvidia-caps ] && add_line "lxc.mount.entry: /dev/nvidia-caps dev/nvidia-caps none bind,optional,create=dir"
+  [ -d /sys/class/drm ] && add_line "lxc.mount.entry: /sys/class/drm sys/class/drm none ro,bind,optional,create=dir"
+  [ -d /proc/driver/nvidia ] && add_line "lxc.mount.entry: /proc/driver/nvidia proc/driver/nvidia none ro,bind,optional,create=dir"
+
+  echo "gpu-sync: CT ${ctid} ok (driver ${drv_version:-ukendt})"
+done < "$CT_LIST_FILE"
+
+exit 0
+  </script>
+  <script type="text/plain" id="gpu-sync-unit">
+[Unit]
+Description=FjordHub GPU sync (NVIDIA passthrough til LXC containere)
+After=systemd-modules-load.service pve-cluster.service
+Wants=pve-cluster.service
+Before=pve-guests.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/fjordhub-gpu-sync
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+  </script>
   <div id="gpu-modal" class="nfs-modal-overlay" style="display:none;" onclick="if(event.target===this)closeGpuHelper()">
     <div class="nfs-modal">
       <h3>GPU passthrough hjælper — {{ app.name }}</h3>
@@ -219,7 +338,7 @@
         <input id="gpu-vmid" type="text" placeholder="100" oninput="renderGpuCommands()">
       </div>
       <div>
-        <p style="font-size:.8rem;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Kommandoer til PVE-hosten</p>
+        <p style="font-size:.8rem;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Engangs-opsætning på PVE-hosten — installerer en service, der selv holder GPU-adgangen opdateret (også efter driveropdateringer)</p>
         <div class="nfs-code-section">
           <div class="nfs-section-header">
             <span class="nfs-block-location">PVE-host</span>
@@ -570,8 +689,12 @@ function closeGpuHelper() {
 
 function renderGpuCommands() {
   const vmid = document.getElementById('gpu-vmid')?.value.trim() || RUNTIME_INFO.vmid || '<VMID>';
+  const syncScript = (document.getElementById('gpu-sync-script')?.textContent || '').trim();
+  const syncUnit = (document.getElementById('gpu-sync-unit')?.textContent || '').trim();
   const lines = [
-    '# Koer paa PVE-hosten, ikke inde i FjordHub-containeren',
+    '# Koer paa PVE-hosten, ikke inde i FjordHub-containeren.',
+    '# Engangs-opsaetning: installerer en gpu-sync service, der automatisk holder GPU',
+    '# passthrough opdateret ved hver boot - ogsaa efter driveropdateringer paa hosten.',
     `ctid="${vmid}"`,
     'conf="/etc/pve/lxc/${ctid}.conf"',
     'if [ ! -f "$conf" ]; then echo "CT config findes ikke: $conf"; exit 1; fi',
@@ -587,39 +710,25 @@ function renderGpuCommands() {
     'echo "Preflight OK: driver $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1)"',
     '',
     'cp "$conf" "$conf.bak.$(date +%Y%m%d%H%M%S)"',
-    'set_line() { key="$1"; value="$2"; if grep -q "^${key}:" "$conf"; then sed -i "s|^${key}:.*|${key}: ${value}|" "$conf"; else printf "%s: %s\\n" "$key" "$value" >> "$conf"; fi; }',
-    'add_line() { grep -qxF "$1" "$conf" || printf "%s\\n" "$1" >> "$conf"; }',
-    'set_env_line() { key="$1"; value="$2"; if grep -q "^lxc.environment: ${key}=" "$conf"; then sed -i "s|^lxc.environment: ${key}=.*|lxc.environment: ${key}=${value}|" "$conf"; else add_line "lxc.environment: ${key}=${value}"; fi; }',
-    'set_line features "nesting=1,keyctl=1"',
-    'set_line lxc.apparmor.profile "unconfined"',
-    'drv_version="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1 | tr -d "[:space:]")"',
-    '[ -n "$drv_version" ] || drv_version="$(sed -nE "s/.*Kernel Module[[:space:]]+([0-9]+(\\.[0-9]+)+).*/\\1/p" /proc/driver/nvidia/version 2>/dev/null | head -n1)"',
-    'drv_major="${drv_version%%.*}"',
-    '[ -n "$drv_major" ] && set_env_line "NVIDIA_DRIVER_MAJOR" "$drv_major"',
-    '[ -n "$drv_version" ] && set_env_line "NVIDIA_DRIVER_VERSION" "$drv_version"',
-    'maj_nvidia="$(sed -nE "s/^[[:space:]]*([0-9]+)[[:space:]]+nvidia$/\\1/p" /proc/devices | head -n1)"',
-    'maj_uvm="$(sed -nE "s/^[[:space:]]*([0-9]+)[[:space:]]+nvidia-uvm$/\\1/p" /proc/devices | head -n1)"',
-    'maj_caps="$(sed -nE "s/^[[:space:]]*([0-9]+)[[:space:]]+nvidia-caps$/\\1/p" /proc/devices | head -n1)"',
-    'maj_drm="$(sed -nE "s/^[[:space:]]*([0-9]+)[[:space:]]+drm$/\\1/p" /proc/devices | head -n1)"',
-    '[ -n "$maj_nvidia" ] && add_line "lxc.cgroup2.devices.allow: c ${maj_nvidia}:* rwm"',
-    '[ -n "$maj_uvm" ] && add_line "lxc.cgroup2.devices.allow: c ${maj_uvm}:* rwm"',
-    '[ -n "$maj_caps" ] && add_line "lxc.cgroup2.devices.allow: c ${maj_caps}:* rwm"',
-    '[ -n "$maj_drm" ] && add_line "lxc.cgroup2.devices.allow: c ${maj_drm}:* rwm"',
-    'add_file_mount() { p="$1"; [ -e "$p" ] || return 0; real="$(readlink -f "$p" 2>/dev/null || printf "%s" "$p")"; for src in "$p" "$real"; do [ -e "$src" ] || continue; rel="${src#/}"; add_line "lxc.mount.entry: ${src} ${rel} none ro,bind,optional,create=file"; done; }',
-    'find_lib() { soname="$1"; found="$(ldconfig -p 2>/dev/null | grep -m1 -F "$soname" | sed -E "s/.* => //")"; [ -n "$found" ] && { printf "%s" "$found"; return 0; }; base="${soname%.so.1}"; find /usr/lib /lib -type f \\( -name "$soname" -o -name "${base}.so.[0-9]*" \\) 2>/dev/null | sort -Vr | head -n1; }',
-    'lib_ml="$(find_lib "libnvidia-ml.so.1")"',
-    'lib_cuda="$(find_lib "libcuda.so.1")"',
-    'lib_nvc="$(find_lib "libnvidia-compiler.so.1")"',
-    'lib_ptx="$(find_lib "libnvidia-ptxjitcompiler.so.1")"',
-    'for lib in "$lib_ml" "$lib_cuda" "$lib_nvc" "$lib_ptx"; do add_file_mount "$lib"; done',
-    'nvidia_smi="$(command -v nvidia-smi 2>/dev/null || true)"; [ -n "$nvidia_smi" ] && add_file_mount "$nvidia_smi"',
-    'for dev in /dev/nvidiactl /dev/nvidia-uvm /dev/nvidia-uvm-tools /dev/nvidia-modeset /dev/nvidia[0-9]*; do [ -e "$dev" ] || continue; rel="${dev#/}"; add_line "lxc.mount.entry: ${dev} ${rel} none bind,optional,create=file"; done',
-    '[ -d /dev/nvidia-caps ] && add_line "lxc.mount.entry: /dev/nvidia-caps dev/nvidia-caps none bind,optional,create=dir"',
-    '[ -d /sys/class/drm ] && add_line "lxc.mount.entry: /sys/class/drm sys/class/drm none ro,bind,optional,create=dir"',
-    '[ -d /proc/driver/nvidia ] && add_line "lxc.mount.entry: /proc/driver/nvidia proc/driver/nvidia none ro,bind,optional,create=dir"',
+    'mkdir -p /etc/fjordhub',
+    'grep -qxF "$ctid" /etc/fjordhub/gpu-cts 2>/dev/null || echo "$ctid" >> /etc/fjordhub/gpu-cts',
+    '',
+    "cat > /usr/local/sbin/fjordhub-gpu-sync <<'FJORDHUB_GPU_SYNC'",
+    syncScript,
+    'FJORDHUB_GPU_SYNC',
+    'chmod 0755 /usr/local/sbin/fjordhub-gpu-sync',
+    '',
+    "cat > /etc/systemd/system/fjordhub-gpu-sync.service <<'FJORDHUB_GPU_UNIT'",
+    syncUnit,
+    'FJORDHUB_GPU_UNIT',
+    'systemctl daemon-reload',
+    'systemctl enable fjordhub-gpu-sync.service',
+    '',
+    '# Koer sync med det samme (skriver GPU-linjerne til CT-configen)',
+    '/usr/local/sbin/fjordhub-gpu-sync',
     '',
     '# Koer derefter reset/genstart-kommandoen i boksen nedenfor.',
-    '# Efter genstart: koer Docker GPU-testen i denne helper.',
+    '# Efter genstart: koer auto-opsaetningen / Docker GPU-testen i denne helper.',
   ];
   const block = document.getElementById('gpu-code-block');
   if (block) block.textContent = lines.join('\n');
