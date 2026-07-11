@@ -35,6 +35,7 @@ function applyStatus(card, status) {
   const open   = card.querySelector('.btn-open');
   const port   = parseInt(card.dataset.defaultPort, 10);
   const state  = status.state || 'unknown';
+  const configuredUrl = status.external_url || '';
 
   dot.dataset.status = state;
   label.textContent  = STATUS_LABELS[state] ?? state;
@@ -44,15 +45,17 @@ function applyStatus(card, status) {
 
   const delBtn  = card.querySelector('.btn-delete');
   const linkBtn = card.querySelector('.btn-link-hub');
+  const settingsBtn = card.querySelector('.btn-app-settings');
 
   if (state === 'running') {
-    open.href = getAppUrl(port);
+    open.href = configuredUrl || getAppUrl(port);
     open.style.opacity = '';
     open.style.pointerEvents = '';
     btn.textContent    = 'Stop';
     btn.dataset.action = 'stop';
     btn.disabled       = false;
     if (delBtn) delBtn.style.display = '';
+    if (settingsBtn) settingsBtn.style.display = '';
   } else if (state === 'not_installed') {
     const id = card.dataset.appId;
     open.href = '#';
@@ -64,16 +67,18 @@ function applyStatus(card, status) {
     btn.dataset.wizardUrl = `/apps/${id}/wizard`;
     if (delBtn) delBtn.style.display = 'none';
     if (linkBtn) linkBtn.style.display = 'none';
+    if (settingsBtn) settingsBtn.style.display = 'none';
     hideUpdateRow(card);
     return;
   } else {
-    open.href = getAppUrl(port);
+    open.href = configuredUrl || getAppUrl(port);
     open.style.opacity = '0.5';
     open.style.pointerEvents = '';
     btn.textContent    = 'Start';
     btn.dataset.action = 'start';
     btn.disabled       = false;
     if (delBtn) delBtn.style.display = '';
+    if (settingsBtn) settingsBtn.style.display = '';
   }
 
   if (linkBtn) {
@@ -458,6 +463,11 @@ document.getElementById('app-sections')?.addEventListener('click', e => {
     confirmUninstall(delBtn.closest('.app-card'));
     return;
   }
+  const settingsBtn = e.target.closest('.btn-app-settings');
+  if (settingsBtn && !settingsBtn.disabled) {
+    openAppSettings(settingsBtn.closest('.app-card'));
+    return;
+  }
   const linkBtn = e.target.closest('.btn-link-hub');
   if (linkBtn && !linkBtn.disabled) {
     linkHubIntegration(linkBtn.closest('.app-card'));
@@ -469,6 +479,81 @@ document.getElementById('app-sections')?.addEventListener('click', e => {
   const action = btn.dataset.action;
   if (action === 'start' || action === 'stop') toggleApp(card, action);
   if (action === 'install') window.location.href = btn.dataset.wizardUrl;
+});
+
+// ── Per-app settings ────────────────────────────────────────────────────────
+
+let _settingsAppId = null;
+
+function closeAppSettings() {
+  _settingsAppId = null;
+  document.getElementById('app-settings-modal')?.classList.remove('is-open');
+}
+
+async function openAppSettings(card) {
+  const appId = card?.dataset.appId;
+  if (!appId) return;
+  _settingsAppId = appId;
+  const modal = document.getElementById('app-settings-modal');
+  const title = document.getElementById('app-settings-title');
+  const input = document.getElementById('app-external-url');
+  const status = document.getElementById('app-settings-status');
+  const name = card.querySelector('.card-name')?.textContent || appId;
+  if (title) title.textContent = `${name} · indstillinger`;
+  if (input) input.value = '';
+  if (status) { status.textContent = 'Henter indstillinger…'; status.className = 'app-settings-status'; }
+  modal?.classList.add('is-open');
+  try {
+    const res = await fetch(`/api/apps/${encodeURIComponent(appId)}/settings`);
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || 'Kunne ikke hente indstillinger');
+    if (input) { input.value = data.external_url || ''; input.focus(); }
+    if (status) {
+      status.textContent = data.external_url
+        ? `Aktiv adresse: ${data.external_url}`
+        : 'Ingen adresse gemt endnu. Indtast domænet som appen skal åbnes på.';
+    }
+  } catch (error) {
+    if (status) { status.textContent = error.message || 'Kunne ikke hente indstillinger'; status.className = 'app-settings-status err'; }
+  }
+}
+
+document.getElementById('app-settings-form')?.addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!_settingsAppId) return;
+  const input = document.getElementById('app-external-url');
+  const status = document.getElementById('app-settings-status');
+  const saveBtn = document.getElementById('app-settings-save');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Gemmer…'; }
+  try {
+    const res = await fetch(`/api/apps/${encodeURIComponent(_settingsAppId)}/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ external_url: input?.value || '' }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || 'Kunne ikke gemme adressen');
+    if (input) input.value = data.external_url || '';
+    if (status) {
+      status.textContent = data.reachable === false
+        ? 'Adressen er gemt, men health-check kunne ikke nå den endnu.'
+        : data.message;
+      status.className = `app-settings-status ${data.reachable === false ? 'warn' : 'ok'}`;
+    }
+    showToast(`✓ ${data.message}`, 'ok');
+    fetchStatuses();
+    if (data.reachable !== false) setTimeout(closeAppSettings, 700);
+  } catch (error) {
+    if (status) { status.textContent = error.message || 'Kunne ikke gemme adressen'; status.className = 'app-settings-status err'; }
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Gem adresse'; }
+  }
+});
+
+document.getElementById('app-settings-close')?.addEventListener('click', closeAppSettings);
+document.getElementById('app-settings-cancel')?.addEventListener('click', closeAppSettings);
+document.getElementById('app-settings-modal')?.addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeAppSettings();
 });
 
 // ── Link FjordHub integration ────────────────────────────────────────────────

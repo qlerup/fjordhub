@@ -6,7 +6,9 @@ import time
 import warnings
 import threading
 import shlex
+import ipaddress
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 import requests
 from flask import Flask, render_template, jsonify, request, redirect, url_for
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
@@ -927,6 +929,8 @@ def _create_app_sso_token(app_id: str) -> tuple[str, object | None]:
         return "", (jsonify({"ok": False, "error": "Appen mangler FjordHub-integration. Opdater eller geninstaller appen via FjordHub."}), 400)
     user = _auth.get_by_id(int(current_user.id)) or current_user
     app_role = _auth.get_user_app_role(int(current_user.id), app_id)
+    if not user.is_admin and app_role is None:
+        return "", (jsonify({"ok": False, "error": "Du har ikke adgang til denne app"}), 403)
     hub_role = "admin" if user.is_admin else "user"
     role = app_role or ("admin" if user.is_admin else "user")
     token = generate_secret(32)
@@ -944,10 +948,40 @@ def _create_app_sso_token(app_id: str) -> tuple[str, object | None]:
     return token, None
 
 
+def _installed_env_value(app_id: str, key: str) -> str:
+    install_dir = _install_state.get_install_dir(app_id)
+    env_path = Path(install_dir) / ".env" if install_dir else None
+    if not env_path or not env_path.exists():
+        return ""
+    try:
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            name, separator, value = line.partition("=")
+            if separator and name.strip() == key:
+                return value.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return ""
+
+
 def _external_app_url_candidates(app_def: dict) -> list[str]:
-    host = request.host.split(":", 1)[0]
-    port = int(app_def.get("default_port") or 80)
-    return [f"https://{host}:{port}", f"http://{host}:{port}"]
+    candidates: list[str] = []
+
+    configured_url = _install_state.get_external_url(str(app_def.get("id") or ""))
+    if configured_url:
+        candidates.append(configured_url.rstrip("/"))
+
+    app_id = str(app_def.get("id") or "")
+    host = urlsplit("//" + request.host).hostname or "localhost"
+    host_for_url = f"[{host}]" if ":" in host and not host.startswith("[") else host
+    configured_port = _installed_env_value(app_id, "APP_PORT")
+    try:
+        port = int(configured_port or app_def.get("default_port") or 80)
+    except (TypeError, ValueError):
+        port = int(app_def.get("default_port") or 80)
+    for value in (f"https://{host_for_url}:{port}", f"http://{host_for_url}:{port}"):
+        if value not in candidates:
+            candidates.append(value)
+    return candidates
 
 
 def _app_url_is_reachable(app_url: str, app_def: dict) -> bool:
@@ -962,17 +996,53 @@ def _app_url_is_reachable(app_url: str, app_def: dict) -> bool:
                 timeout=0.8,
                 verify=False,
             )
-        return 200 <= int(resp.status_code) < 500
+        return 200 <= int(resp.status_code) < 400
     except requests.RequestException:
         return False
 
 
 def _external_app_url(app_def: dict) -> str:
     candidates = _external_app_url_candidates(app_def)
+    configured_url = _install_state.get_external_url(str(app_def.get("id") or ""))
+    if configured_url:
+        return configured_url.rstrip("/")
     for candidate in candidates:
         if _app_url_is_reachable(candidate, app_def):
             return candidate
-    return candidates[1]
+    return candidates[-1]
+
+
+def _normalize_external_url(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if "://" not in raw:
+        lower = raw.lower()
+        raw_host = urlsplit("//" + raw).hostname or ""
+        try:
+            private_host = ipaddress.ip_address(raw_host).is_private
+        except ValueError:
+            private_host = raw_host.lower() == "localhost" or raw_host.lower().endswith(".local")
+        raw = ("http://" if private_host else "https://") + raw
+    parsed = urlsplit(raw)
+    try:
+        parsed_port = parsed.port
+    except ValueError as exc:
+        raise ValueError("URL'en indeholder en ugyldig port") from exc
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or not parsed.hostname
+        or any(char.isspace() for char in parsed.netloc)
+    ):
+        raise ValueError("Indtast et gyldigt domæne eller en URL med http:// eller https://")
+    if parsed_port is not None and not (1 <= parsed_port <= 65535):
+        raise ValueError("Porten skal være mellem 1 og 65535")
+    if parsed.username or parsed.password:
+        raise ValueError("URL'en må ikke indeholde brugernavn eller adgangskode")
+    if parsed.query or parsed.fragment:
+        raise ValueError("URL'en må ikke indeholde query-parametre eller fragment")
+    return urlunsplit((parsed.scheme.lower(), parsed.netloc, parsed.path.rstrip("/"), "", ""))
 
 
 @app.route("/apps/<app_id>/sso-url")
@@ -986,6 +1056,40 @@ def app_sso_url(app_id):
         return error_response
     app_url = _external_app_url(app_def)
     return jsonify({"ok": True, "url": f"{app_url}/hub-login?token={token}"})
+
+
+@app.route("/api/apps/<app_id>/settings", methods=["GET", "POST"])
+@login_required
+def api_app_settings(app_id):
+    if not current_user.is_admin:
+        return jsonify({"ok": False, "error": "Kun administratorer kan ændre app-indstillinger"}), 403
+    app_def = _get_app(app_id)
+    if not app_def:
+        return jsonify({"ok": False, "error": "Ukendt app"}), 404
+
+    if request.method == "GET":
+        saved_url = _install_state.get_external_url(app_id)
+        return jsonify({
+            "ok": True,
+            "app_id": app_id,
+            "app_name": app_def.get("name", app_id),
+            "external_url": saved_url,
+            "fallback_url": _external_app_url_candidates(app_def)[-1],
+        })
+
+    data = request.get_json(silent=True) or {}
+    try:
+        external_url = _normalize_external_url(data.get("external_url", ""))
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    _install_state.set_external_url(app_id, external_url)
+    reachable = _app_url_is_reachable(external_url, app_def) if external_url else None
+    return jsonify({
+        "ok": True,
+        "external_url": external_url,
+        "reachable": reachable,
+        "message": "App-adressen er gemt" if external_url else "App-adressen er nulstillet",
+    })
 
 
 @app.route("/api/apps/<app_id>/link-hub", methods=["POST"])
@@ -1784,6 +1888,7 @@ def api_apps_status():
             status["state"] = "exited"
             status["message"] = "Installeret, men containeren mangler. Start genskaber den."
         status["hub_linked"] = bool(_auth.get_hub_key(a["id"]))
+        status["external_url"] = _install_state.get_external_url(a["id"])
         result[a["id"]] = status
     return jsonify(result)
 

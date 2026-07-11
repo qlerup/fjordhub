@@ -131,6 +131,14 @@
         </a>
         <button class="btn btn-toggle" data-action="start">Start</button>
         <button class="btn btn-link-hub" style="display:none;" title="Aktiver SSO-login til denne app">Link FjordHub</button>
+        {% if current_user.is_admin %}
+        <button class="btn-app-settings" style="display:none;" title="App-indstillinger" aria-label="App-indstillinger">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.08A1.7 1.7 0 0 0 8.95 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3v-4h.08A1.7 1.7 0 0 0 4.6 8.95a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 8.95 4.6 1.7 1.7 0 0 0 9.98 3.04V3h4v.08A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 8.95a1.7 1.7 0 0 0 1.56 1.03H21v4h-.08A1.7 1.7 0 0 0 19.4 15z"/>
+          </svg>
+        </button>
+        {% endif %}
         <button class="btn btn-delete" data-action="delete" style="display:none;" title="Afinstallér">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px;">
             <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
@@ -141,6 +149,29 @@
     {% endfor %}
       </div>
     </section>
+  </div>
+</div>
+
+<div class="modal-overlay" id="app-settings-modal">
+  <div class="modal app-settings-modal" role="dialog" aria-modal="true" aria-labelledby="app-settings-title">
+    <div class="modal-header">
+      <h2 id="app-settings-title">App-indstillinger</h2>
+      <button type="button" class="modal-close" id="app-settings-close" aria-label="Luk">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <form id="app-settings-form">
+      <div class="form-field">
+        <label for="app-external-url">Offentlig URL eller domæne</label>
+        <input id="app-external-url" type="text" placeholder="https://app.eksempel.dk" autocomplete="off">
+        <p class="field-hint">Bruges af “Åbn”-knappen og SSO. Du kan også indtaste en lokal adresse som http://10.10.0.50:8080. Feltet kan ændres når som helst.</p>
+      </div>
+      <div id="app-settings-status" class="app-settings-status" aria-live="polite"></div>
+      <div class="app-settings-actions">
+        <button type="button" class="btn btn-open" id="app-settings-cancel">Annuller</button>
+        <button type="submit" class="btn-install" id="app-settings-save">Gem adresse</button>
+      </div>
+    </form>
   </div>
 </div>
 

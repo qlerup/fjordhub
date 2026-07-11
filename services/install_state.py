@@ -18,6 +18,13 @@ class InstallState:
         with self._lock:
             return self._state.get(app_id, {}).get("install_dir")
 
+    def get_external_url(self, app_id: str) -> str:
+        with self._lock:
+            return str(self._state.get(app_id, {}).get("external_url") or "")
+
+    def set_external_url(self, app_id: str, external_url: str) -> None:
+        self._update(app_id, {"external_url": str(external_url or "").strip()})
+
     def set_installing(self, app_id: str, install_dir: str):
         self._update(app_id, {
             "state": "installing",
