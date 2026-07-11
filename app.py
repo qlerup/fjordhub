@@ -1889,6 +1889,7 @@ def api_apps_status():
             status["message"] = "Installeret, men containeren mangler. Start genskaber den."
         status["hub_linked"] = bool(_auth.get_hub_key(a["id"]))
         status["external_url"] = _install_state.get_external_url(a["id"])
+        status["fallback_url"] = _external_app_url_candidates(a)[-1]
         result[a["id"]] = status
     return jsonify(result)
 

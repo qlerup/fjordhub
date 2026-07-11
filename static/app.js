@@ -35,7 +35,7 @@ function applyStatus(card, status) {
   const open   = card.querySelector('.btn-open');
   const port   = parseInt(card.dataset.defaultPort, 10);
   const state  = status.state || 'unknown';
-  const configuredUrl = status.external_url || '';
+  const openUrl = status.external_url || status.fallback_url || getAppUrl(port);
 
   dot.dataset.status = state;
   label.textContent  = STATUS_LABELS[state] ?? state;
@@ -48,7 +48,7 @@ function applyStatus(card, status) {
   const settingsBtn = card.querySelector('.btn-app-settings');
 
   if (state === 'running') {
-    open.href = configuredUrl || getAppUrl(port);
+    open.href = openUrl;
     open.style.opacity = '';
     open.style.pointerEvents = '';
     btn.textContent    = 'Stop';
@@ -71,7 +71,7 @@ function applyStatus(card, status) {
     hideUpdateRow(card);
     return;
   } else {
-    open.href = configuredUrl || getAppUrl(port);
+    open.href = openUrl;
     open.style.opacity = '0.5';
     open.style.pointerEvents = '';
     btn.textContent    = 'Start';
