@@ -963,6 +963,70 @@ def _installed_env_value(app_id: str, key: str) -> str:
     return ""
 
 
+def _host_lan_ip() -> str:
+    """Best-effort LAN-IP for Docker-hosten, læst fra hostens /proc.
+
+    Når dashboardet tilgås via et tunnel-domæne kan request.host ikke bruges
+    til at bygge lokale app-adresser — porten er kun åben på hostens LAN-IP.
+    """
+    env_ip = str(os.environ.get("HOST_LAN_IP", "") or "").strip()
+    if env_ip:
+        return env_ip
+    proc_root = Path(os.environ.get("HOST_PROC_ROOT", "/host/proc"))
+    try:
+        gateway = None
+        for line in (proc_root / "net" / "route").read_text(encoding="utf-8").splitlines()[1:]:
+            parts = line.split()
+            if len(parts) >= 3 and parts[1] == "00000000" and parts[2] != "00000000":
+                gateway = ipaddress.ip_address(int.from_bytes(bytes.fromhex(parts[2]), "little"))
+                break
+        if gateway is None:
+            return ""
+        local_ips: list[ipaddress.IPv4Address] = []
+        current = ""
+        for line in (proc_root / "net" / "fib_trie").read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith(("|--", "+--")):
+                current = stripped.split()[1].split("/")[0]
+            elif "/32 host" in stripped and "LOCAL" in stripped and current:
+                try:
+                    addr = ipaddress.IPv4Address(current)
+                except ValueError:
+                    continue
+                if not addr.is_loopback and addr not in local_ips:
+                    local_ips.append(addr)
+        if not local_ips:
+            return ""
+        gw_bits = int(gateway)
+        best = max(local_ips, key=lambda addr: (int(addr) ^ gw_bits) ^ 0xFFFFFFFF)
+        # Kræv mindst samme /8 som gateway, ellers er gættet for usikkert
+        if (int(best) ^ gw_bits) >> 24:
+            return ""
+        return str(best)
+    except (OSError, ValueError):
+        return ""
+
+
+def _app_port(app_def: dict) -> int:
+    app_id = str(app_def.get("id") or "")
+    configured_port = _installed_env_value(app_id, "APP_PORT")
+    try:
+        return int(configured_port or app_def.get("default_port") or 80)
+    except (TypeError, ValueError):
+        return int(app_def.get("default_port") or 80)
+
+
+def _fallback_app_url(app_def: dict) -> str:
+    """Lokal adresse der bruges når ingen offentlig URL er gemt."""
+    port = _app_port(app_def)
+    lan_ip = _host_lan_ip()
+    if lan_ip:
+        return f"http://{lan_ip}:{port}"
+    host = urlsplit("//" + request.host).hostname or "localhost"
+    host_for_url = f"[{host}]" if ":" in host and not host.startswith("[") else host
+    return f"http://{host_for_url}:{port}"
+
+
 def _external_app_url_candidates(app_def: dict) -> list[str]:
     candidates: list[str] = []
 
@@ -970,14 +1034,15 @@ def _external_app_url_candidates(app_def: dict) -> list[str]:
     if configured_url:
         candidates.append(configured_url.rstrip("/"))
 
-    app_id = str(app_def.get("id") or "")
+    port = _app_port(app_def)
+    lan_ip = _host_lan_ip()
+    if lan_ip:
+        lan_url = f"http://{lan_ip}:{port}"
+        if lan_url not in candidates:
+            candidates.append(lan_url)
+
     host = urlsplit("//" + request.host).hostname or "localhost"
     host_for_url = f"[{host}]" if ":" in host and not host.startswith("[") else host
-    configured_port = _installed_env_value(app_id, "APP_PORT")
-    try:
-        port = int(configured_port or app_def.get("default_port") or 80)
-    except (TypeError, ValueError):
-        port = int(app_def.get("default_port") or 80)
     for value in (f"https://{host_for_url}:{port}", f"http://{host_for_url}:{port}"):
         if value not in candidates:
             candidates.append(value)
@@ -1009,7 +1074,7 @@ def _external_app_url(app_def: dict) -> str:
     for candidate in candidates:
         if _app_url_is_reachable(candidate, app_def):
             return candidate
-    return candidates[-1]
+    return _fallback_app_url(app_def)
 
 
 def _normalize_external_url(value: str) -> str:
@@ -1074,7 +1139,7 @@ def api_app_settings(app_id):
             "app_id": app_id,
             "app_name": app_def.get("name", app_id),
             "external_url": saved_url,
-            "fallback_url": _external_app_url_candidates(app_def)[-1],
+            "fallback_url": _fallback_app_url(app_def),
         })
 
     data = request.get_json(silent=True) or {}
@@ -1889,7 +1954,7 @@ def api_apps_status():
             status["message"] = "Installeret, men containeren mangler. Start genskaber den."
         status["hub_linked"] = bool(_auth.get_hub_key(a["id"]))
         status["external_url"] = _install_state.get_external_url(a["id"])
-        status["fallback_url"] = _external_app_url_candidates(a)[-1]
+        status["fallback_url"] = _fallback_app_url(a)
         result[a["id"]] = status
     return jsonify(result)
 

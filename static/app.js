@@ -511,7 +511,9 @@ async function openAppSettings(card) {
     if (status) {
       status.textContent = data.external_url
         ? `Aktiv adresse: ${data.external_url}`
-        : 'Ingen adresse gemt endnu. Indtast domænet som appen skal åbnes på.';
+        : (data.fallback_url
+            ? `Ingen adresse gemt — appen åbnes via ${data.fallback_url}.`
+            : 'Ingen adresse gemt endnu. Indtast domænet som appen skal åbnes på.');
     }
   } catch (error) {
     if (status) { status.textContent = error.message || 'Kunne ikke hente indstillinger'; status.className = 'app-settings-status err'; }
