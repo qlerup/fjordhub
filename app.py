@@ -973,9 +973,22 @@ def _host_lan_ip() -> str:
     if env_ip:
         return env_ip
     proc_root = Path(os.environ.get("HOST_PROC_ROOT", "/host/proc"))
+    # /proc/net er et symlink til /proc/self/net og viser den LÆSENDE proces'
+    # netns — dvs. containerens (172.x-bridge), selv når hostens /proc er
+    # bind-mountet. PID 1 i hostens procfs er hostens init, så <proc>/1/net
+    # viser hostens rigtige netværk. Prøv den først; ren <proc>/net som
+    # fallback dækker kørsel uden container.
+    for net_dir in (proc_root / "1" / "net", proc_root / "net"):
+        lan_ip = _lan_ip_from_proc_net(net_dir)
+        if lan_ip:
+            return lan_ip
+    return ""
+
+
+def _lan_ip_from_proc_net(net_dir: Path) -> str:
     try:
         gateway = None
-        for line in (proc_root / "net" / "route").read_text(encoding="utf-8").splitlines()[1:]:
+        for line in (net_dir / "route").read_text(encoding="utf-8").splitlines()[1:]:
             parts = line.split()
             if len(parts) >= 3 and parts[1] == "00000000" and parts[2] != "00000000":
                 gateway = ipaddress.ip_address(int.from_bytes(bytes.fromhex(parts[2]), "little"))
@@ -984,7 +997,7 @@ def _host_lan_ip() -> str:
             return ""
         local_ips: list[ipaddress.IPv4Address] = []
         current = ""
-        for line in (proc_root / "net" / "fib_trie").read_text(encoding="utf-8").splitlines():
+        for line in (net_dir / "fib_trie").read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
             if stripped.startswith(("|--", "+--")):
                 current = stripped.split()[1].split("/")[0]

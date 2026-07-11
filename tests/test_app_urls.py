@@ -28,6 +28,23 @@ eth0\t00000000\t0100000A\t0003\t0\t0\t0\t00000000\t0\t0\t0
 eth0\t00000A0A\t00000000\t0001\t0\t0\t0\t00FFFFFF\t0\t0\t0
 """
 
+# Sådan ser containerens egen netns ud: docker-bridge 172.18.0.x
+CONTAINER_FIB_TRIE = """\
+Main:
+  +-- 0.0.0.0/0 3 0 5
+     +-- 172.18.0.0/16 2 0 2
+        |-- 172.18.0.5
+           /32 host LOCAL
+     |-- 127.0.0.1
+        /32 host LOCAL
+"""
+
+# Default route via 172.18.0.1 (010012AC little-endian) på eth0
+CONTAINER_ROUTE = """\
+Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT
+eth0\t00000000\t010012AC\t0003\t0\t0\t0\t00000000\t0\t0\t0
+"""
+
 
 class AppUrlTests(unittest.TestCase):
     def setUp(self):
@@ -41,12 +58,13 @@ class AppUrlTests(unittest.TestCase):
         os.environ.pop("HOST_PROC_ROOT", None)
         os.environ.pop("HOST_LAN_IP", None)
 
-    def _write_fake_proc(self):
-        net_dir = Path(self.tempdir.name) / "proc" / "net"
-        net_dir.mkdir(parents=True)
-        (net_dir / "fib_trie").write_text(FIB_TRIE, encoding="utf-8")
-        (net_dir / "route").write_text(ROUTE, encoding="utf-8")
-        os.environ["HOST_PROC_ROOT"] = str(net_dir.parent)
+    def _write_fake_proc(self, net_subdir="net", fib_trie=FIB_TRIE, route=ROUTE):
+        proc_root = Path(self.tempdir.name) / "proc"
+        net_dir = proc_root / net_subdir
+        net_dir.mkdir(parents=True, exist_ok=True)
+        (net_dir / "fib_trie").write_text(fib_trie, encoding="utf-8")
+        (net_dir / "route").write_text(route, encoding="utf-8")
+        os.environ["HOST_PROC_ROOT"] = str(proc_root)
 
     def test_normalizes_domains_and_private_addresses(self):
         self.assertEqual(
@@ -87,6 +105,13 @@ class AppUrlTests(unittest.TestCase):
 
     def test_host_lan_ip_prefers_gateway_subnet(self):
         self._write_fake_proc()
+        self.assertEqual(fjordhub._host_lan_ip(), "10.10.0.50")
+
+    def test_host_lan_ip_reads_host_netns_not_container(self):
+        # /proc/net i containeren viser docker-bridgen (172.18.0.x);
+        # hostens rigtige netværk ligger i <proc>/1/net og skal vinde
+        self._write_fake_proc("net", CONTAINER_FIB_TRIE, CONTAINER_ROUTE)
+        self._write_fake_proc("1/net", FIB_TRIE, ROUTE)
         self.assertEqual(fjordhub._host_lan_ip(), "10.10.0.50")
 
     def test_host_lan_ip_env_override(self):
