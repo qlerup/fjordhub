@@ -310,8 +310,20 @@ async function refreshRegistry() {
   icon.classList.add('spinning');
 
   try {
+    // Tving samtidig et friskt opdaterings-tjek (git fetch) af alle installerede apps,
+    // så knappen både synkroniserer app-listen og finder nye app-opdateringer med det samme
+    const installedCards = [...document.querySelectorAll('.app-card')]
+      .filter(card => card.querySelector('.btn-toggle')?.dataset.action !== 'install');
+    const updateChecks = Promise.allSettled(
+      installedCards.map(card =>
+        fetch(`/apps/${encodeURIComponent(card.dataset.appId)}/update/check`, { method: 'POST' })
+      )
+    );
+
     const res  = await fetch('/api/registry/refresh', { method: 'POST' });
     const data = await res.json();
+    await updateChecks;
+    fetchUpdateStatuses();
 
     showToast(data.ok ? `✓ ${data.message}` : `✗ ${data.message}`, data.ok ? 'ok' : 'err');
 
