@@ -12,6 +12,10 @@
     {
       "id": "fjordparcel",
       "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordparcel/main/fjordhub.json"
+    },
+    {
+      "id": "orbitmap",
+      "manifest_url": "https://raw.githubusercontent.com/qlerup/orbitmap/main/fjordhub.json"
     }
   ]
 }

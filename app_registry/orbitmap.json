@@ -1,0 +1,58 @@
+{
+  "id": "orbitmap",
+  "name": "OrbitMap",
+  "tagline": "Roadmaps og projektplaner samlet ét sted",
+  "description": "Planlæg idéer, fejl og funktioner på tværs af apps med Kanban-tavler og en samlet roadmap-visning.",
+  "icon": "orbit",
+  "accent": "#8b5cf6",
+  "container_name": "orbitmap",
+  "default_port": 3005,
+  "health_path": "/api/health",
+  "traefik_prefix": "/orbitmap",
+  "compose_dir_env": "ORBITMAP_DIR",
+  "source_url": "https://github.com/qlerup/orbitmap",
+  "icon_url": "https://raw.githubusercontent.com/qlerup/orbitmap/main/app/public/orbitmap-mark.svg",
+  "sort_order": 4,
+  "setup_steps": [
+    {
+      "id": "basic",
+      "title": "Grundlæggende indstillinger",
+      "fields": [
+        {
+          "key": "APP_PORT",
+          "label": "Web-port",
+          "type": "number",
+          "default": "3005",
+          "hint": "Den port du åbner OrbitMap på i browseren"
+        },
+        {
+          "key": "TZ",
+          "label": "Tidszone",
+          "type": "text",
+          "default": "Europe/Copenhagen",
+          "hint": "Region/By-format, f.eks. Europe/Copenhagen"
+        }
+      ]
+    },
+    {
+      "id": "secrets",
+      "title": "Database og sikkerhed",
+      "fields": [
+        {
+          "key": "DB_PASSWORD",
+          "label": "PostgreSQL-adgangskode",
+          "type": "auto_secret",
+          "default": "",
+          "hint": "Genereres automatisk og bruges kun internt af OrbitMap"
+        },
+        {
+          "key": "JWT_SECRET",
+          "label": "Hemmelig nøgle til sessioner",
+          "type": "auto_secret",
+          "default": "",
+          "hint": "Genereres automatisk og beskytter login-sessioner"
+        }
+      ]
+    }
+  ]
+}
