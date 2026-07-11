@@ -141,6 +141,28 @@ Apps can optionally integrate with the hub's user API (`/api/hub/apps/authentica
 - **Apps** — the dashboard checks each installed app's repository for new commits. Updating pulls the latest code and re-runs compose for that app only.
 - **The hub itself** — Settings → Update triggers the `fjordhub-updater` sidecar, which pulls this repository, rebuilds the hub image and restarts the hub container. Progress and logs are shown in the UI and persisted under `DATA_DIR/fjordhub-updater`.
 
+## GPU passthrough (NVIDIA)
+
+Apps that can use a GPU (e.g. FjordLens' AI service) get a **GPU helper** in the install wizard. It sets up NVIDIA GPU access for the FjordHub LXC container on a Proxmox host — one copy-paste, once per host:
+
+1. **One-time host script** — run on the PVE host. It first checks the prerequisites (driver installed, device nodes present, privileged container) and fails with a clear message instead of writing a half-broken config. It then installs a small `fjordhub-gpu-sync` systemd service and runs it immediately.
+2. **`fjordhub-gpu-sync`** runs at every host boot, before the containers start. It loads the NVIDIA kernel modules, removes stale GPU mount lines whose source files no longer exist, and rewrites `/etc/pve/lxc/<CTID>.conf` to match the driver currently installed on the host. **Host driver updates therefore never break the containers** — reboot the host and everything is re-synced automatically.
+3. **In-container auto-setup** — one click in the wizard. Installs the NVIDIA container toolkit, installs userspace libraries matching the host driver exactly (or falls back to the bind-mounted host libraries when the exact version isn't packaged), sets `no-cgroups = true` (an LXC may not manage cgroup device rules itself — the host already grants access), configures the Docker runtime and restarts Docker. The GPU test button unlocks automatically once everything is back up.
+
+A few facts worth knowing:
+
+- **The GPU model doesn't matter.** All GeForce cards (RTX 20/30/40 series, …) use the same unified NVIDIA driver — the only requirement is that the host's driver is new enough to know the card. Nothing in FjordHub is card-specific.
+- **The GPU is shared, not locked.** Unlike VM PCI passthrough, LXC containers only get *access* to the host's GPU — the host keeps owning it, and any number of containers can use it at the same time (they share VRAM and compute). To give another LXC container the same access:
+
+  ```bash
+  # on the PVE host
+  echo "<CTID>" >> /etc/fjordhub/gpu-cts
+  /usr/local/sbin/fjordhub-gpu-sync
+  pct reboot <CTID>
+  ```
+
+- **Requirements:** the NVIDIA driver installed on the PVE host (Proxmox doesn't ship it), a privileged LXC container, and a Debian/Ubuntu-based container for the in-container auto-setup.
+
 ## Security notes
 
 - The hub container mounts `/var/run/docker.sock`, which is equivalent to root on the host. Treat the hub as an admin tool: run it on a trusted network and put it behind a VPN or an authenticated tunnel if you expose it to the internet.
