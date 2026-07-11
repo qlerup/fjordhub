@@ -608,9 +608,47 @@ function setGpuAutoButtonRunning(running) {
   btn.textContent = running ? 'Koerer...' : '⚡ Installer GPU-forudsætninger automatisk';
 }
 
+// Efter en vellykket auto-opsaetning genstarter Docker (og dermed FjordHub selv).
+// Testknappen laases, indtil /api/health svarer stabilt igen, saa man ikke kan
+// koere testen mens alt er nede.
+let gpuSetupSeenRunning = false;
+let gpuTestWaitActive = false;
+
+async function waitForGpuTestReady() {
+  if (gpuTestWaitActive) return;
+  gpuTestWaitActive = true;
+  const btn = document.getElementById('gpu-test-btn');
+  const resultEl = document.getElementById('gpu-test-result');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Venter på Docker-genstart...';
+  }
+  if (resultEl) resultEl.innerHTML = '<span style="color:var(--text-muted)">Docker genstarter — test-knappen aktiveres automatisk, når alt er oppe igen.</span>';
+  const started = Date.now();
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+  let okStreak = 0;
+  while (Date.now() - started < 120000) {
+    try {
+      const res = await fetch('/api/health', {cache: 'no-store'});
+      okStreak = res.ok ? okStreak + 1 : 0;
+    } catch (_) {
+      okStreak = 0;
+    }
+    if (okStreak >= 2) break;
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = 'Kør Docker GPU-test';
+  }
+  if (resultEl) resultEl.innerHTML = '<span style="color:#22c55e">✓ Alt er oppe igen — du kan køre GPU-testen nu.</span>';
+  gpuTestWaitActive = false;
+}
+
 function renderGpuSetupState(state) {
   const output = _escapeHtml(state.output || '');
   if (state.running) {
+    gpuSetupSeenRunning = true;
     try { localStorage.setItem(GPU_SETUP_POLL_KEY, '1'); } catch (_) {}
     setGpuAutoButtonRunning(true);
     setGpuAutoStatus(`<span style="color:var(--text-muted)">⏳ Koerer... du kan foelge output live herunder.</span>\n${output}`);
@@ -623,7 +661,11 @@ function renderGpuSetupState(state) {
     return false;
   }
   if (state.ok) {
-    setGpuAutoStatus(`<span style="color:#22c55e">✓ GPU-forudsætninger er sat op automatisk. Klik nu "Kør Docker GPU-test".</span>\n${output}`);
+    setGpuAutoStatus(`<span style="color:#22c55e">✓ GPU-forudsætninger er sat op automatisk.</span>\n${output}`);
+    if (gpuSetupSeenRunning) {
+      gpuSetupSeenRunning = false;
+      waitForGpuTestReady();
+    }
     return false;
   }
   setGpuAutoStatus(`<span style="color:#ef4444">✗ Automatisk opsætning fejlede.</span>\n${_escapeHtml(state.error || '')}\n${output}`);
@@ -759,6 +801,7 @@ async function autoGpuContainerSetup() {
   const renderState = (state) => {
     const output = _escapeHtml(state.output || '');
     if (state.running) {
+      gpuSetupSeenRunning = true;
       setStatus(`<span style="color:var(--text-muted)">⏳ Kører... du kan følge output live herunder.</span>\n${output}`);
       return;
     }
@@ -767,7 +810,11 @@ async function autoGpuContainerSetup() {
       return;
     }
     if (state.ok) {
-      setStatus(`<span style="color:#22c55e">✓ GPU-forudsætninger er sat op automatisk. Klik nu "Kør Docker GPU-test".</span>\n${output}`);
+      setStatus(`<span style="color:#22c55e">✓ GPU-forudsætninger er sat op automatisk. Test-knappen aktiveres, når Docker er genstartet.</span>\n${output}`);
+      if (gpuSetupSeenRunning) {
+        gpuSetupSeenRunning = false;
+        waitForGpuTestReady();
+      }
       return;
     }
     setStatus(`<span style="color:#ef4444">✗ Automatisk opsætning fejlede.</span>\n${_escapeHtml(state.error || '')}\n${output}`);
