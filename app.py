@@ -1490,6 +1490,19 @@ def _gpu_setup_worker() -> None:
 
         _gpu_setup_append("[info] Kører auto-opsætning i LXC-systemet via nsenter (ikke i FjordHub-containerens eget OS).")
 
+        _, dev_out = _gpu_setup_run_step(
+            "ls /dev/nvidia* 2>/dev/null || true",
+            timeout=60,
+            in_lxc_host=True,
+        )
+        if "/dev/nvidia" not in (dev_out or ""):
+            _gpu_setup_finish(
+                False,
+                "Ingen /dev/nvidia* devices fundet i LXC'en. Kør PVE-host-kommandoerne i GPU-helperen først, "
+                "genstart containeren, og kør derefter auto-opsætningen igen.",
+            )
+            return
+
         ok, pm_out = _gpu_setup_run_step(
             "if command -v apt-get >/dev/null 2>&1; then echo apt; "
             "elif command -v apk >/dev/null 2>&1; then echo apk; "
