@@ -1700,6 +1700,23 @@ def _gpu_setup_worker() -> None:
             _gpu_setup_finish(False, "NVIDIA container runtime kunne ikke konfigureres.", major)
             return
 
+        # I en LXC må nvidia-container-cli ikke selv sætte cgroup device-regler
+        # (bpf_prog_query -> operation not permitted); adgangen gives af PVE-hostens
+        # lxc.cgroup2.devices.allow-linjer, så toolkit'et skal springe trinnet over.
+        no_cgroups_cmd = (
+            "cfg=/etc/nvidia-container-runtime/config.toml; "
+            "if [ -f \"$cfg\" ]; then "
+            "sed -i -E 's/^#?[[:space:]]*no-cgroups[[:space:]]*=.*/no-cgroups = true/' \"$cfg\"; "
+            "grep -q '^no-cgroups = true' \"$cfg\" || "
+            "sed -i '/^\\[nvidia-container-cli\\]/a no-cgroups = true' \"$cfg\"; "
+            "grep -n 'no-cgroups' \"$cfg\" | sed 's/^/[cfg] /'; "
+            "else echo \"[warn] $cfg findes ikke\"; fi"
+        )
+        ok, _ = _gpu_setup_run_step(no_cgroups_cmd, timeout=120, in_lxc_host=True)
+        if not ok:
+            _gpu_setup_finish(False, "Kunne ikke sætte no-cgroups=true i nvidia-container-runtime config.", major)
+            return
+
         restart_cmd = (
             "systemd-run --unit=fjordhub-gpu-docker-restart --on-active=2 "
             "/bin/sh -lc 'systemctl restart docker || service docker restart' "
