@@ -16,6 +16,10 @@
     {
       "id": "orbitmap",
       "manifest_url": "https://raw.githubusercontent.com/qlerup/orbitmap/main/fjordhub.json"
+    },
+    {
+      "id": "urban-explorer",
+      "manifest_url": "https://raw.githubusercontent.com/qlerup/urban-explorer/main/fjordhub.json"
     }
   ]
 }

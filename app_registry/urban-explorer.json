@@ -1,0 +1,71 @@
+{
+  "id": "urban-explorer",
+  "name": "Urban Explorer",
+  "tagline": "Forladte steder på satellitkort",
+  "description": "Markér, kategorisér og del forladte steder på et satellitkort - med billeder, ruter, ratings og samarbejde mellem brugere.",
+  "icon": "map",
+  "accent": "#e08a3c",
+  "container_name": "urban-explorer",
+  "default_port": 3001,
+  "health_path": "/api/health",
+  "compose_dir_env": "URBAN_EXPLORER_DIR",
+  "source_url": "https://github.com/qlerup/urban-explorer",
+  "icon_url": "https://raw.githubusercontent.com/qlerup/urban-explorer/main/app/public/android-chrome-192x192.png",
+  "sort_order": 5,
+  "setup_steps": [
+    {
+      "id": "basic",
+      "title": "Grundlæggende indstillinger",
+      "fields": [
+        {
+          "key": "APP_PORT",
+          "label": "Web-port",
+          "type": "number",
+          "default": "3001",
+          "hint": "Den port du åbner Urban Explorer på i browseren"
+        },
+        {
+          "key": "TZ",
+          "label": "Tidszone",
+          "type": "text",
+          "default": "Europe/Copenhagen",
+          "hint": "Region/By-format, f.eks. Europe/Copenhagen"
+        },
+        {
+          "key": "MAPTILER_KEY",
+          "label": "MapTiler API-nøgle (valgfri)",
+          "type": "text",
+          "default": "",
+          "hint": "Gratis nøgle fra cloud.maptiler.com - kan også sættes senere under Indstillinger i appen"
+        }
+      ]
+    },
+    {
+      "id": "secrets",
+      "title": "Database og sikkerhed",
+      "fields": [
+        {
+          "key": "DB_PASSWORD",
+          "label": "PostgreSQL-adgangskode",
+          "type": "auto_secret",
+          "default": "",
+          "hint": "Genereres automatisk og bruges kun internt af Urban Explorer"
+        },
+        {
+          "key": "JWT_SECRET",
+          "label": "Hemmelig nøgle til sessioner",
+          "type": "auto_secret",
+          "default": "",
+          "hint": "Genereres automatisk og beskytter login-sessioner"
+        },
+        {
+          "key": "ENCRYPTION_KEY",
+          "label": "Krypteringsnøgle til persondata",
+          "type": "auto_secret",
+          "default": "",
+          "hint": "Genereres automatisk - krypterer navne og emails i databasen"
+        }
+      ]
+    }
+  ]
+}
