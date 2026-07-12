@@ -71,10 +71,10 @@ class RemoteRegistry:
             return False, "REGISTRY_URL er ikke konfigureret. Sæt miljøvariablen."
 
         try:
-            resp = requests.get(self.registry_url, timeout=REQUEST_TIMEOUT_SEC, headers=FETCH_HEADERS)
-            resp.raise_for_status()
-            registry = resp.json()
-        except requests.RequestException as e:
+            # Samme CDN-cache-bypass som manifesterne: raw-URL'er caches i op til
+            # ~5 min af GitHub, så nye apps ellers først dukker op efter cache-udløb.
+            registry = self._fetch_json(self.registry_url)
+        except (requests.RequestException, ValueError) as e:
             with self._lock:
                 self._last_error = f"Kunne ikke hente registry: {e}"
             return False, self._last_error
@@ -109,8 +109,12 @@ class RemoteRegistry:
     # ── Internal ─────────────────────────────────────────────────────────────
 
     def _fetch_manifest(self, url: str) -> dict:
-        """Fetch a fjordhub.json manifest. Uses GitHub Contents API for raw.githubusercontent.com
-        URLs to bypass CDN caching; falls back to direct HTTP for other hosts."""
+        return self._fetch_json(url)
+
+    def _fetch_json(self, url: str) -> dict:
+        """Fetch JSON (registry or manifest). Uses GitHub Contents API for
+        raw.githubusercontent.com URLs to bypass CDN caching; falls back to
+        direct HTTP for other hosts."""
         m = _RAW_RE.match(url)
         if m:
             owner, repo, ref, path = m.groups()
