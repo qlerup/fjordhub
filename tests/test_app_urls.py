@@ -76,6 +76,12 @@ class AppUrlTests(unittest.TestCase):
             "http://10.10.0.238:9080",
         )
 
+    def test_static_version_is_injected_into_templates(self):
+        with fjordhub.app.test_request_context("/"):
+            context = fjordhub._inject_static_version()
+        self.assertEqual(context["static_version"], fjordhub.STATIC_VERSION)
+        self.assertTrue(context["static_version"].isdigit())
+
     def test_rejects_credentials_query_and_invalid_port(self):
         invalid = (
             "https://user:password@example.com",

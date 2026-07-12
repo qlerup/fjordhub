@@ -56,6 +56,23 @@ app.config.update(
     SESSION_COOKIE_NAME=os.environ.get("SESSION_COOKIE_NAME", "fjordhub_session"),
 )
 
+
+def _static_version() -> str:
+    """Change asset URLs whenever bundled CSS/JS changes."""
+    static_dir = Path(app.static_folder or (Path(__file__).parent / "static"))
+    try:
+        return str(max((static_dir / name).stat().st_mtime_ns for name in ("styles.css", "app.js")))
+    except OSError:
+        return str(int(time.time()))
+
+
+STATIC_VERSION = _static_version()
+
+
+@app.context_processor
+def _inject_static_version():
+    return {"static_version": STATIC_VERSION}
+
 _auth            = AuthService(AUTH_DB_PATH)
 _local_registry  = AppRegistry(Path(__file__).parent / "app_registry")
 _remote_registry = RemoteRegistry(DATA_DIR, REGISTRY_URL)

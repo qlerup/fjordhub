@@ -15,7 +15,7 @@
   <meta name="apple-mobile-web-app-title" content="FjordHub">
   <meta name="msapplication-TileImage" content="{{ url_for('static', filename='logos/web/mstile-150x150.png') }}">
   <meta name="msapplication-TileColor" content="#0f1115">
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=static_version) }}">
   {% block head %}{% endblock %}
 </head>
 <body>
