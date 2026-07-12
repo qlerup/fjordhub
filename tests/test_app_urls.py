@@ -140,6 +140,18 @@ class AppUrlTests(unittest.TestCase):
                 "http://10.10.0.10:9090",
             )
 
+    def test_dashboard_local_address_uses_installed_port(self):
+        install_dir = Path(self.tempdir.name) / "demo"
+        install_dir.mkdir()
+        (install_dir / ".env").write_text("APP_PORT=4321\n", encoding="utf-8")
+        fjordhub._install_state.register("demo", str(install_dir))
+        os.environ["HOST_LAN_IP"] = "10.10.0.50"
+
+        with fjordhub.app.test_request_context("/", base_url="https://hub.example.com"):
+            local_url = fjordhub._fallback_app_url({"id": "demo", "default_port": 8080})
+
+        self.assertEqual(local_url, "http://10.10.0.50:4321")
+
 
 if __name__ == "__main__":
     unittest.main()

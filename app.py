@@ -323,9 +323,16 @@ def dashboard():
     if not current_user.is_admin:
         user_app_ids = {a["app_id"] for a in _auth.get_user_app_access(current_user.id)}
         all_apps = [a for a in all_apps if a.get("id") in user_app_ids]
+    dashboard_apps = []
+    for app_def in all_apps:
+        app_copy = copy.deepcopy(app_def)
+        local_url = _fallback_app_url(app_copy)
+        app_copy["local_url"] = local_url
+        app_copy["local_address"] = urlsplit(local_url).netloc
+        dashboard_apps.append(app_copy)
     return render_template(
         "dashboard.html",
-        apps=all_apps,
+        apps=dashboard_apps,
         reg_status=_remote_registry.get_status(),
         active_page="apps",
     )

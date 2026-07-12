@@ -277,6 +277,33 @@ a { color: inherit; text-decoration: none; }
   text-overflow: ellipsis;
 }
 
+.card-local-address {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: .76rem;
+  text-decoration: none;
+  transition: color .15s;
+}
+
+.card-local-address:hover { color: var(--accent); }
+
+.card-local-address svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.card-local-address span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .card-status-row {
   display: flex;
   align-items: center;
