@@ -196,6 +196,34 @@ class AppUrlTests(unittest.TestCase):
         self.assertEqual(login_response.status_code, 200)
         self.assertEqual(login_response.get_json()["user"]["username"], "imported-user")
 
+    def test_app_users_api_derives_username_from_imported_email(self):
+        hub_key = "test-hub-key"
+        fjordhub._auth.save_hub_key("urban-explorer", hub_key)
+
+        with fjordhub.app.test_client() as client:
+            create_response = client.post(
+                "/api/hub/apps/users",
+                headers={"X-Hub-Key": hub_key},
+                json={
+                    "app_id": "urban-explorer",
+                    "email": "legacy.user@example.com",
+                    "password_hash": URBAN_EXPLORER_ARGON2_HASH,
+                },
+            )
+            login_response = client.post(
+                "/api/hub/apps/authenticate",
+                headers={"X-Hub-Key": hub_key},
+                json={
+                    "app_id": "urban-explorer",
+                    "username": "legacy.user",
+                    "password": "urban-explorer-fixture",
+                },
+            )
+
+        self.assertEqual(create_response.status_code, 201)
+        self.assertEqual(create_response.get_json()["user"]["username"], "legacy.user")
+        self.assertEqual(login_response.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()

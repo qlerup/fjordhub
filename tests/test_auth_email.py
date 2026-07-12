@@ -122,6 +122,49 @@ class AuthEmailTests(unittest.TestCase):
         self.assertEqual(user["username"], "imported-user")
         self.assertTrue(self._stored_password_hash("imported-user").startswith("$argon2id$"))
 
+    def test_app_user_import_derives_username_from_email(self):
+        imported = self.auth.create_or_grant_app_user(
+            "urban-explorer",
+            "",
+            email="Imported.User@Example.com",
+            password_hash=URBAN_EXPLORER_ARGON2_HASH,
+        )
+
+        self.assertEqual(imported["username"], "imported.user")
+        self.assertIsNotNone(
+            self.auth.authenticate_app_user(
+                "urban-explorer", "imported.user", "urban-explorer-fixture"
+            )
+        )
+
+    def test_app_user_import_uses_a_suffix_for_username_collision(self):
+        self.auth.create_user("imported", "secret1", email="imported@first.example")
+
+        imported = self.auth.create_or_grant_app_user(
+            "urban-explorer",
+            "",
+            email="imported@second.example",
+            password_hash=URBAN_EXPLORER_ARGON2_HASH,
+        )
+
+        self.assertEqual(imported["username"], "imported-2")
+
+    def test_app_user_import_reuses_an_existing_email_account(self):
+        existing_id = self.auth.create_user(
+            "existing-user", "secret1", email="existing@example.com"
+        )
+
+        imported = self.auth.create_or_grant_app_user(
+            "urban-explorer",
+            "",
+            email="existing@example.com",
+            password_hash=URBAN_EXPLORER_ARGON2_HASH,
+        )
+
+        self.assertEqual(imported["id"], existing_id)
+        self.assertEqual(imported["username"], "existing-user")
+        self.assertIsNotNone(self.auth.check_password("existing-user", "secret1"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -212,6 +212,25 @@ class AuthService:
             row = conn.execute("SELECT * FROM users WHERE username=?", (username.strip(),)).fetchone()
             return _row_to_user(row)
 
+    def get_by_email(self, email: str) -> Optional[User]:
+        normalized_email = str(email or "").strip().lower()
+        if not normalized_email:
+            return None
+        with closing(self._conn()) as conn:
+            row = conn.execute("SELECT * FROM users WHERE email=?", (normalized_email,)).fetchone()
+            return _row_to_user(row)
+
+    def _available_username(self, base_username: str) -> str:
+        normalized_base = str(base_username or "").strip().lower()
+        if not normalized_base:
+            raise ValueError("Brugernavn eller email-adresse er påkrævet.")
+        candidate = normalized_base
+        suffix = 2
+        while self.get_by_username(candidate) is not None:
+            candidate = f"{normalized_base}-{suffix}"
+            suffix += 1
+        return candidate
+
     def check_password(self, username: str, password: str) -> Optional[User]:
         login = str(username or "").strip()
         with closing(self._conn()) as conn:
@@ -564,20 +583,21 @@ class AuthService:
         language: str = "",
         password_hash: str = "",
     ) -> dict:
-        username = username.strip()
+        username = str(username or "").strip()
         first_name = str(first_name or "").strip()
         last_name = str(last_name or "").strip()
         email = _normalize_email(email)
         raw_language = str(language or "").strip()
         metadata_provided = bool(first_name or last_name or email or raw_language)
         language = _normalize_language(raw_language) if raw_language else "da"
-        if not username:
-            raise ValueError("Brugernavn er påkrævet.")
         if role not in ("admin", "user"):
             role = "user"
-        user = self.get_by_username(username)
+        user = self.get_by_username(username) if username else None
+        if user is None and email:
+            user = self.get_by_email(email)
         if user:
             user_id = user.id
+            username = user.username
             if metadata_provided:
                 user = self.update_user(
                     user_id, username=user.username, first_name=first_name or user.first_name,
@@ -585,6 +605,10 @@ class AuthService:
                     language=language, role=user.role,
                 ) or user
         else:
+            if not username:
+                if not email:
+                    raise ValueError("Brugernavn eller email-adresse er påkrævet.")
+                username = self._available_username(email.split("@", 1)[0])
             if password_hash:
                 user_id = self.create_user_with_password_hash(
                     username,
