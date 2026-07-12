@@ -65,6 +65,7 @@
                 {% if u.language %}<span style="opacity:.65;"> · {{ u.language|upper }}</span>{% endif %}
               </div>
             {% endif %}
+            <div style="color:var(--text-muted);font-size:.78rem;margin-top:3px;">{{ u.email or 'Ingen email' }}</div>
           </td>
           <td>
             {% if u.is_admin %}
@@ -158,6 +159,10 @@
         <input id="new-username" name="username" type="text" autocomplete="off" required>
       </div>
       <div class="auth-field">
+        <label for="new-email">Email</label>
+        <input id="new-email" name="email" type="email" autocomplete="email" required>
+      </div>
+      <div class="auth-field">
         <label for="new-password">Adgangskode</label>
         <input id="new-password" name="password" type="password" autocomplete="new-password" required>
       </div>
@@ -240,6 +245,10 @@
       <div class="auth-field">
         <label for="edit-username">Brugernavn</label>
         <input id="edit-username" name="username" type="text" autocomplete="off" required>
+      </div>
+      <div class="auth-field">
+        <label for="edit-email">Email</label>
+        <input id="edit-email" name="email" type="email" autocomplete="email" required>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
         <div class="auth-field">
@@ -385,6 +394,7 @@ function openEditModal(user) {
   document.getElementById('edit-first-name').value = user.first_name || '';
   document.getElementById('edit-last-name').value = user.last_name || '';
   document.getElementById('edit-username').value = user.username || '';
+  document.getElementById('edit-email').value = user.email || '';
   document.getElementById('edit-current-password').value = '';
   document.getElementById('edit-new-password').value = '';
   document.getElementById('edit-new-password2').value = '';

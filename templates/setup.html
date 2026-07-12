@@ -29,6 +29,11 @@
              value="{{ username or '' }}">
     </div>
     <div class="auth-field">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="email" required
+             value="{{ email or '' }}">
+    </div>
+    <div class="auth-field">
       <label for="password">Adgangskode</label>
       <input id="password" name="password" type="password" autocomplete="new-password" required>
     </div>

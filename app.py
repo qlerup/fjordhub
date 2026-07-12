@@ -263,15 +263,17 @@ def setup():
     username = ""
     first_name = ""
     last_name = ""
+    email = ""
     language = "da"
     if request.method == "POST":
         username = str(request.form.get("username") or "").strip()
         first_name = str(request.form.get("first_name") or "").strip()
         last_name = str(request.form.get("last_name") or "").strip()
+        email = str(request.form.get("email") or "").strip()
         language = _normalize_language(request.form.get("language"))
         password = str(request.form.get("password") or "")
         password2 = str(request.form.get("password2") or "")
-        if not username or not password:
+        if not username or not email or not password:
             error = "Brugernavn og adgangskode er påkrævet."
         elif password != password2:
             error = "Adgangskoderne matcher ikke."
@@ -283,6 +285,7 @@ def setup():
                     role="admin",
                     first_name=first_name,
                     last_name=last_name,
+                    email=email,
                     language=language,
                 )
                 _mark_install_initialized("first-admin-created")
@@ -295,6 +298,7 @@ def setup():
         username=username,
         first_name=first_name,
         last_name=last_name,
+        email=email,
         language=language,
         language_options=LANGUAGE_OPTIONS,
     )
@@ -642,6 +646,7 @@ def profile_info():
         current_user.id,
         first_name=str(request.form.get("first_name") or "").strip(),
         last_name=str(request.form.get("last_name") or "").strip(),
+        email=str(request.form.get("email") or "").strip(),
         language=_normalize_language(request.form.get("language")),
     )
     return redirect(url_for("profile", info="1"))
@@ -677,18 +682,22 @@ def create_user():
     username = str(request.form.get("username") or "").strip()
     first_name = str(request.form.get("first_name") or "").strip()
     last_name = str(request.form.get("last_name") or "").strip()
+    email = str(request.form.get("email") or "").strip()
     language = _normalize_language(request.form.get("language"))
     password = str(request.form.get("password") or "")
     role = str(request.form.get("role") or "user")
     app_ids = request.form.getlist("app_access")
     app_roles = {aid: str(request.form.get(f"app_role_{aid}") or "user") for aid in app_ids}
     try:
+        if not email:
+            raise ValueError("Email er påkrævet.")
         user_id = _auth.create_user(
             username,
             password,
             role=role,
             first_name=first_name,
             last_name=last_name,
+            email=email,
             language=language,
         )
         for aid in app_ids:
@@ -719,6 +728,7 @@ def edit_user(user_id: int):
     username = str(request.form.get("username") or "").strip()
     first_name = str(request.form.get("first_name") or "").strip()
     last_name = str(request.form.get("last_name") or "").strip()
+    email = str(request.form.get("email") or "").strip()
     language = _normalize_language(request.form.get("language"))
     role = str(request.form.get("role") or "user")
     current_password = str(request.form.get("current_password") or "")
@@ -773,11 +783,14 @@ def edit_user(user_id: int):
                 edit_user_id=user_id,
             )
     try:
+        if not email:
+            raise ValueError("Email er påkrævet.")
         _auth.update_user(
             user_id,
             username=username,
             first_name=first_name,
             last_name=last_name,
+            email=email,
             language=language,
             role=role,
             new_password=new_password if password_fields_filled else "",
@@ -835,6 +848,7 @@ def hub_user_sync():
     password = str(data.get("password") or "").strip()
     first_name = str(data.get("first_name") or "").strip()
     last_name = str(data.get("last_name") or "").strip()
+    email = str(data.get("email") or "").strip()
     language = _normalize_language(data.get("language")) if "language" in data else ""
     if role not in ("admin", "user"):
         role = "user"
@@ -848,6 +862,7 @@ def hub_user_sync():
             role,
             first_name=first_name,
             last_name=last_name,
+            email=email,
             language=language,
         )
     except ValueError as exc:
@@ -898,6 +913,7 @@ def api_hub_app_users():
     role = str(data.get("role") or "user").strip()
     first_name = str(data.get("first_name") or "").strip()
     last_name = str(data.get("last_name") or "").strip()
+    email = str(data.get("email") or "").strip()
     language = _normalize_language(data.get("language")) if "language" in data else ""
     try:
         user = _auth.create_or_grant_app_user(
@@ -907,6 +923,7 @@ def api_hub_app_users():
             role,
             first_name=first_name,
             last_name=last_name,
+            email=email,
             language=language,
         )
     except ValueError as exc:
@@ -963,6 +980,7 @@ def _create_app_sso_token(app_id: str) -> tuple[str, object | None]:
         "id": user.id,
         "first_name": getattr(user, "first_name", ""),
         "last_name": getattr(user, "last_name", ""),
+        "email": getattr(user, "email", ""),
         "language": _normalize_language(getattr(user, "language", "da")),
         "role": role,
         "hub_role": hub_role,

@@ -52,6 +52,11 @@
       </div>
     </div>
     <div class="auth-field">
+      <label for="profile-email">Email</label>
+      <input id="profile-email" name="email" type="email" autocomplete="email" required
+             value="{{ profile_user.email or '' }}">
+    </div>
+    <div class="auth-field">
       <label for="profile-language">Sprog</label>
       <select id="profile-language" name="language" class="auth-select">
         {% for option in language_options %}
