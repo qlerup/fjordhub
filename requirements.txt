@@ -1,5 +1,6 @@
 Flask>=3.0,<4.0
 Flask-Login>=0.6,<1.0
+argon2-cffi>=23.1,<26.0
 docker>=7.0,<8.0
 gunicorn>=21.2,<23.0
 requests>=2.31,<3.0

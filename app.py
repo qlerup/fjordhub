@@ -846,6 +846,7 @@ def hub_user_sync():
     username = str(data.get("username") or "").strip()
     role = str(data.get("role") or "user").strip()
     password = str(data.get("password") or "").strip()
+    password_hash = str(data.get("password_hash") or "").strip()
     first_name = str(data.get("first_name") or "").strip()
     last_name = str(data.get("last_name") or "").strip()
     email = str(data.get("email") or "").strip()
@@ -864,6 +865,7 @@ def hub_user_sync():
             last_name=last_name,
             email=email,
             language=language,
+            password_hash=password_hash,
         )
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
@@ -910,6 +912,7 @@ def api_hub_app_users():
         return jsonify({"ok": True, "items": _auth.list_app_users(app_id)})
     username = str(data.get("username") or "").strip()
     password = str(data.get("password") or "")
+    password_hash = str(data.get("password_hash") or "").strip()
     role = str(data.get("role") or "user").strip()
     first_name = str(data.get("first_name") or "").strip()
     last_name = str(data.get("last_name") or "").strip()
@@ -925,6 +928,7 @@ def api_hub_app_users():
             last_name=last_name,
             email=email,
             language=language,
+            password_hash=password_hash,
         )
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400

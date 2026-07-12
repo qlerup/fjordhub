@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 import app as fjordhub
+from services.auth import AuthService
 from services.install_state import InstallState
 
 FIB_TRIE = """\
@@ -45,15 +46,23 @@ Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\tMTU\tWindow\tIRTT
 eth0\t00000000\t010012AC\t0003\t0\t0\t0\t00000000\t0\t0\t0
 """
 
+URBAN_EXPLORER_ARGON2_HASH = (
+    "$argon2id$v=19$m=65536,t=3,p=4$QZV0ILuFRpAnAxwM15BS3g$"
+    "XhiBx0n5XkjsBZ3+01PxXGimKmCBV535JrxzcE5KHuE"
+)
+
 
 class AppUrlTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
         self.previous_state = fjordhub._install_state
+        self.previous_auth = fjordhub._auth
         fjordhub._install_state = InstallState(Path(self.tempdir.name))
+        fjordhub._auth = AuthService(Path(self.tempdir.name) / "hub.db")
 
     def tearDown(self):
         fjordhub._install_state = self.previous_state
+        fjordhub._auth = self.previous_auth
         self.tempdir.cleanup()
         os.environ.pop("HOST_PROC_ROOT", None)
         os.environ.pop("HOST_LAN_IP", None)
@@ -157,6 +166,35 @@ class AppUrlTests(unittest.TestCase):
             local_url = fjordhub._fallback_app_url({"id": "demo", "default_port": 8080})
 
         self.assertEqual(local_url, "http://10.10.0.50:4321")
+
+    def test_app_users_api_imports_urban_explorer_argon2_hash(self):
+        hub_key = "test-hub-key"
+        fjordhub._auth.save_hub_key("urban-explorer", hub_key)
+
+        with fjordhub.app.test_client() as client:
+            create_response = client.post(
+                "/api/hub/apps/users",
+                headers={"X-Hub-Key": hub_key},
+                json={
+                    "app_id": "urban-explorer",
+                    "username": "imported-user",
+                    "password_hash": URBAN_EXPLORER_ARGON2_HASH,
+                },
+            )
+            login_response = client.post(
+                "/api/hub/apps/authenticate",
+                headers={"X-Hub-Key": hub_key},
+                json={
+                    "app_id": "urban-explorer",
+                    "username": "imported-user",
+                    "password": "urban-explorer-fixture",
+                },
+            )
+
+        self.assertEqual(create_response.status_code, 201)
+        self.assertTrue(create_response.get_json()["ok"])
+        self.assertEqual(login_response.status_code, 200)
+        self.assertEqual(login_response.get_json()["user"]["username"], "imported-user")
 
 
 if __name__ == "__main__":

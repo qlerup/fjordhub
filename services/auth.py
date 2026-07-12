@@ -7,8 +7,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from argon2 import PasswordHasher
+from argon2.exceptions import VerificationError
+from argon2.low_level import Type
 from flask_login import UserMixin
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import check_password_hash
 
 
 class User(UserMixin):
@@ -72,6 +75,47 @@ def _user_access_dict(row) -> dict:
 
 LANGUAGE_VALUES = {"da", "en", "fr"}
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+_PASSWORD_HASHER = PasswordHasher(
+    time_cost=3,
+    memory_cost=65536,
+    parallelism=4,
+    hash_len=32,
+    salt_len=32,
+    type=Type.ID,
+)
+
+
+def _hash_password(password: str) -> str:
+    return _PASSWORD_HASHER.hash(password)
+
+
+def _verify_password(stored_hash: str, password: str) -> bool:
+    try:
+        if stored_hash.startswith("$argon2"):
+            return _PASSWORD_HASHER.verify(stored_hash, password)
+        return check_password_hash(stored_hash, password)
+    except (TypeError, ValueError, VerificationError):
+        return False
+
+
+def _password_needs_rehash(stored_hash: str) -> bool:
+    if not stored_hash.startswith("$argon2"):
+        return True
+    try:
+        return _PASSWORD_HASHER.check_needs_rehash(stored_hash)
+    except (TypeError, ValueError):
+        return True
+
+
+def _validate_imported_password_hash(password_hash: str) -> str:
+    imported_hash = str(password_hash or "").strip()
+    if not imported_hash.startswith("$argon2"):
+        raise ValueError("Kun Argon2-adgangskodehashes kan importeres.")
+    try:
+        _PASSWORD_HASHER.check_needs_rehash(imported_hash)
+    except (TypeError, ValueError):
+        raise ValueError("Ugyldig Argon2-adgangskodehash.")
+    return imported_hash
 
 
 def _normalize_language(value) -> str:
@@ -174,10 +218,17 @@ class AuthService:
             row = conn.execute(
                 "SELECT * FROM users WHERE username=? OR email=?", (login, login)
             ).fetchone()
-        if row is None:
-            return None
-        if not check_password_hash(str(row["password_hash"]), password):
-            return None
+            if row is None:
+                return None
+            stored_hash = str(row["password_hash"] or "")
+            if not _verify_password(stored_hash, password):
+                return None
+            if _password_needs_rehash(stored_hash):
+                conn.execute(
+                    "UPDATE users SET password_hash=? WHERE id=?",
+                    (_hash_password(password), int(row["id"])),
+                )
+                conn.commit()
         return _row_to_user(row)
 
     def create_user(
@@ -203,7 +254,55 @@ class AuthService:
             raise ValueError("Adgangskoden skal være mindst 6 tegn.")
         if role not in ("admin", "user"):
             raise ValueError("Ugyldig rolle.")
-        pw_hash = generate_password_hash(password)
+        return self._create_user_record(
+            username,
+            _hash_password(password),
+            role,
+            first_name,
+            last_name,
+            email,
+            language,
+        )
+
+    def create_user_with_password_hash(
+        self,
+        username: str,
+        password_hash: str,
+        role: str = "user",
+        first_name: str = "",
+        last_name: str = "",
+        email: str = "",
+        language: str = "da",
+    ) -> int:
+        username = username.strip()
+        first_name = str(first_name or "").strip()
+        last_name = str(last_name or "").strip()
+        email = _normalize_email(email)
+        language = _normalize_language(language)
+        if not username:
+            raise ValueError("Brugernavn er påkrævet.")
+        if role not in ("admin", "user"):
+            raise ValueError("Ugyldig rolle.")
+        return self._create_user_record(
+            username,
+            _validate_imported_password_hash(password_hash),
+            role,
+            first_name,
+            last_name,
+            email,
+            language,
+        )
+
+    def _create_user_record(
+        self,
+        username: str,
+        password_hash: str,
+        role: str,
+        first_name: str,
+        last_name: str,
+        email: str,
+        language: str,
+    ) -> int:
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
         with closing(self._conn()) as conn:
             try:
@@ -212,7 +311,7 @@ class AuthService:
                     INSERT INTO users (username, password_hash, first_name, last_name, email, language, role, created_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (username, pw_hash, first_name, last_name, email, language, role, now),
+                    (username, password_hash, first_name, last_name, email, language, role, now),
                 )
                 conn.commit()
                 return int(cur.lastrowid)
@@ -282,7 +381,7 @@ class AuthService:
     def change_password(self, user_id: int, new_password: str) -> None:
         if len(new_password) < 6:
             raise ValueError("Adgangskoden skal være mindst 6 tegn.")
-        pw_hash = generate_password_hash(new_password)
+        pw_hash = _hash_password(new_password)
         with closing(self._conn()) as conn:
             conn.execute(
                 "UPDATE users SET password_hash=? WHERE id=?", (pw_hash, user_id)
@@ -463,6 +562,7 @@ class AuthService:
         last_name: str = "",
         email: str = "",
         language: str = "",
+        password_hash: str = "",
     ) -> dict:
         username = username.strip()
         first_name = str(first_name or "").strip()
@@ -485,15 +585,26 @@ class AuthService:
                     language=language, role=user.role,
                 ) or user
         else:
-            user_id = self.create_user(
-                username,
-                password,
-                role="user",
-                first_name=first_name,
-                last_name=last_name,
-                email=email,
-                language=language,
-            )
+            if password_hash:
+                user_id = self.create_user_with_password_hash(
+                    username,
+                    password_hash,
+                    role="user",
+                    first_name=first_name,
+                    last_name=last_name,
+                    email=email,
+                    language=language,
+                )
+            else:
+                user_id = self.create_user(
+                    username,
+                    password,
+                    role="user",
+                    first_name=first_name,
+                    last_name=last_name,
+                    email=email,
+                    language=language,
+                )
             user = self.get_by_id(user_id)
         self.set_user_app_access(user_id, app_id, role)
         return {
