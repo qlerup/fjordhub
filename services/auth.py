@@ -25,6 +25,7 @@ class User(UserMixin):
         last_name: str = "",
         email: str = "",
         language: str = "da",
+        must_change_password: bool = False,
     ):
         self.id = id
         self.username = username
@@ -34,6 +35,7 @@ class User(UserMixin):
         self.last_name = last_name
         self.email = email
         self.language = language
+        self.must_change_password = bool(must_change_password)
 
     @property
     def is_admin(self) -> bool:
@@ -52,6 +54,7 @@ def _row_to_user(row) -> Optional[User]:
         last_name=str(row["last_name"] or ""),
         email=str(row["email"] or ""),
         language=_normalize_language(row["language"]),
+        must_change_password=bool(int(row["must_change_password"] or 0)),
     )
 
 
@@ -154,6 +157,7 @@ class AuthService:
                     email TEXT NOT NULL DEFAULT '',
                     language TEXT NOT NULL DEFAULT 'da',
                     role TEXT NOT NULL DEFAULT 'user',
+                    must_change_password INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS app_hub_keys (
@@ -183,6 +187,8 @@ class AuthService:
                 conn.execute("ALTER TABLE users ADD COLUMN language TEXT NOT NULL DEFAULT 'da'")
             if "email" not in user_cols:
                 conn.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+            if "must_change_password" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
             conn.execute("UPDATE users SET first_name=COALESCE(first_name, '')")
             conn.execute("UPDATE users SET last_name=COALESCE(last_name, '')")
             conn.execute("UPDATE users SET email=LOWER(TRIM(COALESCE(email, '')))")
@@ -259,6 +265,7 @@ class AuthService:
         last_name: str = "",
         email: str = "",
         language: str = "da",
+        require_password_change: bool = False,
     ) -> int:
         username = username.strip()
         first_name = str(first_name or "").strip()
@@ -281,6 +288,7 @@ class AuthService:
             last_name,
             email,
             language,
+            require_password_change,
         )
 
     def create_user_with_password_hash(
@@ -292,6 +300,7 @@ class AuthService:
         last_name: str = "",
         email: str = "",
         language: str = "da",
+        require_password_change: bool = False,
     ) -> int:
         username = username.strip()
         first_name = str(first_name or "").strip()
@@ -310,6 +319,7 @@ class AuthService:
             last_name,
             email,
             language,
+            require_password_change,
         )
 
     def _create_user_record(
@@ -321,16 +331,17 @@ class AuthService:
         last_name: str,
         email: str,
         language: str,
+        require_password_change: bool = False,
     ) -> int:
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
         with closing(self._conn()) as conn:
             try:
                 cur = conn.execute(
                     """
-                    INSERT INTO users (username, password_hash, first_name, last_name, email, language, role, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO users (username, password_hash, first_name, last_name, email, language, role, must_change_password, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (username, password_hash, first_name, last_name, email, language, role, now),
+                    (username, password_hash, first_name, last_name, email, language, role, int(bool(require_password_change)), now),
                 )
                 conn.commit()
                 return int(cur.lastrowid)
@@ -403,7 +414,7 @@ class AuthService:
         pw_hash = _hash_password(new_password)
         with closing(self._conn()) as conn:
             conn.execute(
-                "UPDATE users SET password_hash=? WHERE id=?", (pw_hash, user_id)
+                "UPDATE users SET password_hash=?, must_change_password=0 WHERE id=?", (pw_hash, user_id)
             )
             conn.commit()
 

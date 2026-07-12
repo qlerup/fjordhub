@@ -69,6 +69,9 @@
 
   <h2 style="font-size:1rem;font-weight:700;margin:28px 0 14px;">Skift adgangskode</h2>
 
+  {% if force_password_change %}
+    <div class="auth-error" style="margin-bottom:14px;">Du skal vælge en ny personlig adgangskode, før du kan bruge FjordHub.</div>
+  {% endif %}
   {% if pw_error %}
     <div class="auth-error" style="margin-bottom:14px;">{{ pw_error }}</div>
   {% endif %}
@@ -89,7 +92,7 @@
       <label for="new-pw2">Gentag ny adgangskode</label>
       <input id="new-pw2" name="new_password2" type="password" autocomplete="new-password" required>
     </div>
-    <button type="submit" class="btn-install" style="margin-top:4px;">Gem adgangskode</button>
+    <button type="submit" class="btn-install" style="margin-top:4px;">{{ 'Vælg ny adgangskode' if force_password_change else 'Gem adgangskode' }}</button>
   </form>
 </div>
 {% endblock %}

@@ -30,6 +30,13 @@ class AuthEmailTests(unittest.TestCase):
             ).fetchone()
         return str(row[0])
 
+    def _must_change_password(self, username: str) -> bool:
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            row = conn.execute(
+                "SELECT must_change_password FROM users WHERE username=?", (username,)
+            ).fetchone()
+        return bool(row[0])
+
     def test_existing_database_is_migrated_with_email_column(self):
         legacy_path = Path(self.tempdir.name) / "legacy.db"
         with closing(sqlite3.connect(legacy_path)) as conn:
@@ -77,6 +84,17 @@ class AuthEmailTests(unittest.TestCase):
         stored_hash = self._stored_password_hash("demo")
         self.assertTrue(stored_hash.startswith("$argon2id$"))
         self.assertIsNotNone(self.auth.check_password("demo", "secret1"))
+
+    def test_manual_user_can_be_required_to_change_password_on_first_login(self):
+        user_id = self.auth.create_user(
+            "first-login", "secret1", require_password_change=True
+        )
+
+        self.assertTrue(self.auth.get_by_id(user_id).must_change_password)
+        self.assertTrue(self._must_change_password("first-login"))
+        self.auth.change_password(user_id, "new-secret")
+        self.assertFalse(self.auth.get_by_id(user_id).must_change_password)
+        self.assertFalse(self._must_change_password("first-login"))
 
     def test_legacy_werkzeug_hash_is_upgraded_after_correct_login(self):
         legacy_hash = generate_password_hash("secret1")

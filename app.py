@@ -173,6 +173,10 @@ def _auth_gate():
         if request.path.startswith("/api/"):
             return jsonify({"ok": False, "error": "Kræver login."}), 401
         return redirect(url_for("login", next=request.path))
+    if current_user.must_change_password and request.endpoint not in {"static", "logout", "profile"}:
+        if request.path.startswith("/api/"):
+            return jsonify({"ok": False, "error": "Adgangskoden skal ændres først.", "password_change_required": True}), 403
+        return redirect(url_for("profile", force_password_change="1"))
     return None
 
 
@@ -323,6 +327,8 @@ def login():
             error = "Forkert brugernavn eller adgangskode."
         else:
             login_user(user, remember=True)
+            if user.must_change_password:
+                return redirect(url_for("profile", force_password_change="1"))
             next_url = str(request.args.get("next") or "") or url_for("dashboard")
             if not next_url.startswith("/"):
                 next_url = url_for("dashboard")
@@ -613,7 +619,8 @@ def api_hub_self_update_start():
 @app.route("/profile", methods=["GET", "POST"])
 def profile():
     pw_error = ""
-    pw_ok = False
+    pw_ok = str(request.args.get("password_changed") or "") == "1"
+    force_password_change = bool(current_user.must_change_password)
     if request.method == "POST":
         current_pw = str(request.form.get("current_password") or "")
         new_pw = str(request.form.get("new_password") or "")
@@ -626,7 +633,7 @@ def profile():
         else:
             try:
                 _auth.change_password(current_user.id, new_pw)
-                pw_ok = True
+                return redirect(url_for("profile", password_changed="1"))
             except ValueError as exc:
                 pw_error = str(exc)
     return render_template(
@@ -634,6 +641,7 @@ def profile():
         active_page="profile",
         pw_error=pw_error,
         pw_ok=pw_ok,
+        force_password_change=force_password_change,
         info_ok=str(request.args.get("info") or "") == "1",
         profile_user=_auth.get_by_id(current_user.id) or current_user,
         language_options=LANGUAGE_OPTIONS,
@@ -699,6 +707,7 @@ def create_user():
             last_name=last_name,
             email=email,
             language=language,
+            require_password_change=True,
         )
         for aid in app_ids:
             app_role = app_roles.get(aid, "user")

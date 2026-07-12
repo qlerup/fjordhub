@@ -224,6 +224,35 @@ class AppUrlTests(unittest.TestCase):
         self.assertEqual(create_response.get_json()["user"]["username"], "legacy.user")
         self.assertEqual(login_response.status_code, 200)
 
+    def test_first_login_requires_a_manual_user_to_change_password(self):
+        fjordhub._auth.create_user(
+            "first-login", "secret1", email="first-login@example.com",
+            require_password_change=True,
+        )
+
+        with fjordhub.app.test_client() as client:
+            login_response = client.post(
+                "/login",
+                data={"username": "first-login", "password": "secret1"},
+            )
+            blocked_response = client.get("/")
+            change_response = client.post(
+                "/profile",
+                data={
+                    "current_password": "secret1",
+                    "new_password": "new-secret",
+                    "new_password2": "new-secret",
+                },
+            )
+
+        self.assertEqual(login_response.status_code, 302)
+        self.assertIn("/profile?force_password_change=1", login_response.headers["Location"])
+        self.assertEqual(blocked_response.status_code, 302)
+        self.assertIn("/profile?force_password_change=1", blocked_response.headers["Location"])
+        self.assertEqual(change_response.status_code, 302)
+        self.assertIn("/profile?password_changed=1", change_response.headers["Location"])
+        self.assertFalse(fjordhub._auth.get_by_username("first-login").must_change_password)
+
 
 if __name__ == "__main__":
     unittest.main()
