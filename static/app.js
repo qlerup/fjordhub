@@ -16,6 +16,7 @@ const UPDATE_LABELS = {
   updating:         'Opdaterer...',
   failed:           'Opdatering fejlede',
   error:            'Kunne ikke tjekke',
+  unmanaged:        'Ikke registreret til update-check',
   not_installed:    '',
 };
 
@@ -140,10 +141,16 @@ function applyUpdateStatus(card, status) {
   const row = card.querySelector('.card-update-row');
   if (!row) return;
 
-  const state = status.state || 'error';
+  let state = status.state || 'error';
+  const appState = card.querySelector('.status-dot')?.dataset.status || 'unknown';
   if (state === 'not_installed') {
-    hideUpdateRow(card);
-    return;
+    // Some apps can be running but not tracked in install_state (e.g. external compose stacks).
+    // In that case, keep the row visible with an explicit message instead of hiding it.
+    if (!INSTALLED_STATES.has(appState)) {
+      hideUpdateRow(card);
+      return;
+    }
+    state = 'unmanaged';
   }
 
   const label = row.querySelector('.update-label');
@@ -171,6 +178,13 @@ async function fetchUpdateStatuses() {
       if (data[id]) {
         applyUpdateStatus(card, data[id]);
         hasRunningUpdate ||= Boolean(data[id].running || data[id].state === 'updating');
+      } else {
+        const appState = card.querySelector('.status-dot')?.dataset.status || 'unknown';
+        if (INSTALLED_STATES.has(appState)) {
+          applyUpdateStatus(card, { state: 'unmanaged', label: UPDATE_LABELS.unmanaged, running: false });
+        } else {
+          hideUpdateRow(card);
+        }
       }
     });
     if (_terminalAppId && data[_terminalAppId]) {
