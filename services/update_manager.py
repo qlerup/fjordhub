@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import threading
@@ -174,6 +175,65 @@ class UpdateManager:
             raise RuntimeError(message or f"git {' '.join(args)} failed")
         return (result.stdout or "").strip()
 
+    def _changed_paths(self, install_dir: Path, old_rev: str, new_rev: str) -> list[str]:
+        raw = self._git_output(
+            install_dir,
+            ["diff", "--name-only", "--diff-filter=ACDMRTUXB", old_rev, new_rev],
+            timeout=60,
+        )
+        return [
+            path.strip().replace("\\", "/").lstrip("./")
+            for path in raw.splitlines()
+            if path.strip()
+        ]
+
+    def _compose_build_services_for_changes(self, install_dir: Path, changed_paths: list[str]) -> list[str] | None:
+        """Return build services affected by the git diff, or None for a safe full-build fallback."""
+        result = self._run(
+            ["docker", "compose", "config", "--format", "json"],
+            cwd=install_dir,
+            timeout=60,
+        )
+        if result.returncode != 0:
+            return None
+        try:
+            config = json.loads(result.stdout or "{}")
+            services = config.get("services") or {}
+            if not isinstance(services, dict):
+                return None
+        except Exception:
+            return None
+
+        normalized_changes = [str(path).replace("\\", "/").lstrip("./") for path in changed_paths if path]
+        compose_changed = any(
+            path == "compose.yml"
+            or path == "compose.yaml"
+            or path.startswith("docker-compose") and path.endswith((".yml", ".yaml"))
+            for path in normalized_changes
+        )
+        affected: list[str] = []
+        for service_name, service in services.items():
+            if not isinstance(service, dict) or not service.get("build"):
+                continue
+            if compose_changed:
+                affected.append(str(service_name))
+                continue
+            build = service.get("build")
+            context_raw = build.get("context") if isinstance(build, dict) else build
+            context = str(context_raw or ".").replace("\\", "/").rstrip("/")
+            try:
+                context_path = Path(context)
+                if context_path.is_absolute():
+                    context = context_path.resolve().relative_to(install_dir.resolve()).as_posix().rstrip("/")
+            except Exception:
+                return None
+            context = context.lstrip("./")
+            if not context or context == ".":
+                affected.append(str(service_name))
+            elif any(path == context or path.startswith(context + "/") for path in normalized_changes):
+                affected.append(str(service_name))
+        return affected
+
     def _current_branch(self, install_dir: Path) -> str:
         branch = self._git_output(install_dir, ["rev-parse", "--abbrev-ref", "HEAD"], timeout=20)
         if not branch or branch == "HEAD":
@@ -310,6 +370,9 @@ class UpdateManager:
                 app_id,
                 f"Opdaterer {info.get('current_short')} -> {info.get('remote_short')} ({branch})",
             )
+            old_rev = str(info.get("current_rev") or "")
+            new_rev = str(info.get("remote_rev") or "")
+            changed_paths = self._changed_paths(install_dir, old_rev, new_rev)
             merge_code = self._run_logged(
                 app_id,
                 ["git", "merge", "--ff-only", f"origin/{branch}"],
@@ -351,14 +414,38 @@ class UpdateManager:
                 )
                 return  # Container will restart; this process will be killed shortly
 
-            compose_code = self._run_logged(
-                app_id,
-                ["docker", "compose", "up", "-d", "--build"],
-                cwd=install_dir,
-                timeout=900,
-            )
-            if compose_code != 0:
-                raise RuntimeError("docker compose up -d --build fejlede")
+            build_services = self._compose_build_services_for_changes(install_dir, changed_paths)
+            if build_services is None:
+                self._append_job_log(app_id, "Kunne ikke analysere compose build-contexts; bruger sikkert fuldt cachebaseret build.")
+                compose_code = self._run_logged(
+                    app_id,
+                    ["docker", "compose", "up", "-d", "--build"],
+                    cwd=install_dir,
+                    timeout=900,
+                )
+                if compose_code != 0:
+                    raise RuntimeError("docker compose up -d --build fejlede")
+            else:
+                if build_services:
+                    self._append_job_log(app_id, "Genbygger kun: " + ", ".join(build_services))
+                    build_code = self._run_logged(
+                        app_id,
+                        ["docker", "compose", "build", *build_services],
+                        cwd=install_dir,
+                        timeout=900,
+                    )
+                    if build_code != 0:
+                        raise RuntimeError("docker compose build fejlede")
+                else:
+                    self._append_job_log(app_id, "Ingen build-contexts er ændret; genbruger eksisterende images.")
+                up_code = self._run_logged(
+                    app_id,
+                    ["docker", "compose", "up", "-d", "--no-build"],
+                    cwd=install_dir,
+                    timeout=300,
+                )
+                if up_code != 0:
+                    raise RuntimeError("docker compose up -d --no-build fejlede")
 
             final_info = self._git_info(install_dir, fetch=False)
             final_info.update({"state": "up_to_date", "label": "Opdateret", "update_available": False})
