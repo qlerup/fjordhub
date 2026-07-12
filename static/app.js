@@ -146,6 +146,9 @@ function applyUpdateStatus(card, status) {
   if (state === 'not_installed') {
     // Some apps can be running but not tracked in install_state (e.g. external compose stacks).
     // In that case, keep the row visible with an explicit message instead of hiding it.
+    // While the app status is still loading we can't tell the two cases apart,
+    // so leave the row untouched and let the next poll decide.
+    if (appState === 'loading' || appState === 'unknown') return;
     if (!INSTALLED_STATES.has(appState)) {
       hideUpdateRow(card);
       return;
@@ -685,8 +688,9 @@ document.getElementById('update-log-modal')?.addEventListener('click', e => {
 });
 
 checkDockerHealth();
-fetchStatuses();
-fetchUpdateStatuses();
+// Resolve app statuses before the first update check: applyUpdateStatus needs
+// the status dots to tell unmanaged-but-running apps from uninstalled ones.
+fetchStatuses().then(fetchUpdateStatuses);
 tickRelativeTime();
 
 setInterval(fetchStatuses,    8000);
