@@ -66,6 +66,19 @@
           "hint": "Genereres automatisk - krypterer navne og emails i databasen"
         }
       ]
+    },
+    {
+      "id": "storage",
+      "title": "Lagerplads",
+      "fields": [
+        {
+          "key": "UPLOADS_HOST_DIR",
+          "label": "Upload-mappe (billeder)",
+          "type": "path",
+          "default": "/opt/urban-explorer-data/uploads",
+          "hint": "Her gemmes uploadede billeder. Mappen kan ligge på lokal disk eller et NAS/NFS-mount."
+        }
+      ]
     }
   ]
 }
