@@ -72,7 +72,8 @@
         </article>
       </section>
 
-      <section class="resource-section">
+      {# Per-app/container-opdeling giver kun mening i Docker-visningen #}
+      <section class="resource-section" id="resource-apps-section">
         <div class="app-section-header">
           <h2>Installerede apps</h2>
           <span class="section-count" id="resource-app-count">0</span>
@@ -82,7 +83,7 @@
         </div>
       </section>
 
-      <section class="resource-section">
+      <section class="resource-section" id="resource-core-section">
         <div class="app-section-header">
           <h2>FjordHub core</h2>
           <span class="section-count" id="resource-core-count">0</span>
@@ -206,6 +207,11 @@ function setResourceView(view) {
   localStorage.setItem(RESOURCE_VIEW_KEY, currentResourceView);
   document.querySelectorAll('[data-resource-view]').forEach(button => {
     button.classList.toggle('active', button.dataset.resourceView === currentResourceView);
+  });
+  const showDockerSections = currentResourceView === 'docker';
+  ['resource-apps-section', 'resource-core-section'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = showDockerSections ? '' : 'none';
   });
   if (latestResourceData) renderResources(latestResourceData);
 }
@@ -403,6 +409,7 @@ function renderAppCard(app) {
       <div class="resource-metrics">
         <div>
           <span>CPU</span>
+          <strong>${escapeHtml(displayCpuLabel(app))}</strong>
           <div class="resource-bar"><span style="width:${clampPercent(displayCpuBar(app))}%"></span></div>
         </div>
         <div>
