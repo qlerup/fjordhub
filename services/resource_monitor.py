@@ -9,6 +9,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -543,16 +544,29 @@ class ResourceMonitor:
 
     def _stats_by_container(self, containers: list) -> dict[str, dict]:
         stats = {}
+        running = []
         for container in containers:
             if getattr(container, "status", "") != "running":
                 stats[container.id] = self._container_snapshot(container, None)
-                continue
+            else:
+                running.append(container)
+
+        def _fetch(container):
             try:
-                raw = container.stats(stream=False, decode=True)
+                # stream=False returnerer ét fardigdekodet JSON-dokument.
+                # decode= må IKKE sendes med: docker-py 7.x kaster InvalidArgument
+                # ved decode + stream=False, hvilket gav 0.0% CPU for alt.
+                return container, container.stats(stream=False), None
             except Exception as exc:
-                stats[container.id] = self._container_snapshot(container, None, str(exc))
-                continue
-            stats[container.id] = self._container_snapshot(container, raw)
+                return container, None, str(exc)
+
+        if running:
+            # Uden one-shot venter daemonen ~2 målecyklusser pr. kald (så
+            # precpu_stats er udfyldt og CPU% kan beregnes) - hent parallelt.
+            with ThreadPoolExecutor(max_workers=min(16, len(running))) as pool:
+                for container, raw, error in pool.map(_fetch, running):
+                    stats[container.id] = self._container_snapshot(container, raw, error)
+
         self._fill_from_docker_stats_cli(stats)
         return stats
 
