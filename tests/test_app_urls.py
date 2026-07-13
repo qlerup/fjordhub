@@ -224,6 +224,80 @@ class AppUrlTests(unittest.TestCase):
         self.assertEqual(create_response.get_json()["user"]["username"], "legacy.user")
         self.assertEqual(login_response.status_code, 200)
 
+    def test_app_login_flags_and_clears_forced_password_change(self):
+        hub_key = "test-hub-key"
+        fjordhub._auth.save_hub_key("orbitmap", hub_key)
+        user_id = fjordhub._auth.create_user(
+            "app-first-login", "temp-secret", email="app-first-login@example.com",
+            require_password_change=True,
+        )
+        fjordhub._auth.set_user_app_access(user_id, "orbitmap", "user")
+
+        with fjordhub.app.test_client() as client:
+            login_response = client.post(
+                "/api/hub/apps/authenticate",
+                headers={"X-Hub-Key": hub_key},
+                json={"app_id": "orbitmap", "username": "app-first-login", "password": "temp-secret"},
+            )
+            change_response = client.post(
+                "/api/hub/apps/change-password",
+                headers={"X-Hub-Key": hub_key},
+                json={
+                    "app_id": "orbitmap",
+                    "username": "app-first-login",
+                    "current_password": "temp-secret",
+                    "new_password": "self-chosen",
+                },
+            )
+            relogin_response = client.post(
+                "/api/hub/apps/authenticate",
+                headers={"X-Hub-Key": hub_key},
+                json={"app_id": "orbitmap", "username": "app-first-login", "password": "self-chosen"},
+            )
+            wrong_current_response = client.post(
+                "/api/hub/apps/change-password",
+                headers={"X-Hub-Key": hub_key},
+                json={
+                    "app_id": "orbitmap",
+                    "username": "app-first-login",
+                    "current_password": "forkert",
+                    "new_password": "noget-andet",
+                },
+            )
+
+        self.assertEqual(login_response.status_code, 200)
+        self.assertTrue(login_response.get_json()["user"]["must_change_password"])
+        self.assertEqual(change_response.status_code, 200)
+        self.assertFalse(change_response.get_json()["user"]["must_change_password"])
+        self.assertEqual(relogin_response.status_code, 200)
+        self.assertFalse(relogin_response.get_json()["user"]["must_change_password"])
+        self.assertEqual(wrong_current_response.status_code, 401)
+
+    def test_app_created_user_requires_password_change_on_first_login(self):
+        hub_key = "test-hub-key"
+        fjordhub._auth.save_hub_key("orbitmap", hub_key)
+
+        with fjordhub.app.test_client() as client:
+            create_response = client.post(
+                "/api/hub/apps/users",
+                headers={"X-Hub-Key": hub_key},
+                json={
+                    "app_id": "orbitmap",
+                    "username": "app-created",
+                    "password": "admin-valgt",
+                    "email": "app-created@example.com",
+                },
+            )
+            login_response = client.post(
+                "/api/hub/apps/authenticate",
+                headers={"X-Hub-Key": hub_key},
+                json={"app_id": "orbitmap", "username": "app-created", "password": "admin-valgt"},
+            )
+
+        self.assertEqual(create_response.status_code, 201)
+        self.assertEqual(login_response.status_code, 200)
+        self.assertTrue(login_response.get_json()["user"]["must_change_password"])
+
     def test_first_login_requires_a_manual_user_to_change_password(self):
         fjordhub._auth.create_user(
             "first-login", "secret1", email="first-login@example.com",

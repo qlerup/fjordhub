@@ -110,6 +110,7 @@ _AUTH_EXEMPT = {
     "health",
     "hub_user_sync",
     "api_hub_app_authenticate",
+    "api_hub_app_change_password",
     "api_hub_app_users",
     "api_hub_app_user",
     "api_hub_sso_verify",
@@ -904,6 +905,26 @@ def api_hub_app_authenticate():
     if not username or not password:
         return jsonify({"ok": False, "error": "Brugernavn og adgangskode påkrævet"}), 400
     user = _auth.authenticate_app_user(app_id, username, password)
+    if not user:
+        return jsonify({"ok": False, "error": "Forkert login eller ingen adgang til appen"}), 401
+    return jsonify({"ok": True, "user": user})
+
+
+@app.route("/api/hub/apps/change-password", methods=["POST"])
+def api_hub_app_change_password():
+    data = request.get_json(silent=True) or {}
+    app_id, error_response = _require_app_key(data)
+    if error_response:
+        return error_response
+    username = str(data.get("username") or "").strip()
+    current_password = str(data.get("current_password") or "")
+    new_password = str(data.get("new_password") or "")
+    if not username or not current_password or not new_password:
+        return jsonify({"ok": False, "error": "Brugernavn, nuværende og ny adgangskode påkrævet"}), 400
+    try:
+        user = _auth.change_app_user_password(app_id, username, current_password, new_password)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     if not user:
         return jsonify({"ok": False, "error": "Forkert login eller ingen adgang til appen"}), 401
     return jsonify({"ok": True, "user": user})

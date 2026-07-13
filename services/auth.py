@@ -564,6 +564,35 @@ class AuthService:
             "hub_role": user.role,
             "role": role,
             "created_at": user.created_at,
+            "must_change_password": user.must_change_password,
+        }
+
+    def change_app_user_password(
+        self, app_id: str, username: str, current_password: str, new_password: str
+    ) -> Optional[dict]:
+        """Skift adgangskode på vegne af en app (fx ved tvungent skift ved første login).
+
+        Kræver at den nuværende adgangskode er korrekt, og at brugeren har adgang
+        til appen. Rydder must_change_password-flaget.
+        """
+        user = self.check_password(username, current_password)
+        if not user:
+            return None
+        role = self.get_user_app_role(user.id, app_id)
+        if not role:
+            return None
+        self.change_password(user.id, new_password)
+        return {
+            "id": user.id,
+            "username": user.username,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "email": user.email,
+            "language": user.language,
+            "hub_role": user.role,
+            "role": role,
+            "created_at": user.created_at,
+            "must_change_password": False,
         }
 
     def list_app_users(self, app_id: str) -> list[dict]:
@@ -631,6 +660,7 @@ class AuthService:
                     language=language,
                 )
             else:
+                # Admin har valgt startkoden i appen; brugeren skal selv vælge en ny ved første login
                 user_id = self.create_user(
                     username,
                     password,
@@ -639,6 +669,7 @@ class AuthService:
                     last_name=last_name,
                     email=email,
                     language=language,
+                    require_password_change=True,
                 )
             user = self.get_by_id(user_id)
         self.set_user_app_access(user_id, app_id, role)
