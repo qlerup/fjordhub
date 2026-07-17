@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}App Store — FjordHub{% endblock %}
+{% block content %}
+<div class="dashboard package-page">
+  <div class="dashboard-header">
+    <span class="package-eyebrow">APP STORE</span>
+    <h1>Find nye apps</h1>
+    <p class="dashboard-sub">Installér små værktøjer, som åbner og kører direkte her i FjordHub.</p>
+  </div>
+  <div id="package-toast" class="toast" aria-live="polite"></div>
+  <section class="app-section">
+    <div class="app-section-header"><h2>Alle apps</h2><span class="section-count">{{ packages|length }}</span></div>
+    <div class="package-grid">
+      {% for package in packages %}
+        {% include "package_card.html" %}
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='packages.js', v=static_version) }}"></script>{% endblock %}

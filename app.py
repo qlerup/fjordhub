@@ -10,7 +10,7 @@ import ipaddress
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 import requests
-from flask import Flask, render_template, jsonify, request, redirect, url_for
+from flask import Flask, render_template, jsonify, request, redirect, url_for, Response, send_file
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 
 from services.auth import AuthService
@@ -22,6 +22,7 @@ from services.installer import Installer, generate_secret, APPS_BASE
 from services.compose_env import build_compose_env
 from services.update_manager import UpdateManager
 from services.resource_monitor import ResourceMonitor
+from services.package_manager import PackageManager, PackageError
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
@@ -61,7 +62,7 @@ def _static_version() -> str:
     """Change asset URLs whenever bundled CSS/JS changes."""
     static_dir = Path(app.static_folder or (Path(__file__).parent / "static"))
     try:
-        return str(max((static_dir / name).stat().st_mtime_ns for name in ("styles.css", "app.js")))
+        return str(max((static_dir / name).stat().st_mtime_ns for name in ("styles.css", "app.js", "packages.js")))
     except OSError:
         return str(int(time.time()))
 
@@ -81,6 +82,7 @@ _installer       = Installer(_install_state)
 _update_manager  = UpdateManager(_install_state)
 docker_mgr       = DockerManager()
 resource_monitor = ResourceMonitor(docker_mgr)
+package_manager  = PackageManager(DATA_DIR)
 
 # ── Auth setup ───────────────────────────────────────────────────────────────
 
@@ -375,6 +377,8 @@ BUILTIN_PACKAGES = [
         "accent": "#8b5cf6",
         "icon": "calendar",
         "version": "1.0.0",
+        "download_url": "https://github.com/qlerup/fjordhub/releases/download/packages-v1.0.0/calendar.zip",
+        "sha256": "ff30768d31e4645b3c5022b8cc273060b2b95633dc9a76e3a595d6f3ab8e4ea2",
     },
     {
         "id": "notepad",
@@ -384,6 +388,8 @@ BUILTIN_PACKAGES = [
         "accent": "#f59e0b",
         "icon": "note",
         "version": "1.0.0",
+        "download_url": "https://github.com/qlerup/fjordhub/releases/download/packages-v1.0.0/notepad.zip",
+        "sha256": "948a6af6eb1038f318fe6d123775c89cf1f185d8b86f33ec23596e45192727bd",
     },
 ]
 
@@ -398,12 +404,23 @@ def _package_state_key(package_id: str) -> str:
 
 @app.route("/packages")
 def packages():
+    installed = []
+    for package in BUILTIN_PACKAGES:
+        if package_manager.is_installed(package["id"]):
+            package_copy = copy.deepcopy(package)
+            package_copy["installed"] = True
+            installed.append(package_copy)
+    return render_template("packages.html", packages=installed, active_page="packages")
+
+
+@app.route("/store")
+def app_store():
     package_list = []
     for package in BUILTIN_PACKAGES:
         package_copy = copy.deepcopy(package)
-        package_copy["installed"] = _install_state.get(_package_state_key(package["id"])).get("state") == "installed"
+        package_copy["installed"] = package_manager.is_installed(package["id"])
         package_list.append(package_copy)
-    return render_template("packages.html", packages=package_list, active_page="packages")
+    return render_template("store.html", packages=package_list, active_page="store")
 
 
 @app.route("/packages/<package_id>")
@@ -411,9 +428,24 @@ def open_package(package_id):
     package = _get_builtin_package(package_id)
     if package is None:
         return redirect(url_for("packages"))
-    if _install_state.get(_package_state_key(package_id)).get("state") != "installed":
+    if not package_manager.is_installed(package_id):
         return redirect(url_for("packages"))
-    return render_template("package_app.html", package=package, active_page="packages")
+    try:
+        body = package_manager.read_text(package_id, "body.html")
+    except PackageError:
+        return redirect(url_for("packages"))
+    return render_template("package_app.html", package=package, package_body=body, active_page="packages")
+
+
+@app.route("/packages/<package_id>/asset/<path:filename>")
+def package_asset(package_id, filename):
+    if not package_manager.is_installed(package_id):
+        return Response(status=404)
+    try:
+        path = package_manager.asset_path(package_id, filename)
+    except PackageError:
+        return Response(status=404)
+    return send_file(path)
 
 
 @app.route("/api/packages/<package_id>/install", methods=["POST"])
@@ -423,8 +455,12 @@ def install_package(package_id):
         return jsonify({"ok": False, "error": "Pakken blev ikke fundet."}), 404
     if not current_user.is_admin:
         return jsonify({"ok": False, "error": "Kræver admin."}), 403
-    _install_state.register(_package_state_key(package_id), "builtin")
-    return jsonify({"ok": True, "package": package_id})
+    try:
+        package_manager.install(package)
+    except PackageError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    _install_state.clear(_package_state_key(package_id))
+    return jsonify({"ok": True, "package": package_id, "open_url": url_for("open_package", package_id=package_id)})
 
 
 @app.route("/api/packages/<package_id>/uninstall", methods=["POST"])
@@ -433,6 +469,7 @@ def uninstall_package(package_id):
         return jsonify({"ok": False, "error": "Pakken blev ikke fundet."}), 404
     if not current_user.is_admin:
         return jsonify({"ok": False, "error": "Kræver admin."}), 403
+    package_manager.uninstall(package_id)
     _install_state.clear(_package_state_key(package_id))
     return jsonify({"ok": True, "package": package_id})
 

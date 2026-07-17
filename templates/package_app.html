@@ -1,24 +1,13 @@
 {% extends "base.html" %}
 {% block title %}{{ package.name }} — FjordHub{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('package_asset', package_id=package.id, filename='styles.css') }}">{% endblock %}
 {% block content %}
 <div class="builtin-app" data-package="{{ package.id }}">
   <div class="builtin-toolbar">
-    <div><a href="{{ url_for('packages') }}" class="builtin-back">← Pakker</a><h1>{{ package.name }}</h1></div>
-    <span class="package-badge">Kører i FjordHub</span>
+    <div><a href="{{ url_for('packages') }}" class="builtin-back">← Mine apps</a><h1>{{ package.name }}</h1></div>
+    <span class="package-badge">Installeret</span>
   </div>
-  {% if package.id == 'notepad' %}
-  <div class="notepad-shell">
-    <input id="note-title" class="note-title" placeholder="Min note" maxlength="80">
-    <textarea id="note-content" class="note-content" placeholder="Begynd at skrive…" autofocus></textarea>
-    <div class="note-footer"><span id="note-status">Gemt lokalt</span><span id="note-count">0 tegn</span></div>
-  </div>
-  {% elif package.id == 'calendar' %}
-  <div class="calendar-shell">
-    <div class="calendar-controls"><button id="cal-prev" aria-label="Forrige måned">←</button><h2 id="cal-month"></h2><button id="cal-next" aria-label="Næste måned">→</button></div>
-    <div class="calendar-weekdays"><span>Man</span><span>Tir</span><span>Ons</span><span>Tor</span><span>Fre</span><span>Lør</span><span>Søn</span></div>
-    <div class="calendar-grid" id="calendar-grid"></div>
-  </div>
-  {% endif %}
+  {{ package_body|safe }}
 </div>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('static', filename='packages.js', v=static_version) }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ url_for('package_asset', package_id=package.id, filename='app.js') }}"></script>{% endblock %}
