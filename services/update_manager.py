@@ -11,6 +11,12 @@ from services.install_state import InstallState
 
 
 CHECK_TTL_SECONDS = 60
+
+# Filer der kun vedrører builtin-pakkerne (Kalender/Whiteboard). De hentes ved
+# runtime fra packages_catalog.json, så commits der KUN rører disse stier
+# kræver ingen opdatering af selve appen.
+PACKAGE_ONLY_FILES = {"packages_catalog.json"}
+PACKAGE_ONLY_PREFIXES = ("packages_src/",)
 IGNORED_DIRTY_PREFIXES = tuple(
     prefix
     for prefix in (
@@ -303,6 +309,8 @@ class UpdateManager:
                 fetch_error = fetch_error or str(error)
 
             update_available = bool(remote and current != remote)
+            if update_available and self._package_only_update(install_dir, current, remote):
+                update_available = False
             state = "update_available" if update_available else "up_to_date"
             label = "Ny opdatering klar" if update_available else "Ingen opdatering"
             if fetch_error:
@@ -328,6 +336,24 @@ class UpdateManager:
             }
         except Exception as error:
             return self._error_status(str(error))
+
+    def _package_only_update(self, install_dir: Path, current: str, remote: str) -> bool:
+        """True hvis alle ændringer mellem current og remote kun rører pakkefiler."""
+        try:
+            diff = self._git_output(
+                install_dir,
+                ["diff", "--name-only", f"{current}..{remote}"],
+                timeout=30,
+            )
+        except Exception:
+            return False
+        files = [line.strip().replace("\\", "/") for line in diff.splitlines() if line.strip()]
+        if not files:
+            return False
+        return all(
+            name in PACKAGE_ONLY_FILES or name.startswith(PACKAGE_ONLY_PREFIXES)
+            for name in files
+        )
 
     def _error_status(self, error: str) -> dict:
         return {

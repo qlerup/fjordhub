@@ -44,5 +44,33 @@ class UpdateManagerBuildSelectionTests(unittest.TestCase):
         self.assertEqual(selected, ["fjordlens", "fjordlens-ai"])
 
 
+class UpdateManagerPackageOnlyTests(unittest.TestCase):
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+        self.manager = UpdateManager(InstallState(self.root / "state.json"))
+
+    def tearDown(self):
+        self.tempdir.cleanup()
+
+    def test_package_only_changes_do_not_require_update(self):
+        diff = "packages_catalog.json\npackages_src/notepad/app.js\npackages_src/calendar/styles.css\n"
+        with patch.object(self.manager, "_git_output", return_value=diff):
+            self.assertTrue(self.manager._package_only_update(self.root, "a1", "b2"))
+
+    def test_app_code_changes_require_update(self):
+        diff = "packages_catalog.json\napp.py\n"
+        with patch.object(self.manager, "_git_output", return_value=diff):
+            self.assertFalse(self.manager._package_only_update(self.root, "a1", "b2"))
+
+    def test_empty_diff_keeps_normal_update_semantics(self):
+        with patch.object(self.manager, "_git_output", return_value=""):
+            self.assertFalse(self.manager._package_only_update(self.root, "a1", "b2"))
+
+    def test_diff_errors_keep_normal_update_semantics(self):
+        with patch.object(self.manager, "_git_output", side_effect=RuntimeError("git fejl")):
+            self.assertFalse(self.manager._package_only_update(self.root, "a1", "b2"))
+
+
 if __name__ == "__main__":
     unittest.main()
