@@ -47,7 +47,7 @@
   // ── DOM ────────────────────────────────────────────────────────────────────
   function $(id) { return document.getElementById(id); }
   var stage = $("wbStage"), canvas = $("wbCanvas"), notesEl = $("wbNotes"),
-      tabsEl = $("wbTabs"), savedEl = $("wbSaved");
+      boardsEl = $("wbBoards"), savedEl = $("wbSaved");
   if (!stage) return;
   var ctx = canvas.getContext("2d");
 
@@ -69,6 +69,7 @@
       savedEl.classList.add("is-flash");
       clearTimeout(flashTimer);
       flashTimer = setTimeout(function () { savedEl.classList.remove("is-flash"); }, 900);
+      refreshActiveMeta();
     } catch (err) {
       savedEl.textContent = "Kunne ikke gemme – lager fuldt";
     }
@@ -448,6 +449,19 @@
   });
 
   // ── Sticky notes ───────────────────────────────────────────────────────────
+  var openPalette = null;
+
+  function closePalette() {
+    if (openPalette) {
+      openPalette.classList.remove("is-open");
+      openPalette = null;
+    }
+  }
+
+  document.addEventListener("pointerdown", function (e) {
+    if (openPalette && !e.target.closest(".wb-note-palette, .wb-note-grip")) closePalette();
+  });
+
   function bringFront(n, el) {
     el.style.zIndex = ++zTop;
     var list = board().notes;
@@ -472,10 +486,45 @@
 
     var bar = document.createElement("div");
     bar.className = "wb-note-bar";
-    var grip = document.createElement("span");
+    var grip = document.createElement("button");
+    grip.type = "button";
     grip.className = "wb-note-grip";
+    grip.setAttribute("aria-label", "Skift farve");
+    grip.title = "Skift farve";
     for (var i = 0; i < 3; i++) grip.appendChild(document.createElement("i"));
     bar.appendChild(grip);
+
+    var palette = document.createElement("div");
+    palette.className = "wb-note-palette";
+    NOTE_COLORS.forEach(function (color) {
+      var swatch = document.createElement("button");
+      swatch.type = "button";
+      swatch.className = "wb-note-palette-swatch";
+      swatch.style.setProperty("--sw", color);
+      swatch.setAttribute("aria-label", "Farve");
+      swatch.addEventListener("click", function (e) {
+        e.stopPropagation();
+        n.color = color;
+        el.style.background = color;
+        palette.querySelectorAll(".wb-note-palette-swatch").forEach(function (s) {
+          s.classList.toggle("is-active", s === swatch);
+        });
+        closePalette();
+        save();
+      });
+      palette.appendChild(swatch);
+    });
+
+    grip.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (openPalette === palette) { closePalette(); return; }
+      closePalette();
+      palette.querySelectorAll(".wb-note-palette-swatch").forEach(function (s) {
+        s.classList.toggle("is-active", s.style.getPropertyValue("--sw").trim() === n.color);
+      });
+      palette.classList.add("is-open");
+      openPalette = palette;
+    });
     var del = document.createElement("button");
     del.type = "button";
     del.className = "wb-note-del";
@@ -483,6 +532,7 @@
     del.setAttribute("aria-label", "Slet note");
     bar.appendChild(del);
     el.appendChild(bar);
+    el.appendChild(palette);
 
     var text = document.createElement("div");
     text.className = "wb-note-text";
@@ -509,7 +559,7 @@
     });
 
     bar.addEventListener("pointerdown", function (e) {
-      if (e.target === del) return;
+      if (e.target.closest(".wb-note-del, .wb-note-grip, .wb-note-palette")) return;
       e.preventDefault();
       e.stopPropagation();
       bar.setPointerCapture(e.pointerId);
@@ -584,13 +634,24 @@
     el.querySelector(".wb-note-text").focus();
   }
 
-  // ── Boards (faner) ─────────────────────────────────────────────────────────
+  // ── Boards (sidebar-liste) ────────────────────────────────────────────────
   var PENCIL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>';
+
+  function boardMeta(b) {
+    var notes = b.notes.length === 1 ? "1 note" : b.notes.length + " noter";
+    var strokes = b.strokes.length === 1 ? "1 streg" : b.strokes.length + " streger";
+    return notes + " · " + strokes;
+  }
+
+  function refreshActiveMeta() {
+    var meta = boardsEl.querySelector(".wb-board.is-active .wb-board-meta");
+    if (meta) meta.textContent = boardMeta(board());
+  }
 
   function switchBoard(id) {
     if (id === state.active) return;
     state.active = id;
-    renderTabs();
+    renderBoards();
     renderNotes();
     applyView();
     save();
@@ -614,7 +675,7 @@
         if (value) b.name = value;
         save();
       }
-      renderTabs();
+      renderBoards();
     }
     input.addEventListener("keydown", function (e) {
       if (e.key === "Enter") commit(false);
@@ -624,68 +685,86 @@
     input.addEventListener("blur", function () { commit(false); });
   }
 
-  function renderTabs() {
-    tabsEl.innerHTML = "";
+  function renderBoards() {
+    boardsEl.innerHTML = "";
     state.boards.forEach(function (b) {
-      var tab = document.createElement("button");
-      tab.type = "button";
-      tab.className = "wb-tab" + (b.id === state.active ? " is-active" : "");
+      var row = document.createElement("div");
+      row.className = "wb-board" + (b.id === state.active ? " is-active" : "");
+      row.setAttribute("role", "button");
+      row.tabIndex = 0;
 
       var name = document.createElement("span");
+      name.className = "wb-board-name";
       name.textContent = b.name;
-      tab.appendChild(name);
+      row.appendChild(name);
 
-      if (b.id === state.active) {
-        var ren = document.createElement("span");
-        ren.className = "wb-tab-action";
-        ren.setAttribute("role", "button");
-        ren.setAttribute("aria-label", "Omdøb board");
-        ren.innerHTML = PENCIL_SVG;
-        ren.addEventListener("click", function (e) {
+      var meta = document.createElement("span");
+      meta.className = "wb-board-meta";
+      meta.textContent = boardMeta(b);
+      row.appendChild(meta);
+
+      var actions = document.createElement("span");
+      actions.className = "wb-board-actions";
+
+      var ren = document.createElement("button");
+      ren.type = "button";
+      ren.className = "wb-tab-action";
+      ren.setAttribute("aria-label", "Omdøb board");
+      ren.title = "Omdøb";
+      ren.innerHTML = PENCIL_SVG;
+      ren.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (b.id !== state.active) switchBoard(b.id);
+        startRename(b, row.querySelector(".wb-board-name") || name);
+      });
+      actions.appendChild(ren);
+
+      if (state.boards.length > 1) {
+        var del = document.createElement("button");
+        del.type = "button";
+        del.className = "wb-tab-action";
+        del.setAttribute("aria-label", "Slet board");
+        del.title = "Slet board";
+        del.textContent = "×";
+        var armTimer = null;
+        del.addEventListener("click", function (e) {
           e.stopPropagation();
-          startRename(b, name);
+          if (!del.classList.contains("is-arm")) {
+            del.classList.add("is-arm");
+            del.textContent = "Slet?";
+            armTimer = setTimeout(function () {
+              del.classList.remove("is-arm");
+              del.textContent = "×";
+            }, 2500);
+            return;
+          }
+          clearTimeout(armTimer);
+          state.boards = state.boards.filter(function (x) { return x.id !== b.id; });
+          if (state.active === b.id) state.active = state.boards[0].id;
+          renderBoards();
+          renderNotes();
+          applyView();
+          save();
         });
-        tab.appendChild(ren);
-
-        if (state.boards.length > 1) {
-          var del = document.createElement("span");
-          del.className = "wb-tab-action";
-          del.setAttribute("role", "button");
-          del.setAttribute("aria-label", "Slet board");
-          del.textContent = "×";
-          var armTimer = null;
-          del.addEventListener("click", function (e) {
-            e.stopPropagation();
-            if (!del.classList.contains("is-arm")) {
-              del.classList.add("is-arm");
-              del.textContent = "Slet?";
-              armTimer = setTimeout(function () {
-                del.classList.remove("is-arm");
-                del.textContent = "×";
-              }, 2500);
-              return;
-            }
-            clearTimeout(armTimer);
-            state.boards = state.boards.filter(function (x) { return x.id !== b.id; });
-            state.active = state.boards[0].id;
-            renderTabs();
-            renderNotes();
-            applyView();
-            save();
-          });
-          tab.appendChild(del);
-        }
+        actions.appendChild(del);
       }
+      row.appendChild(actions);
 
-      tab.addEventListener("click", function (e) {
-        if (e.target.closest(".wb-tab-action")) return;
+      row.addEventListener("click", function (e) {
+        if (e.target.closest(".wb-tab-action, .wb-tab-rename")) return;
         switchBoard(b.id);
       });
-      tab.addEventListener("dblclick", function (e) {
-        if (e.target.closest(".wb-tab-action")) return;
-        if (b.id === state.active) startRename(b, name);
+      row.addEventListener("dblclick", function (e) {
+        if (e.target.closest(".wb-tab-action, .wb-tab-rename")) return;
+        if (b.id === state.active) startRename(b, row.querySelector(".wb-board-name") || name);
       });
-      tabsEl.appendChild(tab);
+      row.addEventListener("keydown", function (e) {
+        if ((e.key === "Enter" || e.key === " ") && e.target === row) {
+          e.preventDefault();
+          switchBoard(b.id);
+        }
+      });
+      boardsEl.appendChild(row);
     });
   }
 
@@ -693,7 +772,7 @@
     var b = newBoard("Board " + (state.boards.length + 1));
     state.boards.push(b);
     state.active = b.id;
-    renderTabs();
+    renderBoards();
     renderNotes();
     applyView();
     save();
@@ -701,7 +780,7 @@
 
   // ── Start ──────────────────────────────────────────────────────────────────
   resize();
-  renderTabs();
+  renderBoards();
   renderNotes();
   applyView();
 })();
