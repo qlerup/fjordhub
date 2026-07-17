@@ -1,0 +1,350 @@
+/* ── Whiteboard v2 ───────────────────────────────────────────────────────── */
+
+.builtin-app[data-package="notepad"] { max-width: 1320px; }
+
+.wb { --wb-accent: #10b981; }
+
+/* ── Board-faner ── */
+.wb-tabs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.wb-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px;
+  margin: -2px;
+}
+.wb-tabs::-webkit-scrollbar { display: none; }
+
+.wb-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding: 7px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: .8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .16s ease, color .16s ease, border-color .16s ease, transform .12s ease;
+}
+
+.wb-tab:hover { color: var(--text); background: var(--surface-2); }
+.wb-tab:active { transform: scale(.97); }
+
+.wb-tab.is-active {
+  color: var(--text);
+  background: color-mix(in srgb, var(--wb-accent) 13%, var(--surface));
+  border-color: color-mix(in srgb, var(--wb-accent) 45%, var(--border));
+}
+
+.wb-tab-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: .85rem;
+  transition: background .14s ease, color .14s ease;
+}
+.wb-tab-action svg { width: 11px; height: 11px; }
+.wb-tab-action:hover { background: var(--surface-raised); color: var(--text); }
+.wb-tab-action.is-arm { background: color-mix(in srgb, var(--red) 18%, transparent); color: var(--red); width: auto; padding: 0 6px; font-size: .68rem; font-weight: 700; }
+
+.wb-tab-rename {
+  width: 110px;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font: inherit;
+  padding: 0;
+}
+
+.wb-tab-add {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px dashed color-mix(in srgb, var(--text-muted) 50%, transparent);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color .16s ease, color .16s ease, background .16s ease;
+}
+.wb-tab-add svg { width: 14px; height: 14px; }
+.wb-tab-add:hover { border-color: var(--wb-accent); color: var(--wb-accent); background: color-mix(in srgb, var(--wb-accent) 8%, transparent); }
+
+.wb-saved {
+  margin-left: auto;
+  font-size: .68rem;
+  color: var(--text-muted);
+  opacity: .55;
+  transition: opacity .3s ease, color .3s ease;
+  white-space: nowrap;
+}
+.wb-saved.is-flash { opacity: 1; color: var(--wb-accent); }
+
+/* ── Skal & værktøjslinje ── */
+.wb-shell {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.wb-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2) 45%, var(--surface));
+}
+
+.wb-group { display: flex; align-items: center; gap: 4px; }
+.wb-sep { width: 1px; height: 22px; background: var(--border); }
+.wb-spacer { flex: 1; }
+
+.wb-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, border-color .15s ease, transform .1s ease;
+}
+.wb-tool svg { width: 17px; height: 17px; }
+.wb-tool:hover { background: var(--surface-raised); color: var(--text); }
+.wb-tool:active { transform: scale(.94); }
+
+.wb-tool.is-active {
+  background: color-mix(in srgb, var(--wb-accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--wb-accent) 45%, transparent);
+  color: var(--wb-accent);
+}
+
+.wb-tool.wb-danger:hover { background: color-mix(in srgb, var(--red) 14%, transparent); color: var(--red); }
+.wb-tool.is-arm { background: color-mix(in srgb, var(--red) 18%, transparent); border-color: var(--red); color: var(--red); }
+
+/* Farver */
+.wb-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: var(--sw);
+  cursor: pointer;
+  padding: 0;
+  transition: transform .14s cubic-bezier(.3,1.5,.5,1), border-color .14s ease, box-shadow .14s ease;
+}
+.wb-swatch:hover { transform: scale(1.16); }
+.wb-swatch.is-active {
+  border-color: var(--text);
+  transform: scale(1.16);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sw) 35%, transparent);
+}
+
+/* Stregtykkelse */
+.wb-size {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.wb-size i { border-radius: 50%; background: var(--text-muted); transition: background .15s ease; }
+.wb-size:hover { background: var(--surface-raised); }
+.wb-size.is-active { background: color-mix(in srgb, var(--wb-accent) 14%, transparent); border-color: color-mix(in srgb, var(--wb-accent) 40%, transparent); }
+.wb-size.is-active i { background: var(--wb-accent); }
+
+/* Ny note */
+.wb-note-label { font-size: .68rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); margin-right: 2px; }
+
+.wb-note-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: none;
+  background: var(--sw);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: inset 0 -2px 0 rgba(0,0,0,.18);
+  transition: transform .14s cubic-bezier(.3,1.5,.5,1), box-shadow .14s ease;
+}
+.wb-note-swatch:hover { transform: scale(1.16) rotate(-4deg); box-shadow: inset 0 -2px 0 rgba(0,0,0,.18), 0 4px 10px rgba(0,0,0,.35); }
+
+/* Zoom */
+.wb-zoom {
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.wb-zoom button {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  height: 32px;
+  min-width: 30px;
+  padding: 0 8px;
+  font-size: .82rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  transition: background .14s ease, color .14s ease;
+}
+.wb-zoom button:hover { background: var(--surface-raised); color: var(--text); }
+#wbZoomReset { border-left: 1px solid var(--border); border-right: 1px solid var(--border); font-size: .72rem; min-width: 52px; }
+
+/* ── Scenen ── */
+.wb-stage {
+  position: relative;
+  height: clamp(440px, 66vh, 820px);
+  background: var(--bg);
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: crosshair;
+}
+
+.wb-stage.is-hand { cursor: grab; }
+.wb-stage.is-panning { cursor: grabbing; }
+
+.wb-stage canvas { position: absolute; inset: 0; display: block; }
+
+.wb-notes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform-origin: 0 0;
+}
+
+.wb-hint {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  font-size: .66rem;
+  color: color-mix(in srgb, var(--text-muted) 70%, transparent);
+  pointer-events: none;
+}
+
+/* ── Sticky notes ── */
+.wb-note {
+  position: absolute;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px;
+  background: var(--paper);
+  color: #1f2430;
+  box-shadow: 0 10px 24px rgba(0,0,0,.4), 0 2px 6px rgba(0,0,0,.3);
+  transform-origin: center;
+  transition: box-shadow .18s ease;
+}
+
+.wb-note.is-lifted {
+  box-shadow: 0 22px 44px rgba(0,0,0,.5), 0 6px 14px rgba(0,0,0,.35);
+}
+
+.wb-note-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  border-radius: 4px 4px 0 0;
+  background: rgba(0,0,0,.09);
+  cursor: grab;
+  touch-action: none;
+  flex: 0 0 auto;
+}
+.wb-note-bar:active { cursor: grabbing; }
+
+.wb-note-grip { display: flex; gap: 3px; }
+.wb-note-grip i { width: 4px; height: 4px; border-radius: 50%; background: rgba(0,0,0,.28); }
+
+.wb-note-del {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(0,0,0,.45);
+  font-size: .95rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .14s ease, color .14s ease;
+}
+.wb-note-del:hover { background: rgba(0,0,0,.14); color: #7f1d1d; }
+
+.wb-note-text {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: .86rem;
+  font-weight: 500;
+  line-height: 1.4;
+  outline: none;
+  overflow-y: auto;
+  overflow-wrap: break-word;
+  cursor: text;
+  font-family: "Segoe Print", "Comic Sans MS", cursive, sans-serif;
+}
+
+.wb-note-text:empty::before { content: "Skriv…"; color: rgba(0,0,0,.35); }
+
+.wb-note-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background:
+    linear-gradient(135deg, transparent 55%, rgba(0,0,0,.28) 55%, rgba(0,0,0,.28) 65%, transparent 65%, transparent 75%, rgba(0,0,0,.28) 75%, rgba(0,0,0,.28) 85%, transparent 85%);
+  border-radius: 0 0 4px 0;
+}
+
+/* ── Responsivt ── */
+@media (max-width: 720px) {
+  .wb-stage { height: clamp(380px, 62vh, 640px); }
+  .wb-hint { display: none; }
+  .wb-note-label { display: none; }
+  .wb-toolbar { gap: 6px; padding: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-tab, .wb-tool, .wb-swatch, .wb-note-swatch, .wb-note { transition: none; }
+}

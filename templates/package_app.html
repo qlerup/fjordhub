@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ package.name }} — FjordHub{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ url_for('package_asset', package_id=package.id, filename='styles.css') }}">{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('package_asset', package_id=package.id, filename='styles.css', v=package.version) }}">{% endblock %}
 {% block content %}
 <div class="builtin-app" data-package="{{ package.id }}">
   <div class="builtin-toolbar">
@@ -10,4 +10,4 @@
   {{ package_body|safe }}
 </div>
 {% endblock %}
-{% block scripts %}<script src="{{ url_for('package_asset', package_id=package.id, filename='app.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ url_for('package_asset', package_id=package.id, filename='app.js', v=package.version) }}"></script>{% endblock %}

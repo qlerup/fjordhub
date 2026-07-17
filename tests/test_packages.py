@@ -96,9 +96,9 @@ class PackageRouteTests(unittest.TestCase):
 
     @patch("services.package_manager.requests.get")
     def test_admin_can_install_open_and_uninstall_package(self, get):
-        content = package_archive()
-        get.return_value = Mock(content=content, raise_for_status=Mock())
         package = next(item for item in fjordhub.BUILTIN_PACKAGES if item["id"] == "notepad")
+        content = package_archive(version=package["version"])
+        get.return_value = Mock(content=content, raise_for_status=Mock())
         original_sha, original_url = package["sha256"], package["download_url"]
         package["sha256"] = hashlib.sha256(content).hexdigest()
         package["download_url"] = "https://example.test/notepad.zip"

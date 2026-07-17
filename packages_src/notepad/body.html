@@ -1,0 +1,52 @@
+<div class="wb" id="wbRoot">
+  <div class="wb-tabs-row">
+    <div class="wb-tabs" id="wbTabs"></div>
+    <button class="wb-tab-add" id="wbAddBoard" type="button" aria-label="Nyt board">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <span class="wb-saved" id="wbSaved">Gemt lokalt</span>
+  </div>
+
+  <section class="wb-shell">
+    <div class="wb-toolbar">
+      <div class="wb-group" id="wbTools">
+        <button type="button" class="wb-tool is-active" data-tool="pen" aria-label="Pen" title="Pen">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+        </button>
+        <button type="button" class="wb-tool" data-tool="eraser" aria-label="Viskelæder" title="Viskelæder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H7L3 16a2 2 0 0 1 0-2.8l9.2-9.2a2 2 0 0 1 2.8 0l6 6a2 2 0 0 1 0 2.8L14 20"/><path d="M6.5 10.5l7 7"/></svg>
+        </button>
+        <button type="button" class="wb-tool" data-tool="hand" aria-label="Panorér" title="Panorér (hold mellemrum)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
+        </button>
+      </div>
+      <span class="wb-sep"></span>
+      <div class="wb-group" id="wbColors"></div>
+      <div class="wb-group" id="wbSizes"></div>
+      <span class="wb-sep"></span>
+      <div class="wb-group wb-note-group">
+        <span class="wb-note-label">Ny note</span>
+        <div class="wb-group" id="wbNoteColors"></div>
+      </div>
+      <span class="wb-spacer"></span>
+      <div class="wb-group wb-zoom">
+        <button type="button" id="wbZoomOut" aria-label="Zoom ud">−</button>
+        <button type="button" id="wbZoomReset" title="Nulstil zoom">100%</button>
+        <button type="button" id="wbZoomIn" aria-label="Zoom ind">+</button>
+      </div>
+      <span class="wb-sep"></span>
+      <button type="button" class="wb-tool" id="wbUndo" aria-label="Fortryd" title="Fortryd (Ctrl+Z)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+      </button>
+      <button type="button" class="wb-tool wb-danger" id="wbClear" aria-label="Ryd board" title="Ryd board">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6M14 11v6"/></svg>
+      </button>
+    </div>
+
+    <div class="wb-stage" id="wbStage">
+      <canvas id="wbCanvas"></canvas>
+      <div class="wb-notes" id="wbNotes"></div>
+      <div class="wb-hint">Scroll for at zoome · hold mellemrum eller vælg hånden for at panorere</div>
+    </div>
+  </section>
+</div>

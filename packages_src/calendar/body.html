@@ -1,0 +1,74 @@
+<div class="cal" id="calRoot">
+  <section class="cal-panel">
+    <header class="cal-head">
+      <div class="cal-head-left">
+        <h2 class="cal-title" id="calTitle"></h2>
+        <p class="cal-sub" id="calSub"></p>
+      </div>
+      <div class="cal-head-actions">
+        <button class="cal-btn cal-btn-today" id="calToday" type="button">I dag</button>
+        <div class="cal-nav">
+          <button class="cal-btn cal-icon-btn" id="calPrev" type="button" aria-label="Forrige måned">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <button class="cal-btn cal-icon-btn" id="calNext" type="button" aria-label="Næste måned">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+        <button class="cal-btn cal-icon-btn" id="calSettings" type="button" aria-label="Indstillinger">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="cal-weekdays" id="calWeekdays"></div>
+    <div class="cal-grid-clip"><div class="cal-grid" id="calGrid"></div></div>
+    <footer class="cal-legend" id="calLegend" hidden></footer>
+  </section>
+
+  <!-- Dag-modal -->
+  <div class="cal-overlay" id="calDayOverlay" hidden>
+    <div class="cal-modal cal-modal-day" role="dialog" aria-modal="true" aria-labelledby="calDayTitle">
+      <header class="cal-modal-head">
+        <h3 id="calDayTitle"></h3>
+        <button class="cal-x" id="calDayClose" type="button" aria-label="Luk">×</button>
+      </header>
+      <div class="cal-modal-body">
+        <ul class="cal-day-list" id="calDayList"></ul>
+        <form class="cal-day-form" id="calDayForm">
+          <input type="text" id="calDayInput" placeholder="Ny aftale…" maxlength="120" autocomplete="off">
+          <input type="time" id="calDayTime" aria-label="Tidspunkt (valgfrit)">
+          <button type="submit" class="cal-btn cal-btn-primary">Tilføj</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Indstillinger-modal -->
+  <div class="cal-overlay" id="calSettingsOverlay" hidden>
+    <div class="cal-modal cal-modal-settings" role="dialog" aria-modal="true" aria-labelledby="calSettingsTitle">
+      <header class="cal-modal-head">
+        <h3 id="calSettingsTitle">Indstillinger</h3>
+        <button class="cal-x" id="calSettingsClose" type="button" aria-label="Luk">×</button>
+      </header>
+      <div class="cal-modal-body">
+        <section class="cal-set-section">
+          <h4>Helligdage &amp; mærkedage</h4>
+          <p class="cal-hint">Slå færdige kalendere til for de lande, du vil se i oversigten.</p>
+          <div class="cal-set-list" id="calHolidayList"></div>
+        </section>
+        <section class="cal-set-section">
+          <h4>Importerede kalendere</h4>
+          <p class="cal-hint">Importér en iCalendar-fil (.ics) fra fx Google Kalender, Outlook eller Apple Kalender.</p>
+          <div class="cal-set-list" id="calIcalList"></div>
+          <label class="cal-drop" id="calDrop">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+            <span><strong>Vælg en .ics-fil</strong> eller træk den hertil</span>
+            <input type="file" id="calFile" accept=".ics,text/calendar" hidden>
+          </label>
+          <p class="cal-import-msg" id="calImportMsg" hidden></p>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
