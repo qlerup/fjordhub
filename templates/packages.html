@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Pakker — FjordHub{% endblock %}
+
+{% block content %}
+<div class="dashboard package-page">
+  <div class="dashboard-header package-header">
+    <div>
+      <span class="package-eyebrow">FJORDHUB PAKKER</span>
+      <h1>Gør FjordHub til dit eget</h1>
+      <p class="dashboard-sub">Installér små værktøjer, som åbner og kører direkte her i FjordHub.</p>
+    </div>
+    <div class="package-type-note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+      <div><strong>Indbygget og let</strong><span>Ingen ekstra container eller ny fane</span></div>
+    </div>
+  </div>
+
+  <div id="package-toast" class="toast" aria-live="polite"></div>
+
+  <section class="app-section">
+    <div class="app-section-header">
+      <h2>Tilgængelige pakker</h2>
+      <span class="section-count">{{ packages|length }}</span>
+    </div>
+    <div class="package-grid">
+      {% for package in packages %}
+      <article class="package-card{% if package.installed %} is-installed{% endif %}" data-package-id="{{ package.id }}">
+        <div class="package-card-glow" style="--package-accent:{{ package.accent }}"></div>
+        <div class="package-card-top">
+          <div class="package-icon" style="--package-accent:{{ package.accent }}">
+            {% if package.icon == 'calendar' %}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>
+            {% else %}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h6"/></svg>
+            {% endif %}
+          </div>
+          <span class="package-badge">Indbygget</span>
+        </div>
+        <h3>{{ package.name }}</h3>
+        <p>{{ package.tagline }}</p>
+        <div class="package-meta"><span>v{{ package.version }}</span><span>•</span><span>Kører i FjordHub</span></div>
+        <div class="package-actions">
+          <a href="{{ url_for('open_package', package_id=package.id) }}" class="btn package-open"{% if not package.installed %} hidden{% endif %}>Åbn</a>
+          {% if current_user.is_admin %}
+          <button class="btn-install package-install"{% if package.installed %} hidden{% endif %}>Installér</button>
+          <button class="package-remove" title="Afinstallér {{ package.name }}"{% if not package.installed %} hidden{% endif %} aria-label="Afinstallér">×</button>
+          {% elif not package.installed %}
+          <span class="package-admin-hint">En administrator kan installere pakken</span>
+          {% endif %}
+          <span class="package-installed-label"{% if not package.installed %} hidden{% endif %}><i></i> Installeret</span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}<script src="{{ url_for('static', filename='packages.js', v=static_version) }}"></script>{% endblock %}

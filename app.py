@@ -366,6 +366,77 @@ def dashboard():
     )
 
 
+BUILTIN_PACKAGES = [
+    {
+        "id": "calendar",
+        "name": "Kalender",
+        "tagline": "Få overblik over aftaler og mærkedage.",
+        "description": "En enkel kalender, der åbner direkte i FjordHub.",
+        "accent": "#8b5cf6",
+        "icon": "calendar",
+        "version": "1.0.0",
+    },
+    {
+        "id": "notepad",
+        "name": "Notesblok",
+        "tagline": "Skriv hurtige noter, mens du arbejder.",
+        "description": "En enkel notesblok med automatisk lokal lagring.",
+        "accent": "#f59e0b",
+        "icon": "note",
+        "version": "1.0.0",
+    },
+]
+
+
+def _get_builtin_package(package_id: str) -> dict | None:
+    return next((package for package in BUILTIN_PACKAGES if package["id"] == package_id), None)
+
+
+def _package_state_key(package_id: str) -> str:
+    return f"__package__{package_id}"
+
+
+@app.route("/packages")
+def packages():
+    package_list = []
+    for package in BUILTIN_PACKAGES:
+        package_copy = copy.deepcopy(package)
+        package_copy["installed"] = _install_state.get(_package_state_key(package["id"])).get("state") == "installed"
+        package_list.append(package_copy)
+    return render_template("packages.html", packages=package_list, active_page="packages")
+
+
+@app.route("/packages/<package_id>")
+def open_package(package_id):
+    package = _get_builtin_package(package_id)
+    if package is None:
+        return redirect(url_for("packages"))
+    if _install_state.get(_package_state_key(package_id)).get("state") != "installed":
+        return redirect(url_for("packages"))
+    return render_template("package_app.html", package=package, active_page="packages")
+
+
+@app.route("/api/packages/<package_id>/install", methods=["POST"])
+def install_package(package_id):
+    package = _get_builtin_package(package_id)
+    if package is None:
+        return jsonify({"ok": False, "error": "Pakken blev ikke fundet."}), 404
+    if not current_user.is_admin:
+        return jsonify({"ok": False, "error": "Kræver admin."}), 403
+    _install_state.register(_package_state_key(package_id), "builtin")
+    return jsonify({"ok": True, "package": package_id})
+
+
+@app.route("/api/packages/<package_id>/uninstall", methods=["POST"])
+def uninstall_package(package_id):
+    if _get_builtin_package(package_id) is None:
+        return jsonify({"ok": False, "error": "Pakken blev ikke fundet."}), 404
+    if not current_user.is_admin:
+        return jsonify({"ok": False, "error": "Kræver admin."}), 403
+    _install_state.clear(_package_state_key(package_id))
+    return jsonify({"ok": True, "package": package_id})
+
+
 def _apps_with_install_dirs() -> list[dict]:
     return [_with_compose_dir(a, str(a.get("id") or "")) for a in _get_apps()]
 
