@@ -22,6 +22,28 @@ _RAW_RE = re.compile(
 )
 
 
+def fetch_json(url: str) -> dict:
+    """Fetch JSON from a URL. Uses the GitHub Contents API for
+    raw.githubusercontent.com URLs to bypass CDN caching (raw URLs are cached
+    ~5 min); falls back to direct HTTP for other hosts or on API errors."""
+    m = _RAW_RE.match(url)
+    if m:
+        owner, repo, ref, path = m.groups()
+        api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={ref}"
+        try:
+            resp = requests.get(api_url, timeout=REQUEST_TIMEOUT_SEC, headers=FETCH_HEADERS)
+            resp.raise_for_status()
+            data = resp.json()
+            content = base64.b64decode(data["content"]).decode("utf-8")
+            return json.loads(content)
+        except requests.RequestException:
+            # Fallback to raw URL when GitHub API rate limits/forbids anonymous requests.
+            pass
+    resp = requests.get(url, timeout=REQUEST_TIMEOUT_SEC, headers=FETCH_HEADERS)
+    resp.raise_for_status()
+    return resp.json()
+
+
 class RemoteRegistry:
     """
     Fetches the app registry from a remote URL (GitHub raw content) and
@@ -112,25 +134,7 @@ class RemoteRegistry:
         return self._fetch_json(url)
 
     def _fetch_json(self, url: str) -> dict:
-        """Fetch JSON (registry or manifest). Uses GitHub Contents API for
-        raw.githubusercontent.com URLs to bypass CDN caching; falls back to
-        direct HTTP for other hosts."""
-        m = _RAW_RE.match(url)
-        if m:
-            owner, repo, ref, path = m.groups()
-            api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={ref}"
-            try:
-                resp = requests.get(api_url, timeout=REQUEST_TIMEOUT_SEC, headers=FETCH_HEADERS)
-                resp.raise_for_status()
-                data = resp.json()
-                content = base64.b64decode(data["content"]).decode("utf-8")
-                return json.loads(content)
-            except requests.RequestException:
-                # Fallback to raw URL when GitHub API rate limits/forbids anonymous requests.
-                pass
-        resp = requests.get(url, timeout=REQUEST_TIMEOUT_SEC, headers=FETCH_HEADERS)
-        resp.raise_for_status()
-        return resp.json()
+        return fetch_json(url)
 
     def _load_cache(self):
         if not self._cache_file.exists():

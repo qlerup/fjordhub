@@ -22,6 +22,7 @@ from services.installer import Installer, generate_secret, APPS_BASE
 from services.compose_env import build_compose_env
 from services.update_manager import UpdateManager
 from services.resource_monitor import ResourceMonitor
+from services.package_catalog import PackageCatalog
 from services.package_manager import PackageManager, PackageError
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
@@ -33,6 +34,11 @@ AUTH_INSTALL_STATE_KEY = "__fjordhub_auth__"
 REGISTRY_URL = os.environ.get(
     "REGISTRY_URL",
     "https://raw.githubusercontent.com/qlerup/fjordhub/main/registry.json",
+)
+
+PACKAGES_URL = os.environ.get(
+    "PACKAGES_URL",
+    "https://raw.githubusercontent.com/qlerup/fjordhub/main/packages_catalog.json",
 )
 
 FJORDHUB_SRC_DIR = os.environ.get("FJORDHUB_SRC_DIR", "")
@@ -394,8 +400,25 @@ BUILTIN_PACKAGES = [
 ]
 
 
+# Kataloget hentes ved runtime fra GitHub (PACKAGES_URL), så pakker kan
+# opdateres uden at hub'en selv skal redeployes. BUILTIN_PACKAGES er kun
+# fallback, indtil kataloget er hentet første gang.
+_package_catalog = PackageCatalog(DATA_DIR, PACKAGES_URL, fallback=BUILTIN_PACKAGES)
+
+
+def _get_package_defs() -> list[dict]:
+    return _package_catalog.get_packages()
+
+
 def _get_builtin_package(package_id: str) -> dict | None:
-    return next((package for package in BUILTIN_PACKAGES if package["id"] == package_id), None)
+    return next((package for package in _get_package_defs() if package["id"] == package_id), None)
+
+
+def _installed_package_version(package_id: str) -> str | None:
+    try:
+        return str(package_manager.installed_manifest(package_id).get("version"))
+    except PackageError:
+        return None
 
 
 def _package_state_key(package_id: str) -> str:
@@ -405,7 +428,7 @@ def _package_state_key(package_id: str) -> str:
 @app.route("/packages")
 def packages():
     installed = []
-    for package in BUILTIN_PACKAGES:
+    for package in _get_package_defs():
         if package_manager.is_installed(package["id"]):
             package_copy = copy.deepcopy(package)
             package_copy["installed"] = True
@@ -415,10 +438,15 @@ def packages():
 
 @app.route("/store")
 def app_store():
+    _package_catalog.refresh_if_stale()
     package_list = []
-    for package in BUILTIN_PACKAGES:
+    for package in _get_package_defs():
         package_copy = copy.deepcopy(package)
         package_copy["installed"] = package_manager.is_installed(package["id"])
+        if package_copy["installed"]:
+            installed_version = _installed_package_version(package["id"])
+            package_copy["installed_version"] = installed_version
+            package_copy["update_available"] = installed_version != str(package["version"])
         package_list.append(package_copy)
     return render_template("store.html", packages=package_list, active_page="store")
 

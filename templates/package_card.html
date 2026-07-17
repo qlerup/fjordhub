@@ -14,10 +14,11 @@
   </div>
   <h3>{{ package.name }}</h3>
   <p>{{ package.tagline }}</p>
-  <div class="package-meta"><span>v{{ package.version }}</span><span>•</span><span>Installeres efter behov</span></div>
+  <div class="package-meta">{% if package.update_available %}<span class="package-update-hint">v{{ package.installed_version or "?" }} → v{{ package.version }}</span>{% else %}<span>v{{ package.version }}</span>{% endif %}<span>•</span><span>Installeres efter behov</span></div>
   <div class="package-actions">
     <a href="{{ url_for('open_package', package_id=package.id) }}" class="btn package-open"{% if not (package.installed or active_page == 'packages') %} hidden{% endif %}>Åbn</a>
     {% if current_user.is_admin %}
+    <button class="btn-install package-update"{% if not package.update_available %} hidden{% endif %}>Opdatér</button>
     <button class="btn-install package-install"{% if package.installed or active_page == 'packages' %} hidden{% endif %}>Installér</button>
     <button class="package-remove" title="Afinstallér {{ package.name }}"{% if not (package.installed or active_page == 'packages') %} hidden{% endif %} aria-label="Afinstallér">×</button>
     {% elif not package.installed %}

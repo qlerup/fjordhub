@@ -20,6 +20,21 @@
       if (open) open.hidden = !value;
       if (label) label.hidden = !value;
     };
+    const update = card.querySelector('.package-update');
+    update?.addEventListener('click', async () => {
+      update.disabled = true;
+      update.textContent = 'Opdaterer…';
+      try {
+        const response = await fetch(`/api/packages/${id}/install`, {method: 'POST'});
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Opdateringen fejlede');
+        update.hidden = true;
+        const hint = card.querySelector('.package-update-hint');
+        if (hint) hint.textContent = hint.textContent.split('→').pop().trim();
+        showToast('Appen er opdateret');
+      } catch (error) { showToast(error.message, true); }
+      finally { update.disabled = false; update.textContent = 'Opdatér'; }
+    });
     install?.addEventListener('click', async () => {
       install.disabled = true;
       install.textContent = 'Installerer…';
