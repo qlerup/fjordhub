@@ -432,6 +432,8 @@ def packages():
         if package_manager.is_installed(package["id"]):
             package_copy = copy.deepcopy(package)
             package_copy["installed"] = True
+            # Vis den version, der faktisk er installeret — ikke katalogets.
+            package_copy["version"] = _installed_package_version(package["id"]) or package["version"]
             installed.append(package_copy)
     return render_template("packages.html", packages=installed, active_page="packages")
 
@@ -462,7 +464,17 @@ def open_package(package_id):
         body = package_manager.read_text(package_id, "body.html")
     except PackageError:
         return redirect(url_for("packages"))
-    return render_template("package_app.html", package=package, package_body=body, active_page="packages")
+    # Cache-bust med den INSTALLEREDE version: katalogets version kan pege på en
+    # nyere pakke end den, der ligger på disken, og så ville browseren cache de
+    # gamle assets under den nye versions URL.
+    asset_version = _installed_package_version(package_id) or package["version"]
+    return render_template(
+        "package_app.html",
+        package=package,
+        package_body=body,
+        asset_version=asset_version,
+        active_page="packages",
+    )
 
 
 @app.route("/packages/<package_id>/asset/<path:filename>")
@@ -473,7 +485,11 @@ def package_asset(package_id, filename):
         path = package_manager.asset_path(package_id, filename)
     except PackageError:
         return Response(status=404)
-    return send_file(path)
+    response = send_file(path)
+    # Altid revalidér (ETag/Last-Modified): pakkefiler udskiftes ved opdatering,
+    # uden at URL'en nødvendigvis ændrer sig.
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 @app.route("/api/packages/<package_id>/install", methods=["POST"])

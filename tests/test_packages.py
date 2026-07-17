@@ -157,6 +157,10 @@ class PackageRouteTests(unittest.TestCase):
         page = self.client.get("/packages/notepad")
         self.assertEqual(page.status_code, 200)
         self.assertIn("Package body", page.get_data(as_text=True))
+        asset = self.client.get("/packages/notepad/asset/styles.css")
+        self.assertEqual(asset.status_code, 200)
+        self.assertEqual(asset.headers.get("Cache-Control"), "no-cache")
+        asset.close()  # send_file holder ellers filen åben på Windows
         self.assertTrue((Path(self.tempdir.name) / "packages" / "notepad").exists())
         self.client.post("/api/packages/notepad/uninstall")
         self.assertFalse((Path(self.tempdir.name) / "packages" / "notepad").exists())
@@ -184,8 +188,14 @@ class PackageRouteTests(unittest.TestCase):
         self.assertIn("v1.0.0 → v2.0.0", store)
         self.assertNotIn('class="btn-install package-update" hidden', store)
 
+        # Asset-URL'er skal cache-buste med den INSTALLEREDE version, ikke katalogets.
+        page = self.client.get("/packages/notepad").get_data(as_text=True)
+        self.assertIn("app.js?v=1.0.0", page)
+
         self.assertEqual(self.client.post("/api/packages/notepad/install").status_code, 200)
         self.assertEqual(fjordhub.package_manager.installed_manifest("notepad")["version"], "2.0.0")
+        page = self.client.get("/packages/notepad").get_data(as_text=True)
+        self.assertIn("app.js?v=2.0.0", page)
         store = self.client.get("/store").get_data(as_text=True)
         self.assertNotIn("v1.0.0 → v2.0.0", store)
         self.assertIn('class="btn-install package-update" hidden', store)
