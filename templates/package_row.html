@@ -1,0 +1,18 @@
+{# Launcher-række til "Installerede apps" — bevidst anderledes end butikkens kort,
+   så man aldrig er i tvivl om, hvilken side man står på. #}
+<article class="app-row" data-package-id="{{ package.id }}" style="--package-accent:{{ package.accent }}">
+  <div class="package-icon">{% include "package_icon.html" %}</div>
+  <div class="app-row-body">
+    <div class="app-row-title"><h3>{{ package.name }}</h3><span class="app-row-version">v{{ package.version }}</span></div>
+    <p>{{ package.tagline }}</p>
+  </div>
+  <div class="app-row-actions">
+    {% if current_user.is_admin %}
+    <button class="btn-install package-update"{% if not package.update_available %} hidden{% endif %}>Opdatér</button>
+    {% endif %}
+    <a href="{{ url_for('open_package', package_id=package.id) }}" class="btn package-open app-row-open">Åbn</a>
+    {% if current_user.is_admin %}
+    <button class="package-remove" title="Afinstallér {{ package.name }}" aria-label="Afinstallér">×</button>
+    {% endif %}
+  </div>
+</article>

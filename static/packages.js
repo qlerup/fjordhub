@@ -7,7 +7,8 @@
     setTimeout(() => toast.classList.remove('show'), 2600);
   };
 
-  document.querySelectorAll('.package-card').forEach(card => {
+  // Rammer både butikkens .package-card og launcher-rækkerne på "Installerede apps"
+  document.querySelectorAll('[data-package-id]').forEach(card => {
     const id = card.dataset.packageId;
     const install = card.querySelector('.package-install');
     const remove = card.querySelector('.package-remove');
@@ -53,9 +54,9 @@
         const response = await fetch(`/api/packages/${id}/uninstall`, {method: 'POST'});
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Afinstallationen fejlede');
-        if (document.body.querySelector('.package-page .package-card') && location.pathname === '/packages') {
+        if (document.body.querySelector('.package-page [data-package-id]') && location.pathname === '/packages') {
           card.remove();
-          if (!document.querySelector('.package-card')) location.reload();
+          if (!document.querySelector('[data-package-id]')) location.reload();
         } else {
           setInstalled(false);
         }

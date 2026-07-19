@@ -10,9 +10,9 @@
   <div id="package-toast" class="toast" aria-live="polite"></div>
   {% if packages %}
   <div class="app-section-header"><h2>Installeret</h2><span class="section-count">{{ packages|length }}</span></div>
-  <div class="package-grid">
+  <div class="app-launcher">
     {% for package in packages %}
-      {% include "package_card.html" %}
+      {% include "package_row.html" %}
     {% endfor %}
   </div>
   {% else %}
