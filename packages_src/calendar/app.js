@@ -239,7 +239,7 @@
 
     Object.keys(data.events).forEach(function (key) {
       data.events[key].forEach(function (ev) {
-        add(key, { title: ev.title, time: ev.time || "", color: USER_COLOR, kind: "user", source: "Egen aftale", id: ev.id });
+        add(key, { title: ev.title, time: ev.time || "", endTime: ev.endTime || "", color: USER_COLOR, kind: "user", source: "Egen aftale", id: ev.id });
       });
     });
 
@@ -411,8 +411,11 @@
   });
 
   // ── Dag-modal ──────────────────────────────────────────────────────────────
-  var dayOverlay = $("calDayOverlay"), dayTitle = $("calDayTitle"), dayList = $("calDayList"),
-      dayForm = $("calDayForm"), dayInput = $("calDayInput"), dayTime = $("calDayTime");
+  var dayOverlay = $("calDayOverlay"), dayTitle = $("calDayTitle"),
+      dayForm = $("calDayForm"), dayInput = $("calDayInput"),
+      dayTime = $("calDayTime"), dayTimeEnd = $("calDayTimeEnd"),
+      alldayWrap = $("calDayAllday"), alldayList = $("calAlldayList"),
+      planWrap = $("calDayPlan"), timeline = $("calTimeline"), dayEmpty = $("calDayEmpty");
 
   elGrid.addEventListener("click", function (e) {
     var cell = e.target.closest(".cal-day");
@@ -429,7 +432,24 @@
     dayOverlay.hidden = false;
     dayInput.value = "";
     dayTime.value = "";
+    dayTimeEnd.value = "";
     dayInput.focus();
+  }
+
+  function makeDayDelBtn(item) {
+    var del = document.createElement("button");
+    del.type = "button";
+    del.className = "cal-item-del";
+    del.textContent = "×";
+    del.setAttribute("aria-label", "Slet aftale");
+    del.addEventListener("click", function () {
+      data.events[selectedDay] = (data.events[selectedDay] || []).filter(function (ev) { return ev.id !== item.id; });
+      if (!data.events[selectedDay].length) delete data.events[selectedDay];
+      save();
+      renderDayList();
+      render(0);
+    });
+    return del;
   }
 
   function renderDayList() {
@@ -437,15 +457,21 @@
     var dt = new Date(+parts[0], +parts[1] - 1, +parts[2]);
     var index = buildIndex([dt]);
     var items = index[selectedDay] || [];
-    dayList.innerHTML = "";
-    if (!items.length) {
-      var empty = document.createElement("li");
-      empty.className = "cal-day-empty";
-      empty.textContent = "Ingen aftaler denne dag.";
-      dayList.appendChild(empty);
-      return;
-    }
-    items.forEach(function (item) {
+
+    // Uden tidspunkt → "Hele dagen"; med tidspunkt → kronologisk tidslinje.
+    var allday = items.filter(function (it) { return !it.time; });
+    var timed = items.filter(function (it) { return it.time; }).slice().sort(function (a, b) {
+      if (a.time !== b.time) return a.time < b.time ? -1 : 1;
+      return a.title < b.title ? -1 : 1;
+    });
+
+    alldayList.innerHTML = "";
+    timeline.innerHTML = "";
+    alldayWrap.hidden = !allday.length;
+    planWrap.hidden = !timed.length;
+    dayEmpty.hidden = items.length > 0;
+
+    allday.forEach(function (item) {
       var li = document.createElement("li");
       li.className = "cal-day-item";
       var dot = document.createElement("i");
@@ -457,24 +483,44 @@
       li.appendChild(text);
       var meta = document.createElement("span");
       meta.className = "cal-item-meta";
-      meta.textContent = item.time ? item.time : item.source;
+      meta.textContent = item.source;
       li.appendChild(meta);
-      if (item.kind === "user") {
-        var del = document.createElement("button");
-        del.type = "button";
-        del.className = "cal-item-del";
-        del.textContent = "×";
-        del.setAttribute("aria-label", "Slet aftale");
-        del.addEventListener("click", function () {
-          data.events[selectedDay] = (data.events[selectedDay] || []).filter(function (ev) { return ev.id !== item.id; });
-          if (!data.events[selectedDay].length) delete data.events[selectedDay];
-          save();
-          renderDayList();
-          render(0);
-        });
-        li.appendChild(del);
+      if (item.kind === "user") li.appendChild(makeDayDelBtn(item));
+      alldayList.appendChild(li);
+    });
+
+    timed.forEach(function (item) {
+      var li = document.createElement("li");
+      li.className = "cal-tl-row";
+      var time = document.createElement("span");
+      time.className = "cal-tl-time";
+      time.textContent = item.time;
+      if (item.endTime) {
+        var end = document.createElement("small");
+        end.textContent = item.endTime;
+        time.appendChild(end);
       }
-      dayList.appendChild(li);
+      li.appendChild(time);
+      var node = document.createElement("span");
+      node.className = "cal-tl-node";
+      var dot = document.createElement("i");
+      dot.className = "cal-tl-dot";
+      dot.style.background = item.color;
+      node.appendChild(dot);
+      li.appendChild(node);
+      var body = document.createElement("div");
+      body.className = "cal-tl-body";
+      var text = document.createElement("span");
+      text.className = "cal-item-text";
+      text.textContent = item.title;
+      body.appendChild(text);
+      var meta = document.createElement("span");
+      meta.className = "cal-item-meta";
+      meta.textContent = item.endTime ? item.time + "–" + item.endTime + " · " + item.source : item.source;
+      body.appendChild(meta);
+      li.appendChild(body);
+      if (item.kind === "user") li.appendChild(makeDayDelBtn(item));
+      timeline.appendChild(li);
     });
   }
 
@@ -482,14 +528,21 @@
     e.preventDefault();
     var title = dayInput.value.trim();
     if (!title || !selectedDay) return;
+    var start = dayTime.value || "";
+    var end = dayTimeEnd.value || "";
+    // Kun sluttid udfyldt → brug den som starttid; sluttid før start ignoreres.
+    if (!start && end) { start = end; end = ""; }
+    if (end && end <= start) end = "";
     (data.events[selectedDay] = data.events[selectedDay] || []).push({
       id: Date.now() + "-" + Math.random().toString(36).slice(2, 7),
       title: title,
-      time: dayTime.value || ""
+      time: start,
+      endTime: end
     });
     save();
     dayInput.value = "";
     dayTime.value = "";
+    dayTimeEnd.value = "";
     renderDayList();
     render(0);
     dayInput.focus();

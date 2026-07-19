@@ -427,13 +427,19 @@ def _package_state_key(package_id: str) -> str:
 
 @app.route("/packages")
 def packages():
+    _package_catalog.refresh_if_stale()
     installed = []
     for package in _get_package_defs():
         if package_manager.is_installed(package["id"]):
             package_copy = copy.deepcopy(package)
             package_copy["installed"] = True
-            # Vis den version, der faktisk er installeret — ikke katalogets.
-            package_copy["version"] = _installed_package_version(package["id"]) or package["version"]
+            catalog_version = str(package["version"])
+            installed_version = _installed_package_version(package["id"]) or catalog_version
+            # Vis den version, der faktisk er installeret — ikke katalogets — men
+            # tilbyd Opdatér, når kataloget peger på en nyere pakke.
+            package_copy["version"] = installed_version
+            package_copy["installed_version"] = installed_version
+            package_copy["update_available"] = installed_version != catalog_version
             installed.append(package_copy)
     return render_template("packages.html", packages=installed, active_page="packages")
 

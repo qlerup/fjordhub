@@ -307,6 +307,76 @@
 
 .cal-day-empty { text-align: center; color: var(--text-muted); font-size: .8rem; padding: 14px 0 10px; }
 
+/* Sektioner i dag-modal */
+.cal-day-sec + .cal-day-sec { margin-top: 16px; }
+.cal-day-sec-head {
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+/* Tidslinje for dagen */
+.cal-timeline { --tl-time: 52px; list-style: none; position: relative; display: flex; flex-direction: column; }
+
+.cal-timeline::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--tl-time) + 16px);
+  top: 16px;
+  bottom: 16px;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--cal-accent) 30%, var(--border));
+}
+
+.cal-tl-row { position: relative; display: flex; align-items: flex-start; gap: 12px; padding: 5px 0; }
+
+.cal-tl-time {
+  flex: 0 0 var(--tl-time);
+  text-align: right;
+  font-size: .8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  padding-top: 6px;
+}
+
+.cal-tl-time small { display: block; font-size: .66rem; font-weight: 600; color: var(--text-muted); }
+
+.cal-tl-node { flex: 0 0 10px; display: flex; justify-content: center; padding-top: 9px; }
+
+.cal-tl-dot {
+  position: relative;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--surface);
+}
+
+.cal-tl-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  border-radius: 10px;
+  padding: 7px 10px;
+}
+
+.cal-tl-body .cal-item-text { font-size: .84rem; font-weight: 600; }
+.cal-tl-body .cal-item-meta { font-size: .68rem; color: var(--text-muted); }
+.cal-tl-row .cal-item-del { align-self: center; }
+
+/* Tidsinterval i formularen */
+.cal-time-range { display: flex; align-items: center; gap: 4px; }
+.cal-time-sep { color: var(--text-muted); font-size: .8rem; }
+
 .cal-day-form { display: flex; gap: 8px; margin-top: 14px; }
 
 .cal-day-form input[type="text"] {
@@ -439,6 +509,7 @@
   .cal-chip::before { width: 6px; height: 6px; }
   .cal-chips { flex-direction: row; flex-wrap: wrap; gap: 2px; }
   .cal-day-form { flex-wrap: wrap; }
+  .cal-timeline { --tl-time: 44px; }
   .cal-title { font-size: 1.25rem; }
 }
 

@@ -8,9 +8,9 @@
       "description": "Kalender med egne aftaler, helligdagskalendere for flere lande og import af .ics-filer.",
       "accent": "#8b5cf6",
       "icon": "calendar",
-      "version": "2.0.0",
-      "download_url": "https://github.com/qlerup/fjordhub/releases/download/packages-v2.0.0/calendar.zip",
-      "sha256": "7858b2ea470b9175ee47530ecae30eef55e5198840616d3d5d5263b4d5c0b978"
+      "version": "2.1.0",
+      "download_url": "https://github.com/qlerup/fjordhub/releases/download/packages-v2.1.0/calendar.zip",
+      "sha256": "278a12da3c6acbfcd476e9da9e6f33b739958a69208c5e99b7faca77e5ff54c7"
     },
     {
       "id": "notepad",

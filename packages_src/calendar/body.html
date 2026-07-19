@@ -34,10 +34,22 @@
         <button class="cal-x" id="calDayClose" type="button" aria-label="Luk">×</button>
       </header>
       <div class="cal-modal-body">
-        <ul class="cal-day-list" id="calDayList"></ul>
+        <div class="cal-day-sec" id="calDayAllday" hidden>
+          <p class="cal-day-sec-head">Hele dagen</p>
+          <ul class="cal-day-list" id="calAlldayList"></ul>
+        </div>
+        <div class="cal-day-sec" id="calDayPlan" hidden>
+          <p class="cal-day-sec-head">Dagens plan</p>
+          <ul class="cal-timeline" id="calTimeline"></ul>
+        </div>
+        <p class="cal-day-empty" id="calDayEmpty" hidden>Ingen aftaler denne dag.</p>
         <form class="cal-day-form" id="calDayForm">
           <input type="text" id="calDayInput" placeholder="Ny aftale…" maxlength="120" autocomplete="off">
-          <input type="time" id="calDayTime" aria-label="Tidspunkt (valgfrit)">
+          <div class="cal-time-range">
+            <input type="time" id="calDayTime" aria-label="Starttidspunkt (valgfrit)">
+            <span class="cal-time-sep">–</span>
+            <input type="time" id="calDayTimeEnd" aria-label="Sluttidspunkt (valgfrit)">
+          </div>
           <button type="submit" class="cal-btn cal-btn-primary">Tilføj</button>
         </form>
       </div>
