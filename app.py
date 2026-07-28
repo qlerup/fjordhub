@@ -364,7 +364,7 @@ def forgot_password():
 
     if request.method == "POST" and step == "email":
         challenge_id = _password_reset.request(email)
-        message = "Hvis email-adressen findes, er sikkerhedskoden sendt."
+        message = "Hvis email-adressen findes, er sikkerhedskoden sendt. Husk også at kontrollere Spam eller Uønsket mail."
         step = "code"
     elif request.method == "POST" and step == "code":
         code = "".join(ch for ch in str(request.form.get("code") or "") if ch.isdigit())[:6]
@@ -1177,7 +1177,7 @@ def api_hub_password_reset_request():
     return jsonify({
         "ok": True,
         "challenge_id": challenge_id,
-        "message": "Hvis email-adressen findes, er sikkerhedskoden sendt.",
+        "message": "Hvis email-adressen findes, er sikkerhedskoden sendt. Husk også at kontrollere Spam eller Uønsket mail.",
     })
 
 
