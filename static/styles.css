@@ -1166,6 +1166,17 @@ a { color: inherit; text-decoration: none; }
   margin-top: 8px;
 }
 .auth-btn:hover { background: #2563eb; }
+.auth-link {
+  display: block;
+  color: var(--accent);
+  font-size: .84rem;
+  text-align: center;
+  margin-top: 16px;
+  text-decoration: none;
+}
+.auth-link:hover { text-decoration: underline; }
+.auth-help { color: var(--text-muted); font-size: .84rem; margin-bottom: 16px; }
+.auth-field .auth-code { text-align: center; font-size: 1.15rem; letter-spacing: .35em; }
 
 /* ── Profile page ── */
 .profile-card {
@@ -1463,6 +1474,8 @@ a { color: inherit; text-decoration: none; }
 .settings-info-grid dd { margin: 0; font-weight: 600; font-family: monospace; }
 
 .settings-btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.settings-mail-grid { display: grid; grid-template-columns: 1fr 110px; gap: 12px; }
+@media (max-width: 540px) { .settings-mail-grid { grid-template-columns: 1fr; gap: 0; } }
 .btn-settings {
   background: var(--surface-2);
   border: 1px solid var(--border);

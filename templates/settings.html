@@ -26,6 +26,21 @@
       </div>
       <p style="color:var(--text-muted);font-size:.9rem">Kommer snart.</p>
     </div>
+    <div class="settings-card">
+      <div class="settings-card-head"><h2>Email til glemt adgangskode</h2></div>
+      <p style="color:var(--text-muted);font-size:.86rem;margin-bottom:18px">Fx Gmail-adresse og app-adgangskode. FjordHub bruger opsætningen for både hubben og hub-styrede apps.</p>
+      {% if mail_saved %}<div class="auth-ok">Forbindelsen virker, og mailopsætningen er gemt.</div>{% endif %}
+      {% if mail_error %}<div class="auth-error">{{ mail_error }}</div>{% endif %}
+      <form method="post" action="{{ url_for('save_mail_settings') }}">
+        <div class="auth-field"><label for="smtp_user">Afsender-email</label><input id="smtp_user" name="smtp_user" type="email" value="{{ smtp_user }}" required></div>
+        <div class="auth-field"><label for="smtp_password">App-adgangskode</label><input id="smtp_password" name="smtp_password" type="password" {% if not mail_configured %}required{% endif %} placeholder="{% if mail_configured %}Lad stå tom for at beholde den nuværende{% endif %}"></div>
+        <div class="settings-mail-grid">
+          <div class="auth-field"><label for="smtp_host">SMTP-server</label><input id="smtp_host" name="smtp_host" value="{{ smtp_host }}" required></div>
+          <div class="auth-field"><label for="smtp_port">Port</label><input id="smtp_port" name="smtp_port" type="number" value="{{ smtp_port }}" required></div>
+        </div>
+        <button type="submit" class="btn-install">Test og gem</button>
+      </form>
+    </div>
   </div>
 
   {# ── Opdatering ── #}

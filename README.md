@@ -20,6 +20,7 @@ FjordHub is a lightweight control panel for a small fleet of self-hosted apps. I
 - **One-click install** — a guided wizard collects the app's settings (ports, timezone, secrets), clones the app's repository, writes its `.env` and brings it up with Docker Compose.
 - **Lifecycle management** — start, stop, update and uninstall apps from the dashboard, with live health checks per app.
 - **Central users & SSO** — user accounts live in the hub. Installed apps authenticate against the hub's API, users are synced automatically, and "Open app" links can log you straight in via short-lived SSO tokens.
+- **Password recovery** — configure an SMTP sender under Settings. FjordHub sends five-minute security codes and handles recovery centrally for the hub and integrated apps.
 - **Self-update** — a small sidecar container pulls the latest FjordHub from GitHub and rebuilds/restarts the hub, triggered from the Settings page.
 - **Resource monitoring** — host CPU, memory and disk usage plus per-container stats, with a one-click Docker cleanup for reclaiming space.
 - **Reverse proxy included** — Traefik routes each app under its own path prefix, so everything is reachable through a single entrypoint.

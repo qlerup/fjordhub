@@ -24,6 +24,7 @@ from services.update_manager import UpdateManager
 from services.resource_monitor import ResourceMonitor
 from services.package_catalog import PackageCatalog
 from services.package_manager import PackageManager, PackageError
+from services.password_reset import PasswordResetService
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
@@ -81,6 +82,7 @@ def _inject_static_version():
     return {"static_version": STATIC_VERSION}
 
 _auth            = AuthService(AUTH_DB_PATH)
+_password_reset  = PasswordResetService(AUTH_DB_PATH, app.secret_key, _auth)
 _local_registry  = AppRegistry(Path(__file__).parent / "app_registry")
 _remote_registry = RemoteRegistry(DATA_DIR, REGISTRY_URL)
 _install_state   = InstallState(DATA_DIR)
@@ -115,10 +117,14 @@ _AUTH_EXEMPT = {
     "static",
     "setup",
     "login",
+    "forgot_password",
     "health",
     "hub_user_sync",
     "api_hub_app_authenticate",
     "api_hub_app_change_password",
+    "api_hub_password_reset_request",
+    "api_hub_password_reset_verify",
+    "api_hub_password_reset_complete",
     "api_hub_app_users",
     "api_hub_app_user",
     "api_hub_sso_verify",
@@ -343,6 +349,55 @@ def login():
                 next_url = url_for("dashboard")
             return redirect(next_url)
     return render_template("login.html", error=error, created=created)
+
+
+@app.route("/glemt-adgangskode", methods=["GET", "POST"])
+def forgot_password():
+    if _auth.users_count() == 0:
+        return redirect(url_for("setup"))
+    step = str(request.form.get("step") or request.args.get("step") or "email")
+    error = ""
+    message = ""
+    email = str(request.form.get("email") or "").strip().lower()
+    challenge_id = str(request.form.get("challenge_id") or "")
+    reset_token = str(request.form.get("reset_token") or "")
+
+    if request.method == "POST" and step == "email":
+        challenge_id = _password_reset.request(email)
+        message = "Hvis email-adressen findes, er sikkerhedskoden sendt."
+        step = "code"
+    elif request.method == "POST" and step == "code":
+        code = "".join(ch for ch in str(request.form.get("code") or "") if ch.isdigit())[:6]
+        reset_token = _password_reset.verify(challenge_id, code) or ""
+        if reset_token:
+            step = "password"
+        else:
+            error = "Koden er ugyldig eller udløbet."
+    elif request.method == "POST" and step == "password":
+        password = str(request.form.get("password") or "")
+        password2 = str(request.form.get("password2") or "")
+        if password != password2:
+            error = "De to adgangskoder matcher ikke."
+        elif len(password) < 6:
+            error = "Adgangskoden skal være mindst 6 tegn."
+        else:
+            try:
+                if _password_reset.complete(challenge_id, reset_token, password):
+                    step = "done"
+                else:
+                    error = "Nulstillingen er ugyldig eller udløbet."
+            except ValueError as exc:
+                error = str(exc)
+
+    return render_template(
+        "forgot_password.html",
+        step=step,
+        error=error,
+        message=message,
+        email=email,
+        challenge_id=challenge_id,
+        reset_token=reset_token,
+    )
 
 
 @app.route("/logout", methods=["POST"])
@@ -620,12 +675,36 @@ def settings():
     if not current_user.is_admin:
         return redirect(url_for("dashboard"))
     section = request.args.get("section", "general")
+    mail_settings = _password_reset.mail_settings()
     return render_template(
         "settings.html",
         active_page="settings",
         section=section,
         hub_src_configured=bool(FJORDHUB_SRC_DIR or FJORDHUB_UPDATER_URL),
+        mail_configured=bool(mail_settings),
+        smtp_user=(mail_settings or {}).get("user", ""),
+        smtp_host=(mail_settings or {}).get("host", "smtp.gmail.com"),
+        smtp_port=(mail_settings or {}).get("port", 465),
+        mail_saved=str(request.args.get("mail_saved") or "") == "1",
+        mail_error=str(request.args.get("mail_error") or ""),
     )
+
+
+@app.route("/settings/mail", methods=["POST"])
+@login_required
+def save_mail_settings():
+    if not current_user.is_admin:
+        return redirect(url_for("dashboard"))
+    try:
+        _password_reset.save_mail_settings(
+            request.form.get("smtp_user") or "",
+            request.form.get("smtp_password") or "",
+            request.form.get("smtp_host") or "smtp.gmail.com",
+            int(request.form.get("smtp_port") or 465),
+        )
+        return redirect(url_for("settings", section="general", mail_saved="1"))
+    except Exception as exc:
+        return redirect(url_for("settings", section="general", mail_error=str(exc)))
 
 
 def _hub_update_label(state: str, update_available: bool = False) -> str:
@@ -1086,6 +1165,57 @@ def api_hub_app_change_password():
     if not user:
         return jsonify({"ok": False, "error": "Forkert login eller ingen adgang til appen"}), 401
     return jsonify({"ok": True, "user": user})
+
+
+@app.route("/api/hub/apps/password-reset/request", methods=["POST"])
+def api_hub_password_reset_request():
+    data = request.get_json(silent=True) or {}
+    app_id, error_response = _require_app_key(data)
+    if error_response:
+        return error_response
+    challenge_id = _password_reset.request(str(data.get("email") or ""), app_id=app_id)
+    return jsonify({
+        "ok": True,
+        "challenge_id": challenge_id,
+        "message": "Hvis email-adressen findes, er sikkerhedskoden sendt.",
+    })
+
+
+@app.route("/api/hub/apps/password-reset/verify", methods=["POST"])
+def api_hub_password_reset_verify():
+    data = request.get_json(silent=True) or {}
+    _, error_response = _require_app_key(data)
+    if error_response:
+        return error_response
+    token = _password_reset.verify(
+        str(data.get("challenge_id") or ""),
+        "".join(ch for ch in str(data.get("code") or "") if ch.isdigit())[:6],
+    )
+    if not token:
+        return jsonify({"ok": False, "error": "Koden er ugyldig eller udløbet."}), 400
+    return jsonify({"ok": True, "reset_token": token})
+
+
+@app.route("/api/hub/apps/password-reset/complete", methods=["POST"])
+def api_hub_password_reset_complete():
+    data = request.get_json(silent=True) or {}
+    _, error_response = _require_app_key(data)
+    if error_response:
+        return error_response
+    password = str(data.get("password") or "")
+    if len(password) < 6:
+        return jsonify({"ok": False, "error": "Adgangskoden skal være mindst 6 tegn."}), 400
+    try:
+        ok = _password_reset.complete(
+            str(data.get("challenge_id") or ""),
+            str(data.get("reset_token") or ""),
+            password,
+        )
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    if not ok:
+        return jsonify({"ok": False, "error": "Nulstillingen er ugyldig eller udløbet."}), 400
+    return jsonify({"ok": True})
 
 
 @app.route("/api/hub/apps/users", methods=["GET", "POST"])
