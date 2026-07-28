@@ -8,6 +8,7 @@ import uuid
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
+from email.utils import formataddr
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -129,13 +130,32 @@ class PasswordResetService:
         if not settings:
             raise RuntimeError("Mailafsendelse er ikke konfigureret.")
         message = EmailMessage()
-        message["From"] = settings["user"]
+        message["From"] = formataddr(("FjordHub", settings["user"]))
         message["To"] = to
-        message["Subject"] = "Sikkerhedskode til FjordHub"
+        message["Subject"] = f"{code} er din sikkerhedskode til FjordHub"
         message.set_content(
             f"Hej\n\nDin sikkerhedskode til FjordHub er: {code}\n\n"
             "Koden udløber om 5 minutter. Hvis du ikke har bedt om den, kan du ignorere denne mail."
         )
+        message.add_alternative(f"""<!doctype html>
+<html lang="da"><body style="margin:0;padding:0;background:#f5f1e8">
+<div style="background:#f5f1e8;padding:32px 16px;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;color:#29251c">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px">
+      <tr><td style="padding:0 6px 14px">
+        <div style="font-size:11px;letter-spacing:2px;color:#8a8272;text-transform:uppercase;font-weight:700">FjordHub</div>
+        <div style="font-family:'Palatino Linotype',Palatino,Georgia,serif;font-size:28px;font-weight:700;margin-top:4px">Nulstil adgangskode</div>
+      </td></tr>
+      <tr><td style="background:#fffdf7;border:1px solid #e3dccb;border-radius:14px;padding:24px">
+        <div style="font-size:14px;line-height:1.6;color:#514b40">Brug sikkerhedskoden herunder for at vælge en ny adgangskode.</div>
+        <div style="margin:22px 0;padding:18px 12px;background:#edf3ff;border:1px solid #3b82f6;border-radius:10px;text-align:center;font-size:30px;font-weight:800;letter-spacing:8px;color:#1d4ed8">{code}</div>
+        <div style="font-size:13px;line-height:1.6;color:#8a8272"><strong style="color:#514b40">Koden udløber om 5 minutter.</strong><br>Hvis du ikke har bedt om at nulstille din adgangskode, kan du roligt ignorere mailen.</div>
+      </td></tr>
+      <tr><td style="padding:14px 6px 0;font-size:12px;color:#8a8272;text-align:center">Sendt automatisk af FjordHub · Du skal ikke besvare denne mail</td></tr>
+    </table>
+  </td></tr></table>
+</div>
+</body></html>""", subtype="html")
         with self._smtp(**settings) as client:
             client.send_message(message)
 
@@ -148,11 +168,19 @@ class PasswordResetService:
         now = _now()
         with closing(self._conn()) as conn:
             recent = conn.execute(
-                "SELECT 1 FROM password_reset_challenges WHERE user_id=? AND created_at>? LIMIT 1",
-                (user.id, _iso(now - timedelta(seconds=60))),
+                """SELECT id, created_at FROM password_reset_challenges
+                   WHERE user_id=? AND used_at IS NULL AND expires_at>?
+                   ORDER BY created_at DESC LIMIT 1""",
+                (user.id, _iso(now)),
             ).fetchone()
-            if recent:
-                return challenge_id
+            if recent and datetime.fromisoformat(recent["created_at"]) > now - timedelta(seconds=60):
+                return str(recent["id"])
+            hourly = conn.execute(
+                "SELECT COUNT(*) AS count FROM password_reset_challenges WHERE user_id=? AND created_at>?",
+                (user.id, _iso(now - timedelta(hours=1))),
+            ).fetchone()
+            if int(hourly["count"] or 0) >= 5:
+                return str(recent["id"]) if recent else challenge_id
             code = f"{secrets.randbelow(1_000_000):06d}"
             conn.execute(
                 """INSERT INTO password_reset_challenges

@@ -38,6 +38,12 @@ class PasswordResetTests(unittest.TestCase):
         self.assertEqual(self.sent, [])
         self.assertIsNone(self.service.verify(challenge, "123456"))
 
+    def test_request_within_one_minute_keeps_active_code(self):
+        first = self.service.request("demo@example.com")
+        second = self.service.request("demo@example.com")
+        self.assertEqual(second, first)
+        self.assertEqual(len(self.sent), 1)
+
     def test_user_without_app_access_does_not_receive_code(self):
         challenge = self.service.request("demo@example.com", app_id="other-app")
         self.assertTrue(challenge)
