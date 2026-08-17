@@ -10,6 +10,7 @@
   "health_path": "/api/health",
   "traefik_prefix": "/lens",
   "compose_dir_env": "FJORDLENS_DIR",
+  "gpu_service": "fjordlens-ai",
   "source_url": "https://github.com/qlerup/fjordlens",
   "icon_url": "https://raw.githubusercontent.com/qlerup/fjordlens/main/static/logos/icons/fjordlens-mark-transparent-512.png",
   "sort_order": 1,

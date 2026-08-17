@@ -8,6 +8,7 @@ from pathlib import Path
 
 from services.compose_env import build_compose_env
 from services.install_state import InstallState
+from services.nvidia_devices import discover_nvidia_devices, render_compose_override
 
 
 # Inside the container, apps live under /apps/<id>.
@@ -15,6 +16,7 @@ from services.install_state import InstallState
 APPS_BASE = Path(os.environ.get("APPS_DIR", "/apps"))
 DATA_BASE = Path(os.environ.get("DATA_DIR", "/data"))
 WINDOWS_DRIVE_RE = re.compile(r"^([A-Za-z]):[\\/](.*)$")
+GPU_OVERRIDE_FILE = "docker-compose.fjordhub-gpu.yml"
 
 
 def generate_secret(length: int = 64) -> str:
@@ -154,6 +156,22 @@ class Installer:
                     return
                 log("Klon faerdig")
 
+            if _is_truthy(env_values.get("ENABLE_GPU_COMPOSE")):
+                gpu_service = str(app_def.get("gpu_service") or "").strip()
+                if not gpu_service:
+                    raise RuntimeError("App-definitionen mangler gpu_service")
+                devices = discover_nvidia_devices()
+                if not devices:
+                    raise RuntimeError(
+                        "Ingen NVIDIA device-filer blev fundet. Kør GPU-helperens PVE-opsætning, genstart LXC'en og prøv igen."
+                    )
+                override_path = install_dir / GPU_OVERRIDE_FILE
+                override_path.write_text(
+                    render_compose_override(gpu_service, devices),
+                    encoding="utf-8",
+                )
+                log(f"GPU-enheder fundet automatisk: {', '.join(devices)}")
+
             log("Skriver .env ...")
             lines = ["# Genereret af FjordHub"]
             for key, value in env_values.items():
@@ -260,7 +278,9 @@ class Installer:
             resolved["APP_REPO_DIR"] = _container_path_to_host_path(install_dir) or str(install_dir)
 
         if _is_truthy(resolved.get("ENABLE_GPU_COMPOSE")):
-            resolved["COMPOSE_FILE"] = "docker-compose.yml:docker-compose.gpu.yml"
+            resolved["COMPOSE_FILE"] = (
+                f"docker-compose.yml:docker-compose.gpu.yml:{GPU_OVERRIDE_FILE}"
+            )
             if str(resolved.get("AI_DEVICE", "")).strip().lower() == "cpu":
                 resolved["AI_DEVICE"] = "auto"
 

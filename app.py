@@ -25,6 +25,7 @@ from services.resource_monitor import ResourceMonitor
 from services.package_catalog import PackageCatalog
 from services.package_manager import PackageManager, PackageError
 from services.password_reset import PasswordResetService
+from services.nvidia_devices import discover_nvidia_devices
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
@@ -211,7 +212,19 @@ def _with_nfs_recommendations(app_def: dict) -> dict:
 
 def _get_apps() -> list[dict]:
     apps = _remote_registry.get_apps()
-    apps = apps if apps else _local_registry.get_all()
+    local_apps = _local_registry.get_all()
+    if apps:
+        local_by_id = {entry.get("id"): entry for entry in local_apps}
+        enriched_apps = []
+        for entry in apps:
+            enriched = dict(entry)
+            local_entry = local_by_id.get(entry.get("id"), {})
+            if local_entry.get("gpu_service"):
+                enriched.setdefault("gpu_service", local_entry["gpu_service"])
+            enriched_apps.append(enriched)
+        apps = enriched_apps
+    else:
+        apps = local_apps
     return [_with_nfs_recommendations(a) for a in apps]
 
 
@@ -1642,11 +1655,20 @@ def api_lxc_type():
 @app.route("/api/gpu-preflight", methods=["POST"])
 @login_required
 def api_gpu_preflight():
-    command = [
-        "docker", "run", "--rm", "--gpus", "all",
+    devices = discover_nvidia_devices()
+    if not devices:
+        return jsonify({
+            "ok": False,
+            "error": "Ingen NVIDIA device-filer blev fundet i LXC-systemet. Kør PVE GPU-opsætningen og genstart LXC'en.",
+        }), 409
+
+    command = ["docker", "run", "--rm", "--gpus", "all"]
+    for device in devices:
+        command.extend(["--device", device])
+    command.extend([
         "nvidia/cuda:12.4.1-base-ubuntu22.04",
         "nvidia-smi",
-    ]
+    ])
     try:
         result = subprocess.run(
             command,
