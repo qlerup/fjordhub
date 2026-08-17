@@ -1,8 +1,9 @@
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
-from services.nvidia_devices import discover_nvidia_devices, render_compose_override
+from services.nvidia_devices import discover_nvidia_devices, nvidia_device_root, render_compose_override
 
 
 class NvidiaDeviceTests(unittest.TestCase):
@@ -45,6 +46,15 @@ class NvidiaDeviceTests(unittest.TestCase):
     def test_returns_empty_for_missing_device_root(self):
         with tempfile.TemporaryDirectory() as tempdir:
             self.assertEqual(discover_nvidia_devices(Path(tempdir) / "missing"), [])
+
+    def test_prefers_explicit_device_root(self):
+        with patch.dict("os.environ", {"NVIDIA_DEVICE_ROOT": "/host/dev"}):
+            self.assertEqual(nvidia_device_root(), Path("/host/dev"))
+
+    def test_returns_empty_when_device_root_cannot_be_read(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            with patch.object(Path, "glob", side_effect=PermissionError("denied")):
+                self.assertEqual(discover_nvidia_devices(Path(tempdir)), [])
 
     def test_renders_all_detected_devices_for_gpu_service(self):
         override = render_compose_override(

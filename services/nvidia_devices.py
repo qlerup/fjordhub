@@ -39,18 +39,25 @@ def nvidia_device_root() -> Path:
 
 def discover_nvidia_devices(device_root: Path | None = None) -> list[str]:
     root = device_root or nvidia_device_root()
-    if not root.is_dir():
+    try:
+        if not root.is_dir():
+            return []
+        root_entries = list(root.glob("nvidia*"))
+    except OSError:
         return []
 
-    devices = [root / name for name in _CORE_DEVICES if (root / name).exists()]
-    devices.extend(path for path in root.glob("nvidia*") if _NUMBERED_GPU.fullmatch(path.name))
+    devices = [path for path in root_entries if path.name in _CORE_DEVICES]
+    devices.extend(path for path in root_entries if _NUMBERED_GPU.fullmatch(path.name))
 
     caps_root = root / "nvidia-caps"
-    if caps_root.is_dir():
-        devices.extend(
-            path for path in caps_root.glob("nvidia-cap*")
-            if _CAPABILITY_DEVICE.fullmatch(path.name)
-        )
+    try:
+        if caps_root.is_dir():
+            devices.extend(
+                path for path in caps_root.glob("nvidia-cap*")
+                if _CAPABILITY_DEVICE.fullmatch(path.name)
+            )
+    except OSError:
+        pass
 
     unique_devices = sorted(set(devices), key=_natural_device_key)
     return ["/dev/" + path.relative_to(root).as_posix() for path in unique_devices]

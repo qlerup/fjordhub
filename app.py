@@ -1655,7 +1655,14 @@ def api_lxc_type():
 @app.route("/api/gpu-preflight", methods=["POST"])
 @login_required
 def api_gpu_preflight():
-    devices = discover_nvidia_devices()
+    try:
+        devices = discover_nvidia_devices()
+    except Exception as exc:
+        app.logger.exception("NVIDIA device discovery failed")
+        return jsonify({
+            "ok": False,
+            "error": f"Kunne ikke undersøge NVIDIA device-filer: {exc}",
+        }), 500
     if not devices:
         return jsonify({
             "ok": False,
