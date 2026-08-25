@@ -440,12 +440,20 @@ class UpdateManager:
                 )
                 return  # Container will restart; this process will be killed shortly
 
+            # --force-recreate: some app services (e.g. FjordLens's fjordlens-ai)
+            # only detect things like GPU/CUDA providers once at process
+            # startup and never re-check. If a service's build context didn't
+            # change, plain "docker compose up -d" leaves the same
+            # long-running process in place, so a bad detection result from
+            # its last boot can persist across every future update until
+            # someone notices and restarts it by hand. Forcing a recreate on
+            # every update run guarantees each container gets a fresh start.
             build_services = self._compose_build_services_for_changes(install_dir, changed_paths)
             if build_services is None:
                 self._append_job_log(app_id, "Kunne ikke analysere compose build-contexts; bruger sikkert fuldt cachebaseret build.")
                 compose_code = self._run_logged(
                     app_id,
-                    ["docker", "compose", "up", "-d", "--build"],
+                    ["docker", "compose", "up", "-d", "--build", "--force-recreate"],
                     cwd=install_dir,
                     timeout=900,
                 )
@@ -466,7 +474,7 @@ class UpdateManager:
                     self._append_job_log(app_id, "Ingen build-contexts er ændret; genbruger eksisterende images.")
                 up_code = self._run_logged(
                     app_id,
-                    ["docker", "compose", "up", "-d", "--no-build"],
+                    ["docker", "compose", "up", "-d", "--no-build", "--force-recreate"],
                     cwd=install_dir,
                     timeout=300,
                 )
