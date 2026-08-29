@@ -1613,6 +1613,7 @@ def api_hub_sso_verify():
         "id": entry["id"],
         "first_name": entry.get("first_name", ""),
         "last_name": entry.get("last_name", ""),
+        "email": entry.get("email", ""),
         "language": _normalize_language(entry.get("language")),
         "role": entry["role"],
         "hub_role": entry.get("hub_role", entry["role"]),

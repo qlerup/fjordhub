@@ -1,5 +1,6 @@
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -61,11 +62,37 @@ class AppUrlTests(unittest.TestCase):
         fjordhub._auth = AuthService(Path(self.tempdir.name) / "hub.db")
 
     def tearDown(self):
+        fjordhub._sso_tokens.clear()
         fjordhub._install_state = self.previous_state
         fjordhub._auth = self.previous_auth
         self.tempdir.cleanup()
         os.environ.pop("HOST_PROC_ROOT", None)
         os.environ.pop("HOST_LAN_IP", None)
+
+    def test_sso_verify_returns_the_users_email(self):
+        hub_key = "test-hub-key"
+        fjordhub._auth.save_hub_key("urban-explorer", hub_key)
+        fjordhub._sso_tokens["test-token"] = {
+            "username": "qlerup",
+            "id": 42,
+            "first_name": "Christian",
+            "last_name": "",
+            "email": "k3dd3@hotmail.dk",
+            "language": "da",
+            "role": "admin",
+            "hub_role": "admin",
+            "app_id": "urban-explorer",
+            "expires_at": time.time() + 60,
+        }
+
+        with fjordhub.app.test_client() as client:
+            response = client.get(
+                "/api/hub/sso-verify?app_id=urban-explorer&token=test-token",
+                headers={"X-Hub-Key": hub_key},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["email"], "k3dd3@hotmail.dk")
 
     def _write_fake_proc(self, net_subdir="net", fib_trie=FIB_TRIE, route=ROUTE):
         proc_root = Path(self.tempdir.name) / "proc"
