@@ -76,7 +76,8 @@ class PasswordResetService:
     def mail_settings(self) -> dict | None:
         with closing(self._conn()) as conn:
             rows = conn.execute(
-                "SELECT key, value FROM hub_settings WHERE key IN ('smtp_user','smtp_password','smtp_host','smtp_port')"
+                "SELECT key, value FROM hub_settings WHERE key IN "
+                "('smtp_user','smtp_password','smtp_host','smtp_port','smtp_from')"
             ).fetchall()
         values = {str(row["key"]): str(row["value"]) for row in rows}
         user = self._decrypt(values.get("smtp_user", ""))
@@ -88,16 +89,25 @@ class PasswordResetService:
             "password": password,
             "host": values.get("smtp_host") or "smtp.gmail.com",
             "port": int(values.get("smtp_port") or 465),
+            # Ældre opsætninger (fra før dette felt fandtes) havde altid en
+            # emailformet smtp_user og brugte den direkte som afsenderadresse.
+            "from_address": values.get("smtp_from") or user,
         }
 
-    def save_mail_settings(self, user: str, password: str, host: str, port: int):
+    def save_mail_settings(self, user: str, password: str, host: str, port: int, from_address: str = ""):
         current = self.mail_settings()
-        user = str(user or "").strip().lower()
+        # SMTP-loginnavnet er ikke nødvendigvis en emailadresse (fx Resend bruger
+        # bogstaveligt "resend" som brugernavn og en API-nøgle som kodeord) - kun
+        # afsenderadressen skal ligne en email.
+        user = str(user or "").strip()
         password = "".join(str(password or "").split()) or (current or {}).get("password", "")
         host = str(host or "smtp.gmail.com").strip()
         port = int(port or 465)
-        if "@" not in user or not password:
-            raise ValueError("Email og app-adgangskode er påkrævet.")
+        from_address = str(from_address or "").strip().lower() or user.lower()
+        if not user or not password:
+            raise ValueError("SMTP-brugernavn og adgangskode/API-nøgle er påkrævet.")
+        if "@" not in from_address:
+            raise ValueError("Afsenderadressen skal være en gyldig email.")
         with self._smtp(user, password, host, port) as client:
             client.noop()
         values = {
@@ -105,6 +115,7 @@ class PasswordResetService:
             "smtp_password": self._encrypt(password),
             "smtp_host": host,
             "smtp_port": str(port),
+            "smtp_from": from_address,
         }
         with closing(self._conn()) as conn:
             for key, value in values.items():
@@ -125,16 +136,16 @@ class PasswordResetService:
         client.login(user, password)
         return client
 
-    def _send_code(self, to: str, code: str):
+    def _send_code(self, to: str, code: str, app_name: str = "FjordHub"):
         settings = self.mail_settings()
         if not settings:
             raise RuntimeError("Mailafsendelse er ikke konfigureret.")
         message = EmailMessage()
-        message["From"] = formataddr(("FjordHub", settings["user"]))
+        message["From"] = formataddr((app_name, settings["from_address"]))
         message["To"] = to
-        message["Subject"] = f"{code} er din sikkerhedskode til FjordHub"
+        message["Subject"] = f"{code} er din sikkerhedskode til {app_name}"
         message.set_content(
-            f"Hej\n\nDin sikkerhedskode til FjordHub er: {code}\n\n"
+            f"Hej\n\nDin sikkerhedskode til {app_name} er: {code}\n\n"
             "Koden udløber om 5 minutter. Hvis du ikke har bedt om den, kan du ignorere denne mail."
         )
         message.add_alternative(f"""<!doctype html>
@@ -143,7 +154,7 @@ class PasswordResetService:
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
     <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px">
       <tr><td style="padding:0 6px 14px">
-        <div style="font-size:11px;letter-spacing:2px;color:#8a8272;text-transform:uppercase;font-weight:700">FjordHub</div>
+        <div style="font-size:11px;letter-spacing:2px;color:#8a8272;text-transform:uppercase;font-weight:700">{app_name}</div>
         <div style="font-family:'Palatino Linotype',Palatino,Georgia,serif;font-size:28px;font-weight:700;margin-top:4px">Nulstil adgangskode</div>
       </td></tr>
       <tr><td style="background:#fffdf7;border:1px solid #e3dccb;border-radius:14px;padding:24px">
@@ -151,7 +162,7 @@ class PasswordResetService:
         <div style="margin:22px 0;padding:18px 12px;background:#edf3ff;border:1px solid #3b82f6;border-radius:10px;text-align:center;font-size:30px;font-weight:800;letter-spacing:8px;color:#1d4ed8">{code}</div>
         <div style="font-size:13px;line-height:1.6;color:#8a8272"><strong style="color:#514b40">Koden udløber om 5 minutter.</strong><br>Hvis du ikke har bedt om at nulstille din adgangskode, kan du roligt ignorere mailen.</div>
       </td></tr>
-      <tr><td style="padding:14px 6px 0;font-size:12px;color:#8a8272;text-align:center">Sendt automatisk af FjordHub · Du skal ikke besvare denne mail</td></tr>
+      <tr><td style="padding:14px 6px 0;font-size:12px;color:#8a8272;text-align:center">Sendt automatisk af {app_name} · Du skal ikke besvare denne mail</td></tr>
     </table>
   </td></tr></table>
 </div>
@@ -159,7 +170,7 @@ class PasswordResetService:
         with self._smtp(**settings) as client:
             client.send_message(message)
 
-    def request(self, email: str, app_id: str = "") -> str:
+    def request(self, email: str, app_id: str = "", app_name: str = "") -> str:
         challenge_id = str(uuid.uuid4())
         normalized = str(email or "").strip().lower()
         user = self._auth.get_by_email(normalized)
@@ -190,7 +201,7 @@ class PasswordResetService:
             )
             conn.commit()
         try:
-            self._send_code(normalized, code)
+            self._send_code(normalized, code, app_name=app_name or "FjordHub")
         except Exception as error:
             print(f"[password-reset] Mail kunne ikke sendes: {error}")
         return challenge_id

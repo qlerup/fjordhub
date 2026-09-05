@@ -18,7 +18,7 @@ class PasswordResetTests(unittest.TestCase):
         self.auth.set_user_app_access(self.user_id, "urban-explorer")
         self.service = PasswordResetService(self.db_path, "test-secret", self.auth)
         self.sent = []
-        self.service._send_code = lambda email, code: self.sent.append((email, code))
+        self.service._send_code = lambda email, code, app_name="FjordHub": self.sent.append((email, code, app_name))
 
     def tearDown(self):
         self.tempdir.cleanup()
@@ -31,6 +31,14 @@ class PasswordResetTests(unittest.TestCase):
         self.assertTrue(self.service.complete(challenge, token, "new-secret"))
         self.assertFalse(self.service.complete(challenge, token, "another-secret"))
         self.assertIsNotNone(self.auth.check_password("demo", "new-secret"))
+
+    def test_email_is_branded_with_the_requesting_apps_name(self):
+        self.service.request("demo@example.com", app_id="urban-explorer", app_name="Urban Explorer")
+        self.assertEqual(self.sent[0][2], "Urban Explorer")
+
+    def test_email_defaults_to_fjordhub_branding_without_an_app_name(self):
+        self.service.request("demo@example.com")
+        self.assertEqual(self.sent[0][2], "FjordHub")
 
     def test_unknown_email_has_same_shape_but_no_challenge(self):
         challenge = self.service.request("missing@example.com", app_id="urban-explorer")

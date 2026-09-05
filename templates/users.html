@@ -252,7 +252,7 @@
         <input id="edit-email" name="email" type="email" autocomplete="email" required>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
-        <div class="auth-field">
+        <div class="auth-field" id="edit-current-password-wrap">
           <label for="edit-current-password">Nuværende adgangskode <span style="font-weight:400;color:var(--text-muted);font-size:.8rem;">(kræves ved ændring)</span></label>
           <input id="edit-current-password" name="current_password" type="password" autocomplete="current-password">
         </div>
@@ -352,6 +352,7 @@ function toggleAppRole(appId, checked) {
   var closeBtn = document.getElementById('close-edit-modal');
   var cancelBtn = document.getElementById('cancel-edit-modal');
   var users = {{ users | tojson }};
+  var currentUserId = {{ current_user.id | tojson }};
   var usersById = {};
 
   (users || []).forEach(function (u) {
@@ -398,6 +399,10 @@ function openEditModal(user) {
   document.getElementById('edit-username').value = user.username || '';
   document.getElementById('edit-email').value = user.email || '';
   document.getElementById('edit-current-password').value = '';
+  // Kun relevant ved selv-redigering - en admin der redigerer en anden bruger
+  // kender ikke (og skal ikke kende) den brugerens nuværende adgangskode.
+  document.getElementById('edit-current-password-wrap').style.display =
+    (String(user.id) === String(currentUserId)) ? '' : 'none';
   document.getElementById('edit-new-password').value = '';
   document.getElementById('edit-new-password2').value = '';
   document.getElementById('edit-role').value = user.role || 'user';

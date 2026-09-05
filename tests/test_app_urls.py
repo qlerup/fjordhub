@@ -354,6 +354,58 @@ class AppUrlTests(unittest.TestCase):
         self.assertIn("/profile?password_changed=1", change_response.headers["Location"])
         self.assertFalse(fjordhub._auth.get_by_username("first-login").must_change_password)
 
+    def test_admin_can_reset_another_users_password_without_their_current_password(self):
+        fjordhub._auth.create_user(
+            "admin1", "admin-secret", role="admin", email="admin1@example.com",
+        )
+        other_id = fjordhub._auth.create_user(
+            "other", "old-secret", email="other@example.com",
+        )
+
+        with fjordhub.app.test_client() as client:
+            client.post("/login", data={"username": "admin1", "password": "admin-secret"})
+            response = client.post(
+                f"/users/{other_id}/edit",
+                data={
+                    "username": "other",
+                    "email": "other@example.com",
+                    "language": "da",
+                    "role": "user",
+                    "new_password": "brand-new-secret",
+                    "new_password2": "brand-new-secret",
+                },
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/users?msg=2", response.headers["Location"])
+        self.assertIsNotNone(fjordhub._auth.check_password("other", "brand-new-secret"))
+        self.assertIsNone(fjordhub._auth.check_password("other", "old-secret"))
+
+    def test_admin_editing_own_password_still_requires_current_password(self):
+        admin_id = fjordhub._auth.create_user(
+            "admin2", "admin-secret", role="admin", email="admin2@example.com",
+        )
+
+        with fjordhub.app.test_client() as client:
+            client.post("/login", data={"username": "admin2", "password": "admin-secret"})
+            response = client.post(
+                f"/users/{admin_id}/edit",
+                data={
+                    "username": "admin2",
+                    "email": "admin2@example.com",
+                    "language": "da",
+                    "role": "admin",
+                    "current_password": "wrong-password",
+                    "new_password": "brand-new-secret",
+                    "new_password2": "brand-new-secret",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Nuværende adgangskode er forkert", response.get_data(as_text=True))
+        self.assertIsNone(fjordhub._auth.check_password("admin2", "brand-new-secret"))
+        self.assertIsNotNone(fjordhub._auth.check_password("admin2", "admin-secret"))
+
 
 if __name__ == "__main__":
     unittest.main()

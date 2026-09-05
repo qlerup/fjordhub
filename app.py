@@ -698,6 +698,7 @@ def settings():
         smtp_user=(mail_settings or {}).get("user", ""),
         smtp_host=(mail_settings or {}).get("host", "smtp.gmail.com"),
         smtp_port=(mail_settings or {}).get("port", 465),
+        smtp_from=(mail_settings or {}).get("from_address", ""),
         mail_saved=str(request.args.get("mail_saved") or "") == "1",
         mail_error=str(request.args.get("mail_error") or ""),
     )
@@ -714,6 +715,7 @@ def save_mail_settings():
             request.form.get("smtp_password") or "",
             request.form.get("smtp_host") or "smtp.gmail.com",
             int(request.form.get("smtp_port") or 465),
+            request.form.get("smtp_from") or "",
         )
         return redirect(url_for("settings", section="general", mail_saved="1"))
     except Exception as exc:
@@ -1007,9 +1009,13 @@ def edit_user(user_id: int):
             edit_error="Kan ikke ændre rolle for den eneste admin.",
             edit_user_id=user_id,
         )
-    password_fields_filled = bool(current_password or new_password or new_password2)
+    # En admin der redigerer en ANDEN bruger kender ikke og skal ikke kende den
+    # brugerens nuværende adgangskode - kun ved selv-redigering giver det mening
+    # at kræve den (samme sikkerhedsmodel som /profile).
+    editing_self = target.id == current_user.id
+    password_fields_filled = bool(new_password or new_password2 or (editing_self and current_password))
     if password_fields_filled:
-        if not (current_password and new_password and new_password2):
+        if editing_self and not (current_password and new_password and new_password2):
             return render_template(
                 "users.html",
                 active_page="users",
@@ -1018,6 +1024,17 @@ def edit_user(user_id: int):
                 hub_apps=_installed_hub_apps(),
                 language_options=LANGUAGE_OPTIONS,
                 edit_error="For at ændre adgangskode skal du udfylde nuværende, ny og gentag ny adgangskode.",
+                edit_user_id=user_id,
+            )
+        if not editing_self and not (new_password and new_password2):
+            return render_template(
+                "users.html",
+                active_page="users",
+                users=_auth.get_all_users_with_access(),
+                admin_count=_auth.admin_count(),
+                hub_apps=_installed_hub_apps(),
+                language_options=LANGUAGE_OPTIONS,
+                edit_error="Udfyld både ny adgangskode og gentag ny adgangskode.",
                 edit_user_id=user_id,
             )
         if new_password != new_password2:
@@ -1031,7 +1048,7 @@ def edit_user(user_id: int):
                 edit_error="Ny adgangskode og gentag ny adgangskode matcher ikke.",
                 edit_user_id=user_id,
             )
-        if _auth.check_password(target.username, current_password) is None:
+        if editing_self and _auth.check_password(target.username, current_password) is None:
             return render_template(
                 "users.html",
                 active_page="users",
@@ -1186,7 +1203,8 @@ def api_hub_password_reset_request():
     app_id, error_response = _require_app_key(data)
     if error_response:
         return error_response
-    challenge_id = _password_reset.request(str(data.get("email") or ""), app_id=app_id)
+    app_name = next((a.get("name") for a in _get_apps() if a.get("id") == app_id), "") or app_id
+    challenge_id = _password_reset.request(str(data.get("email") or ""), app_id=app_id, app_name=app_name)
     return jsonify({
         "ok": True,
         "challenge_id": challenge_id,
