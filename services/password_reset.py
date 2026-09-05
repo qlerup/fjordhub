@@ -187,7 +187,7 @@ class PasswordResetService:
   </td></tr></table>
 </div>
 </body></html>""", subtype="html")
-        with self._smtp(**settings) as client:
+        with self._smtp(settings["user"], settings["password"], settings["host"], settings["port"]) as client:
             client.send_message(message)
 
     def request(self, email: str, app_id: str = "", app_name: str = "") -> str:

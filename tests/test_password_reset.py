@@ -4,9 +4,30 @@ import unittest
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from services.auth import AuthService
 from services.password_reset import PasswordResetService
+
+
+class _FakeSmtpClient:
+    """Stands in for smtplib's SMTP/SMTP_SSL so tests never touch the network,
+    while still exercising the real _send_code/_smtp call signatures."""
+
+    def __init__(self):
+        self.sent_messages = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def noop(self):
+        return (250, b"OK")
+
+    def send_message(self, message):
+        self.sent_messages.append(message)
 
 
 class PasswordResetTests(unittest.TestCase):
@@ -19,6 +40,28 @@ class PasswordResetTests(unittest.TestCase):
         self.service = PasswordResetService(self.db_path, "test-secret", self.auth)
         self.sent = []
         self.service._send_code = lambda email, code, app_name="FjordHub": self.sent.append((email, code, app_name))
+
+    def test_send_code_calls_smtp_with_the_settings_dicts_exact_keys(self):
+        """Regression test: mail_settings() returns a 5-key dict (user/password/host/
+        port/from_address), but _smtp() only accepts 4 params. _send_code() previously
+        called self._smtp(**settings), which raised a silent TypeError on every real
+        send (masked by request()'s broad except) - this exercises the real, unpatched
+        _send_code so a signature mismatch like that fails loudly again."""
+        real_service = PasswordResetService(self.db_path, "test-secret", self.auth)
+        fake_save_client = _FakeSmtpClient()
+        with patch.object(real_service, "_smtp", return_value=fake_save_client):
+            real_service.save_mail_settings("resend", "api-key", "smtp.resend.com", 465, "noreply@example.com")
+
+        fake_send_client = _FakeSmtpClient()
+        with patch.object(real_service, "_smtp", return_value=fake_send_client) as mock_smtp:
+            real_service._send_code("someone@example.com", "123456", app_name="Urban Explorer")
+
+        mock_smtp.assert_called_once_with("resend", "api-key", "smtp.resend.com", 465)
+        self.assertEqual(len(fake_send_client.sent_messages), 1)
+        sent = fake_send_client.sent_messages[0]
+        self.assertIn("noreply@example.com", sent["From"])
+        self.assertEqual(sent["To"], "someone@example.com")
+        self.assertIn("123456", sent["Subject"])
 
     def tearDown(self):
         self.tempdir.cleanup()
