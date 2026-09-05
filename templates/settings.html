@@ -40,7 +40,7 @@
 
       {% if mail_saved %}<div class="auth-ok">Forbindelsen virker, og mailopsætningen er gemt.</div>{% endif %}
       {% if mail_error %}<div class="auth-error">{{ mail_error }}</div>{% endif %}
-      <form method="post" action="{{ url_for('save_mail_settings') }}">
+      <form method="post" action="{{ url_for('save_mail_settings') }}" id="mail-settings-form">
         <div class="auth-field"><label for="smtp_from">Afsender-email</label><input id="smtp_from" name="smtp_from" type="email" value="{{ smtp_from }}" placeholder="noreply@dit-domæne.dk" required></div>
         <div class="settings-mail-grid">
           <div class="auth-field"><label for="smtp_user">SMTP-brugernavn</label><input id="smtp_user" name="smtp_user" value="{{ smtp_user }}" placeholder="fx din Gmail-adresse, eller “resend”" required></div>
@@ -52,6 +52,31 @@
         </div>
         <button type="submit" class="btn-install">Test og gem</button>
       </form>
+    </div>
+  </div>
+
+  {# ── Test-mail modal: bekræfter reel levering før opsætningen gemmes ── #}
+  <div id="mail-test-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);align-items:center;justify-content:center;z-index:9999;">
+    <div style="width:420px;max-width:92vw;background:var(--surface-1,#1c1e2a);border:1px solid var(--border,#2a2f3a);border-radius:12px;padding:20px;">
+      <h3 style="margin:0 0 6px;">Send en testmail først</h3>
+      <p id="mail-test-intro" style="color:var(--text-muted);font-size:.86rem;margin:0 0 14px;">Vi sender en rigtig mail med de nye indstillinger, så du kan bekræfte at den faktisk kommer frem, før den gemmes.</p>
+
+      <div id="mail-test-ask">
+        <div class="auth-field"><label for="mail-test-to">Send testmail til</label><input id="mail-test-to" type="email" placeholder="din@email.dk" required></div>
+        <div id="mail-test-error" class="auth-error" style="display:none;margin-top:8px;"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+          <button type="button" class="btn-open" id="mail-test-cancel">Annuller</button>
+          <button type="button" class="btn-install" id="mail-test-send">Send testmail</button>
+        </div>
+      </div>
+
+      <div id="mail-test-sent" style="display:none;">
+        <div class="auth-ok">Testmailen er sendt. Tjek indbakken (og Spam) for at bekræfte at den kom frem.</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+          <button type="button" class="btn-open" id="mail-test-retry">Prøv en anden adresse</button>
+          <button type="button" class="btn-install" id="mail-test-confirm">Jeg modtog mailen</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -88,6 +113,82 @@
 </div>
 
 <script>
+(function () {
+  var form = document.getElementById('mail-settings-form');
+  if (!form) return;
+  var modal = document.getElementById('mail-test-modal');
+  var askStep = document.getElementById('mail-test-ask');
+  var sentStep = document.getElementById('mail-test-sent');
+  var errorBox = document.getElementById('mail-test-error');
+  var testToInput = document.getElementById('mail-test-to');
+  var sendBtn = document.getElementById('mail-test-send');
+  var confirmBtn = document.getElementById('mail-test-confirm');
+  var bypassIntercept = false;
+
+  function openModal() {
+    askStep.style.display = '';
+    sentStep.style.display = 'none';
+    errorBox.style.display = 'none';
+    testToInput.value = '';
+    modal.style.display = 'flex';
+    testToInput.focus();
+  }
+  function closeModal() { modal.style.display = 'none'; }
+
+  form.addEventListener('submit', function (e) {
+    if (bypassIntercept) return;
+    e.preventDefault();
+    openModal();
+  });
+
+  document.getElementById('mail-test-cancel').addEventListener('click', closeModal);
+  document.getElementById('mail-test-retry').addEventListener('click', openModal);
+
+  sendBtn.addEventListener('click', function () {
+    var testTo = testToInput.value.trim();
+    if (!testTo) { testToInput.focus(); return; }
+    errorBox.style.display = 'none';
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sender…';
+    fetch('{{ url_for("test_mail_settings") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        smtp_user: document.getElementById('smtp_user').value,
+        smtp_password: document.getElementById('smtp_password').value,
+        smtp_host: document.getElementById('smtp_host').value,
+        smtp_port: document.getElementById('smtp_port').value,
+        smtp_from: document.getElementById('smtp_from').value,
+        test_to: testTo,
+      }),
+    })
+      .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+      .then(function (res) {
+        if (res.ok && res.data.ok) {
+          askStep.style.display = 'none';
+          sentStep.style.display = '';
+        } else {
+          errorBox.textContent = (res.data && res.data.error) || 'Kunne ikke sende testmailen.';
+          errorBox.style.display = '';
+        }
+      })
+      .catch(function () {
+        errorBox.textContent = 'Kunne ikke kontakte serveren.';
+        errorBox.style.display = '';
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send testmail';
+      });
+  });
+
+  confirmBtn.addEventListener('click', function () {
+    bypassIntercept = true;
+    closeModal();
+    form.requestSubmit();
+  });
+})();
+
 (function () {
   var tabs = document.querySelectorAll('.settings-tab');
   tabs.forEach(function (tab) {

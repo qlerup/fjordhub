@@ -156,6 +156,38 @@ class PasswordResetService:
         client.login(user, password)
         return client
 
+    def send_test_email(self, user: str, password: str, host: str, port: int, from_address: str, test_to: str) -> None:
+        """Send a real email using NOT-YET-SAVED settings, to a chosen test address.
+
+        Used by the settings UI to prove delivery actually works (a connection/login
+        test alone can't catch a rejected send - e.g. an unverified sender domain -
+        which is exactly what silently broke real password resets before). This is an
+        admin-only diagnostic action, so unlike the public password-reset flow it's
+        fine (and useful) to raise the real underlying error.
+        """
+        user = str(user or "").strip()
+        password = "".join(str(password or "").split())
+        host = str(host or "smtp.gmail.com").strip()
+        port = int(port or 465)
+        from_address = str(from_address or "").strip().lower()
+        test_to = str(test_to or "").strip().lower()
+        if not user or not password:
+            raise ValueError("SMTP-brugernavn og adgangskode/API-nøgle er påkrævet.")
+        if "@" not in from_address:
+            raise ValueError("Afsenderadressen skal være en gyldig email.")
+        if "@" not in test_to:
+            raise ValueError("Angiv en gyldig email at sende testmailen til.")
+        message = EmailMessage()
+        message["From"] = formataddr(("FjordHub", from_address))
+        message["To"] = test_to
+        message["Subject"] = "Testmail fra FjordHub"
+        message.set_content(
+            "Hej\n\nDette er en testmail fra FjordHub for at bekræfte at mailopsætningen virker.\n\n"
+            "Hvis du kan læse denne mail, er opsætningen klar til brug."
+        )
+        with self._smtp(user, password, host, port) as client:
+            client.send_message(message)
+
     def _send_code(self, to: str, code: str, app_name: str = "FjordHub"):
         settings = self.mail_settings()
         if not settings:

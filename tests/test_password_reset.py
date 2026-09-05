@@ -63,6 +63,24 @@ class PasswordResetTests(unittest.TestCase):
         self.assertEqual(sent["To"], "someone@example.com")
         self.assertIn("123456", sent["Subject"])
 
+    def test_send_test_email_delivers_to_the_given_address_without_persisting(self):
+        fake_client = _FakeSmtpClient()
+        with patch.object(self.service, "_smtp", return_value=fake_client) as mock_smtp:
+            self.service.send_test_email(
+                "resend", "api-key", "smtp.resend.com", 465, "noreply@example.com", "admin@example.com"
+            )
+        mock_smtp.assert_called_once_with("resend", "api-key", "smtp.resend.com", 465)
+        self.assertEqual(len(fake_client.sent_messages), 1)
+        self.assertEqual(fake_client.sent_messages[0]["To"], "admin@example.com")
+        # Nothing should be written to hub_settings just from sending a test.
+        self.assertIsNone(self.service.mail_settings())
+
+    def test_send_test_email_rejects_invalid_addresses(self):
+        with self.assertRaises(ValueError):
+            self.service.send_test_email("resend", "api-key", "smtp.resend.com", 465, "not-an-email", "admin@example.com")
+        with self.assertRaises(ValueError):
+            self.service.send_test_email("resend", "api-key", "smtp.resend.com", 465, "noreply@example.com", "not-an-email")
+
     def tearDown(self):
         self.tempdir.cleanup()
 

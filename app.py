@@ -724,6 +724,31 @@ def save_mail_settings():
         return redirect(url_for("settings", section="general", mail_error=str(exc)))
 
 
+@app.route("/settings/mail/test", methods=["POST"])
+@login_required
+def test_mail_settings():
+    if not current_user.is_admin:
+        return jsonify({"ok": False, "error": "Forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    password = str(data.get("smtp_password") or "")
+    if not password:
+        # Password field is left blank to mean "keep the currently saved one"
+        # (mirrors save_mail_settings) - fall back to it for the test send too.
+        password = (_password_reset.mail_settings() or {}).get("password", "")
+    try:
+        _password_reset.send_test_email(
+            str(data.get("smtp_user") or ""),
+            password,
+            str(data.get("smtp_host") or "smtp.gmail.com"),
+            int(data.get("smtp_port") or 465),
+            str(data.get("smtp_from") or ""),
+            str(data.get("test_to") or ""),
+        )
+        return jsonify({"ok": True})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+
 @app.route("/settings/forgot-password-toggle", methods=["POST"])
 @login_required
 def toggle_forgot_password():

@@ -3,6 +3,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import app as fjordhub
 from services.auth import AuthService
@@ -426,6 +427,40 @@ class AppUrlTests(unittest.TestCase):
                 forgot_response = client.get("/glemt-adgangskode")
                 self.assertEqual(forgot_response.status_code, 302)
                 self.assertIn("/login", forgot_response.headers["Location"])
+        finally:
+            fjordhub._password_reset = original_service
+
+    def test_mail_test_endpoint_sends_without_persisting_settings(self):
+        from services.password_reset import PasswordResetService
+
+        original_service = fjordhub._password_reset
+        fjordhub._password_reset = PasswordResetService(
+            Path(self.tempdir.name) / "hub.db", fjordhub.app.secret_key, fjordhub._auth
+        )
+        try:
+            fjordhub._auth.create_user("mailtest-admin", "admin-secret", role="admin", email="mailtest-admin@example.com")
+            sent = []
+            with patch.object(fjordhub._password_reset, "_smtp") as mock_smtp:
+                fake_client = MagicMock()
+                fake_client.__enter__.return_value = fake_client
+                fake_client.send_message.side_effect = lambda msg: sent.append(msg)
+                mock_smtp.return_value = fake_client
+
+                with fjordhub.app.test_client() as client:
+                    client.post("/login", data={"username": "mailtest-admin", "password": "admin-secret"})
+                    response = client.post(
+                        "/settings/mail/test",
+                        json={
+                            "smtp_user": "resend", "smtp_password": "api-key",
+                            "smtp_host": "smtp.resend.com", "smtp_port": 465,
+                            "smtp_from": "noreply@example.com", "test_to": "admin@example.com",
+                        },
+                    )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.get_json()["ok"])
+            self.assertEqual(len(sent), 1)
+            self.assertIsNone(fjordhub._password_reset.mail_settings())
         finally:
             fjordhub._password_reset = original_service
 
