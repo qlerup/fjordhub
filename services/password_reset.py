@@ -126,6 +126,26 @@ class PasswordResetService:
                 )
             conn.commit()
 
+    def is_enabled(self) -> bool:
+        """Whether FjordHub's own /glemt-adgangskode page offers password reset at all.
+
+        Defaults to on. This only gates FjordHub's own login page - it has no effect
+        on apps that delegate to /api/hub/apps/password-reset/*, which each have their
+        own independent on/off setting.
+        """
+        with closing(self._conn()) as conn:
+            row = conn.execute("SELECT value FROM hub_settings WHERE key='forgot_password_enabled'").fetchone()
+        return True if row is None else str(row["value"]) == "1"
+
+    def set_enabled(self, enabled: bool) -> None:
+        with closing(self._conn()) as conn:
+            conn.execute(
+                """INSERT INTO hub_settings (key, value, updated_at) VALUES (?, ?, ?)
+                   ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at""",
+                ("forgot_password_enabled", "1" if enabled else "0", _iso(_now())),
+            )
+            conn.commit()
+
     @staticmethod
     def _smtp(user: str, password: str, host: str, port: int):
         if port == 465:

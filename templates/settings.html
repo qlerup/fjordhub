@@ -29,6 +29,15 @@
     <div class="settings-card">
       <div class="settings-card-head"><h2>Email til glemt adgangskode</h2></div>
       <p style="color:var(--text-muted);font-size:.86rem;margin-bottom:18px">Fx Gmail eller Resend. FjordHub bruger opsætningen for både hubben og hub-styrede apps.</p>
+
+      <form method="post" action="{{ url_for('toggle_forgot_password') }}" style="margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--border,#2a2f3a);">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+          <input type="checkbox" name="enabled" value="1" onchange="this.form.requestSubmit()" {% if forgot_password_enabled %}checked{% endif %}>
+          <span>Tillad "Glemt adgangskode?" på FjordHub's login-side</span>
+        </label>
+        <p style="color:var(--text-muted);font-size:.8rem;margin:4px 0 0 26px;">Slår kun FjordHub's egen glemt-kode-side til/fra. Apps som Urban Explorer og FjordLens har hver deres egen tilsvarende indstilling.</p>
+      </form>
+
       {% if mail_saved %}<div class="auth-ok">Forbindelsen virker, og mailopsætningen er gemt.</div>{% endif %}
       {% if mail_error %}<div class="auth-error">{{ mail_error }}</div>{% endif %}
       <form method="post" action="{{ url_for('save_mail_settings') }}">

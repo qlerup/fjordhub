@@ -279,7 +279,7 @@ def _ensure_install_state_for_existing_apps(apps: list[dict]) -> None:
 
 @app.context_processor
 def inject_globals():
-    return {"app_name": "FjordHub", "active_page": ""}
+    return {"app_name": "FjordHub", "active_page": "", "forgot_password_enabled": _password_reset.is_enabled()}
 
 
 # ── Auth routes ──────────────────────────────────────────────────────────────
@@ -368,6 +368,8 @@ def login():
 def forgot_password():
     if _auth.users_count() == 0:
         return redirect(url_for("setup"))
+    if not _password_reset.is_enabled():
+        return redirect(url_for("login"))
     step = str(request.form.get("step") or request.args.get("step") or "email")
     error = ""
     message = ""
@@ -720,6 +722,15 @@ def save_mail_settings():
         return redirect(url_for("settings", section="general", mail_saved="1"))
     except Exception as exc:
         return redirect(url_for("settings", section="general", mail_error=str(exc)))
+
+
+@app.route("/settings/forgot-password-toggle", methods=["POST"])
+@login_required
+def toggle_forgot_password():
+    if not current_user.is_admin:
+        return redirect(url_for("dashboard"))
+    _password_reset.set_enabled(str(request.form.get("enabled") or "") == "1")
+    return redirect(url_for("settings", section="general"))
 
 
 def _hub_update_label(state: str, update_available: bool = False) -> str:

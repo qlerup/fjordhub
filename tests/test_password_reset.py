@@ -32,6 +32,15 @@ class PasswordResetTests(unittest.TestCase):
         self.assertFalse(self.service.complete(challenge, token, "another-secret"))
         self.assertIsNotNone(self.auth.check_password("demo", "new-secret"))
 
+    def test_forgot_password_is_enabled_by_default(self):
+        self.assertTrue(self.service.is_enabled())
+
+    def test_forgot_password_can_be_disabled_and_reenabled(self):
+        self.service.set_enabled(False)
+        self.assertFalse(self.service.is_enabled())
+        self.service.set_enabled(True)
+        self.assertTrue(self.service.is_enabled())
+
     def test_email_is_branded_with_the_requesting_apps_name(self):
         self.service.request("demo@example.com", app_id="urban-explorer", app_name="Urban Explorer")
         self.assertEqual(self.sent[0][2], "Urban Explorer")

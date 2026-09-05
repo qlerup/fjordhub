@@ -406,6 +406,29 @@ class AppUrlTests(unittest.TestCase):
         self.assertIsNone(fjordhub._auth.check_password("admin2", "brand-new-secret"))
         self.assertIsNotNone(fjordhub._auth.check_password("admin2", "admin-secret"))
 
+    def test_forgot_password_link_hidden_and_route_blocked_when_disabled(self):
+        from services.password_reset import PasswordResetService
+
+        original_service = fjordhub._password_reset
+        fjordhub._password_reset = PasswordResetService(
+            Path(self.tempdir.name) / "hub.db", fjordhub.app.secret_key, fjordhub._auth
+        )
+        try:
+            fjordhub._auth.create_user("toggle-user", "secret1", email="toggle-user@example.com")
+            with fjordhub.app.test_client() as client:
+                enabled_page = client.get("/login")
+                self.assertIn(b"Glemt adgangskode?", enabled_page.data)
+
+                fjordhub._password_reset.set_enabled(False)
+                disabled_page = client.get("/login")
+                self.assertNotIn(b"Glemt adgangskode?", disabled_page.data)
+
+                forgot_response = client.get("/glemt-adgangskode")
+                self.assertEqual(forgot_response.status_code, 302)
+                self.assertIn("/login", forgot_response.headers["Location"])
+        finally:
+            fjordhub._password_reset = original_service
+
 
 if __name__ == "__main__":
     unittest.main()

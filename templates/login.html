@@ -23,7 +23,7 @@
       <input id="password" name="password" type="password" autocomplete="current-password" required>
     </div>
     <button type="submit" class="auth-btn">Log ind</button>
-    <a class="auth-link" href="{{ url_for('forgot_password') }}">Glemt adgangskode?</a>
+    {% if forgot_password_enabled %}<a class="auth-link" href="{{ url_for('forgot_password') }}">Glemt adgangskode?</a>{% endif %}
   </form>
 </div>
 {% endblock %}
