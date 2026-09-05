@@ -962,7 +962,7 @@ def create_user():
         )
         for aid in app_ids:
             app_role = app_roles.get(aid, "user")
-            if app_role not in ("admin", "user"):
+            if app_role not in _auth.app_roles(aid):
                 app_role = "user"
             _auth.set_user_app_access(user_id, aid, app_role)
         return redirect(url_for("users", msg="1"))
@@ -1061,7 +1061,7 @@ def edit_user(user_id: int):
             _auth.remove_user_app_access(user_id, aid)
         for aid in app_ids:
             app_role = app_roles.get(aid, "user")
-            if app_role not in ("admin", "user"):
+            if app_role not in _auth.app_roles(aid):
                 app_role = "user"
             _auth.set_user_app_access(user_id, aid, app_role)
         return redirect(url_for("users", msg="2"))
@@ -1111,7 +1111,7 @@ def hub_user_sync():
     last_name = str(data.get("last_name") or "").strip()
     email = str(data.get("email") or "").strip()
     language = _normalize_language(data.get("language")) if "language" in data else ""
-    if role not in ("admin", "user"):
+    if role not in _auth.app_roles(app_id):
         role = "user"
     if not username:
         return jsonify({"ok": False, "error": "username påkrævet"}), 400

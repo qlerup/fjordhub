@@ -198,6 +198,7 @@
               <label style="font-size:.8rem;color:var(--text-muted);margin-bottom:4px;display:block;">Rolle i {{ app.name }}</label>
               <select name="app_role_{{ app.id }}" class="auth-select" style="font-size:.82rem;padding:5px 8px;">
                 <option value="user">Bruger</option>
+                {% if app.id == 'fjordlens' %}<option value="manager">Manager</option>{% endif %}
                 <option value="admin">Admin</option>
               </select>
             </div>
@@ -298,6 +299,7 @@
               <label style="font-size:.8rem;color:var(--text-muted);margin-bottom:4px;display:block;">Rolle i {{ app.name }}</label>
               <select id="edit_app_role_{{ app.id }}" name="app_role_{{ app.id }}" class="auth-select" style="font-size:.82rem;padding:5px 8px;">
                 <option value="user">Bruger</option>
+                {% if app.id == 'fjordlens' %}<option value="manager">Manager</option>{% endif %}
                 <option value="admin">Admin</option>
               </select>
             </div>

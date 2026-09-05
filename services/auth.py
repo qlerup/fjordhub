@@ -136,6 +136,10 @@ def _normalize_email(value, required: bool = False) -> str:
 
 
 class AuthService:
+    @staticmethod
+    def app_roles(app_id: str) -> tuple[str, ...]:
+        return ("admin", "manager", "user") if app_id == "fjordlens" else ("admin", "user")
+
     def __init__(self, db_path: Path):
         self._db_path = db_path
         self._init_db()
@@ -507,7 +511,7 @@ class AuthService:
     # ── User app access ──────────────────────────────────────────────────────
 
     def set_user_app_access(self, user_id: int, app_id: str, role: str = "user") -> None:
-        if role not in ("admin", "user"):
+        if role not in self.app_roles(app_id):
             role = "user"
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
         with closing(self._conn()) as conn:
@@ -630,7 +634,7 @@ class AuthService:
         raw_language = str(language or "").strip()
         metadata_provided = bool(first_name or last_name or email or raw_language)
         language = _normalize_language(raw_language) if raw_language else "da"
-        if role not in ("admin", "user"):
+        if role not in self.app_roles(app_id):
             role = "user"
         user = self.get_by_username(username) if username else None
         if user is None and email:
@@ -686,7 +690,7 @@ class AuthService:
         }
 
     def update_app_user_role(self, user_id: int, app_id: str, role: str) -> Optional[dict]:
-        if role not in ("admin", "user"):
+        if role not in self.app_roles(app_id):
             raise ValueError("Ugyldig rolle.")
         user = self.get_by_id(int(user_id))
         if not user:
