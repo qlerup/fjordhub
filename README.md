@@ -148,6 +148,8 @@ The FjordFlix wizard offers CPU or NVIDIA transcoding, separate movie and databa
 
 ## GPU passthrough (NVIDIA)
 
+FjordFlix declares `gpu_video: true`. Its preflight checks that Docker receives NVIDIA encode/decode libraries in addition to the common `nvidia-smi` test. Missing video libraries show a video-only PVE addon, which backs up the selected LXC configuration, adds read-only library mounts and registers that LXC in `/etc/fjordhub/gpu-video-cts`. It does not reinstall drivers or change FjordLens' Docker configuration. Reboot the LXC and run `pct exec <CTID> -- ldconfig` on PVE afterward, then repeat the test. Installation also runs a real FFmpeg/NVENC test inside FjordFlix; a failed encoder test is reported as an installation error instead of GPU success. The already-started container may remain running on CPU until repaired.
+
 Both FjordLens and FjordFlix automatically test the shared Docker GPU runtime when the GPU step opens. If it works, the wizard hides host setup and offers to reuse it. Missing device access shows the PVE/LXC instructions; existing devices with a failed Docker test show the runtime setup and diagnostic error. The installer checks GPU access again before a GPU-enabled installation. The automatic setup worker also tests first and skips package changes and Docker restarts when the runtime already works. Each app still receives its own container GPU mapping; host configuration is shared. PVE commands still need to be run on the host when passthrough is missing.
 
 Apps that can use a GPU (e.g. FjordLens' AI service) get a **GPU helper** in the install wizard. It sets up NVIDIA GPU access for the FjordHub LXC container on a Proxmox host — one copy-paste, once per host:

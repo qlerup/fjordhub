@@ -23,7 +23,7 @@ def docker_desktop_gpu() -> bool:
         return False
 
 
-def probe_gpu() -> dict:
+def probe_gpu(require_video: bool = False) -> dict:
     """Test the shared Docker runtime without changing host configuration."""
     try:
         devices = discover_nvidia_devices()
@@ -33,9 +33,20 @@ def probe_gpu() -> dict:
         command = ['docker', 'run', '--rm', '--gpus', 'all']
         for device in ([] if desktop else devices):
             command.extend(['--device', device])
+        runtime_command = list(command)
         command.extend(['nvidia/cuda:12.4.1-base-ubuntu22.04', 'nvidia-smi'])
         result = subprocess.run(command, capture_output=True, text=True, timeout=180)
         output = '\n'.join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
+        if result.returncode == 0 and require_video:
+            check = subprocess.run(runtime_command + [
+                '-e', 'NVIDIA_DRIVER_CAPABILITIES=compute,utility,video',
+                'nvidia/cuda:12.4.1-base-ubuntu22.04', 'sh', '-c',
+                'ldconfig -p | grep -F libnvidia-encode.so.1 && ldconfig -p | grep -F libnvcuvid.so.1'
+            ], capture_output=True, text=True, timeout=180)
+            if check.returncode:
+                return {"ok": False, "stage": "video", "output": output,
+                        "error": "GPU-adgangen virker, men NVIDIA-videobibliotekerne mangler i Docker. Tilføj videoadgang på PVE-hosten, genstart LXC'en, og test igen. " + check.stderr[-800:]}
+            output += '\nNVIDIA-videobiblioteker er tilgængelige. Den faktiske NVENC-encoder testes ved installation.'
         return {"ok": result.returncode == 0, "stage": "ready" if result.returncode == 0 else "runtime",
                 "output": output[-4000:], "error": "" if result.returncode == 0 else (output[-1200:] or 'GPU-test fejlede')}
     except (OSError, subprocess.SubprocessError) as exc:

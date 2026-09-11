@@ -134,7 +134,7 @@ class Installer:
 
             if _is_truthy(env_values.get("ENABLE_GPU_COMPOSE")):
                 log("Tester fælles GPU-adgang før installation...")
-                gpu = probe_gpu()
+                gpu = probe_gpu(require_video=bool(app_def.get('gpu_video')))
                 if not gpu["ok"]:
                     raise RuntimeError("GPU er ikke klar. Åbn GPU-hjælperen i installationen: " + gpu["error"])
                 log("GPU er allerede tilgængelig. Genbruger hostens opsætning.")
@@ -236,6 +236,19 @@ class Installer:
                 log("docker compose fejlede")
                 self.state.set_failed(app_id, "docker compose returncode != 0")
                 return
+
+            if _is_truthy(env_values.get('ENABLE_GPU_COMPOSE')) and app_def.get('gpu_video'):
+                log('Tester NVENC med FFmpeg i appens egen container...')
+                service = str(app_def.get('gpu_service') or '')
+                check = subprocess.run(
+                    ['docker', 'compose', 'exec', '-T', service, 'ffmpeg', '-hide_banner', '-loglevel', 'error',
+                     '-f', 'lavfi', '-i', 'color=s=640x360:d=0.1', '-c:v', 'h264_nvenc', '-f', 'null', '-'],
+                    cwd=str(install_dir), env=build_compose_env(env_values),
+                    capture_output=True, text=True, timeout=30,
+                )
+                if check.returncode:
+                    raise RuntimeError('Appen startede, men NVENC-testen fejlede: ' + (check.stderr or check.stdout)[-1600:])
+                log('NVENC-test bestået i appens container.')
 
             log(f"{app_def['name']} er installeret og koerer!")
             self.state.set_installed(app_id)

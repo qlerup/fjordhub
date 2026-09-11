@@ -1710,7 +1710,9 @@ def api_lxc_type():
 @app.route("/api/gpu-preflight", methods=["POST"])
 @login_required
 def api_gpu_preflight():
-    return jsonify(probe_gpu())
+    data = request.get_json(silent=True) or {}
+    app_def = _get_app(str(data.get('app_id', ''))) or {}
+    return jsonify(probe_gpu(require_video=bool(app_def.get('gpu_video'))))
 
 
 def _detect_nvidia_driver_major() -> str:

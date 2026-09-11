@@ -339,6 +339,12 @@ WantedBy=multi-user.target
       <h3>GPU passthrough hjælper — {{ app.name }}</h3>
       <p class="nfs-modal-desc">Vi tester først den fælles GPU-adgang. En fungerende opsætning genbruges af appen uden at geninstallere drivere eller genstarte Docker.</p>
       <div id="gpu-setup-instructions" hidden>
+      <div id="gpu-video-instructions" hidden>
+        <h4>Tilføj videoadgang til den eksisterende GPU-opsætning</h4>
+        <p>GPU’en virker, men FjordFlix mangler videobiblioteker. Kør tillægget på PVE-værten. Det tilføjer kun videomounts og installerer ingen drivere. Genstart derefter LXC’en; alle apps i den vil kortvarigt blive afbrudt.</p>
+        <label>LXC-ID <input id="gpu-video-vmid" placeholder="1000" oninput="renderGpuVideoCommands()"></label>
+        <div class="nfs-code-section"><div class="nfs-section-header"><span>PVE-vært · videotillæg</span><button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button></div><div class="nfs-code-block" id="gpu-video-code"></div></div>
+      </div>
       <div id="gpu-host-instructions">
       <div class="nfs-input-row">
         <label>Proxmox LXC VMID</label>
@@ -362,7 +368,7 @@ WantedBy=multi-user.target
         </div>
       </div>
       </div>
-      <div>
+      <div id="gpu-runtime-instructions">
         <div class="nfs-code-section" style="margin-top:10px;">
           <div class="nfs-section-header">
             <span class="nfs-block-location">FjordHub-container (automatisk)</span>
@@ -804,6 +810,38 @@ function renderGpuCommands() {
 
 }
 
+function renderGpuVideoCommands() {
+  const input = document.getElementById('gpu-video-vmid');
+  if(!input.value && RUNTIME_INFO.vmid) input.value = RUNTIME_INFO.vmid;
+  const ctid = input.value.trim();
+  const block = document.getElementById('gpu-video-code');
+  if(!/^\d+$/.test(ctid)) { block.textContent = 'Indtast LXC-ID ovenfor først.'; return; }
+  const script = document.getElementById('gpu-sync-script').textContent.trim();
+  const lines = [
+    '(', 'set -e', `ctid="${ctid}"`, 'conf="/etc/pve/lxc/$ctid.conf"',
+    '[ -f "$conf" ] || { echo "LXC config findes ikke"; exit 1; }',
+    'libs=""',
+    'for so in libnvidia-encode.so.1 libnvcuvid.so.1; do',
+    '  p="$(ldconfig -p | grep -m1 -F "$so" | sed "s/.* => //")"',
+    '  [ -n "$p" ] && [ -f "$p" ] || { echo "Mangler $so paa PVE-hosten"; exit 1; }',
+    '  libs="$libs $p $(readlink -f "$p")"', 'done',
+    'cp "$conf" "$conf.bak.video.$(date +%Y%m%d%H%M%S)"',
+    'for p in $libs; do',
+    '  line="lxc.mount.entry: $p ${p#/} none ro,bind,optional,create=file"',
+    '  grep -qxF "$line" "$conf" || printf "%s\\n" "$line" >> "$conf"', 'done',
+    'mkdir -p /etc/fjordhub',
+    'grep -qxF "$ctid" /etc/fjordhub/gpu-video-cts 2>/dev/null || echo "$ctid" >> /etc/fjordhub/gpu-video-cts',
+    '# Opdater en eksisterende sync-helper, saa videomounts foelger driveropdateringer.',
+    'if [ -f /usr/local/sbin/fjordhub-gpu-sync ]; then',
+    '  cp /usr/local/sbin/fjordhub-gpu-sync /usr/local/sbin/fjordhub-gpu-sync.bak.video',
+    "  cat > /usr/local/sbin/fjordhub-gpu-sync <<'FJORDHUB_VIDEO_SYNC'", script, 'FJORDHUB_VIDEO_SYNC', 'fi',
+    'echo "Videoadgang tilfoejet. Genstart nu LXC med: pct reboot $ctid"',
+    'echo "Naar LXC er startet igen, koer paa PVE: pct exec $ctid -- ldconfig"',
+    'echo "Koer derefter GPU-testen igen i FjordHub."', ')',
+  ];
+  block.textContent = lines.join('\n');
+}
+
 async function autoGpuContainerSetup() {
   const btn = document.getElementById('gpu-auto-container-btn');
   const statusEl = document.getElementById('gpu-auto-container-status');
@@ -922,7 +960,7 @@ async function runGpuPreflight() {
     useBtn.style.cursor = 'not-allowed';
   }
   try {
-    const res = await fetch('/api/gpu-preflight', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({})});
+    const res = await fetch('/api/gpu-preflight', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({app_id: APP_ID})});
     const responseText = await res.text();
     let data;
     try {
@@ -944,6 +982,9 @@ async function runGpuPreflight() {
       if (instructions) instructions.hidden = false;
       const hostInstructions = document.getElementById('gpu-host-instructions');
       if (hostInstructions) hostInstructions.hidden = data.stage !== 'devices';
+      document.getElementById('gpu-video-instructions').hidden = data.stage !== 'video';
+      document.getElementById('gpu-runtime-instructions').hidden = data.stage === 'video';
+      if(data.stage === 'video') renderGpuVideoCommands();
       const raw = String(data.error || data.output || 'Ukendt fejl');
       let extra = '';
       if (/driver\/library version mismatch|nvml error/i.test(raw)) {
