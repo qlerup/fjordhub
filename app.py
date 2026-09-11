@@ -122,6 +122,7 @@ _AUTH_EXEMPT = {
     "health",
     "hub_user_sync",
     "api_hub_app_authenticate",
+    "api_hub_app_config",
     "api_hub_app_change_password",
     "api_hub_password_reset_request",
     "api_hub_password_reset_verify",
@@ -1195,6 +1196,14 @@ def _require_app_key(data: dict) -> tuple[str, tuple | None]:
     if not _auth.verify_hub_key(app_id, key):
         return "", (jsonify({"ok": False, "error": "Uautoriseret"}), 401)
     return app_id, None
+
+
+@app.route("/api/hub/apps/config", methods=["GET"])
+def api_hub_app_config():
+    app_id, error_response = _require_app_key({'app_id': request.args.get('app_id', '')})
+    if error_response:
+        return error_response
+    return jsonify({'ok': True, 'external_url': _install_state.get_external_url(app_id) or ''})
 
 
 @app.route("/api/hub/apps/authenticate", methods=["POST"])

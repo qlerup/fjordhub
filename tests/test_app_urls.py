@@ -95,6 +95,18 @@ class AppUrlTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["email"], "k3dd3@hotmail.dk")
 
+    def test_app_config_requires_own_key(self):
+        fjordhub._auth.save_hub_key('fjordflix', 'flix-key')
+        fjordhub._auth.save_hub_key('fjordlens', 'lens-key')
+        with patch.object(fjordhub._install_state, 'get_external_url', return_value='https://film.example.com') as saved:
+            with fjordhub.app.test_client() as client:
+                response = client.get('/api/hub/apps/config?app_id=fjordflix', headers={'X-Hub-Key':'flix-key'})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.get_json()['external_url'], 'https://film.example.com')
+                saved.assert_called_once_with('fjordflix')
+                self.assertEqual(client.get('/api/hub/apps/config?app_id=fjordflix').status_code, 400)
+                self.assertEqual(client.get('/api/hub/apps/config?app_id=fjordlens', headers={'X-Hub-Key':'flix-key'}).status_code, 401)
+
     def _write_fake_proc(self, net_subdir="net", fib_trie=FIB_TRIE, route=ROUTE):
         proc_root = Path(self.tempdir.name) / "proc"
         net_dir = proc_root / net_subdir
