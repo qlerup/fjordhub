@@ -25,7 +25,7 @@ from services.resource_monitor import ResourceMonitor
 from services.package_catalog import PackageCatalog
 from services.package_manager import PackageManager, PackageError
 from services.password_reset import PasswordResetService
-from services.nvidia_devices import discover_nvidia_devices, docker_desktop_gpu
+from services.nvidia_devices import probe_gpu
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
@@ -1710,50 +1710,7 @@ def api_lxc_type():
 @app.route("/api/gpu-preflight", methods=["POST"])
 @login_required
 def api_gpu_preflight():
-    try:
-        devices = discover_nvidia_devices()
-    except Exception as exc:
-        app.logger.exception("NVIDIA device discovery failed")
-        return jsonify({
-            "ok": False,
-            "error": f"Kunne ikke undersøge NVIDIA device-filer: {exc}",
-        }), 500
-    desktop = docker_desktop_gpu()
-    if not devices and not desktop:
-        return jsonify({
-            "ok": False,
-            "error": "Ingen NVIDIA device-filer blev fundet i LXC-systemet. Kør PVE GPU-opsætningen og genstart LXC'en.",
-        }), 409
-
-    command = ["docker", "run", "--rm", "--gpus", "all"]
-    for device in ([] if desktop else devices):
-        command.extend(["--device", device])
-    command.extend([
-        "nvidia/cuda:12.4.1-base-ubuntu22.04",
-        "nvidia-smi",
-    ])
-    try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=180,
-        )
-    except subprocess.TimeoutExpired:
-        return jsonify({"ok": False, "error": "GPU-test timeout", "command": " ".join(command)}), 504
-    except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc), "command": " ".join(command)}), 500
-
-    output = "\n".join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
-    return jsonify(
-        {
-            "ok": result.returncode == 0,
-            "returncode": result.returncode,
-            "command": " ".join(command),
-            "output": output[-4000:],
-            "error": "" if result.returncode == 0 else (output[-1200:] or "GPU-test fejlede"),
-        }
-    )
+    return jsonify(probe_gpu())
 
 
 def _detect_nvidia_driver_major() -> str:
@@ -1929,6 +1886,15 @@ def _gpu_setup_run_step(cmd: str, timeout: int = 600, in_lxc_host: bool = False)
 def _gpu_setup_worker() -> None:
     major = ""
     try:
+        _gpu_setup_append("[info] Tester eksisterende GPU-adgang før ændringer...")
+        existing = probe_gpu()
+        if existing["ok"]:
+            _gpu_setup_append("[info] GPU er allerede klar. Genbruger opsætningen uden installation eller Docker-genstart.")
+            _gpu_setup_finish(True)
+            return
+        if existing.get("stage") == "test_error":
+            _gpu_setup_finish(False, existing["error"])
+            return
         if _nfs_runtime_info().get("runtime") == "docker_desktop":
             _gpu_setup_finish(False, "Automatisk GPU-opsætning understøttes ikke på Docker Desktop/WSL2.")
             return

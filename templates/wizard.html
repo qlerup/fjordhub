@@ -69,7 +69,7 @@
       {% endif %}
       {% if step.gpu_helper %}
       <div style="margin-bottom:16px;">
-        <button type="button" class="btn-nfs-helper" onclick="openGpuHelper()">GPU passthrough hjælper</button>
+        <button type="button" class="btn-nfs-helper" data-gpu-helper onclick="openGpuHelper()">Kontrollér GPU-adgang</button>
       </div>
       {% endif %}
       {% for field in step.fields %}
@@ -332,7 +332,9 @@ WantedBy=multi-user.target
   <div id="gpu-modal" class="nfs-modal-overlay" style="display:none;" onclick="if(event.target===this)closeGpuHelper()">
     <div class="nfs-modal">
       <h3>GPU passthrough hjælper — {{ app.name }}</h3>
-      <p class="nfs-modal-desc">Brug denne før installation, hvis appen skal starte med NVIDIA GPU. Hvis testen ikke går igennem, skal installationen køre CPU.</p>
+      <p class="nfs-modal-desc">Vi tester først den fælles GPU-adgang. En fungerende opsætning genbruges af appen uden at geninstallere drivere eller genstarte Docker.</p>
+      <div id="gpu-setup-instructions" hidden>
+      <div id="gpu-host-instructions">
       <div class="nfs-input-row">
         <label>Proxmox LXC VMID</label>
         <input id="gpu-vmid" type="text" placeholder="100" oninput="renderGpuCommands()">
@@ -353,6 +355,9 @@ WantedBy=multi-user.target
           </div>
           <div class="nfs-code-block" id="gpu-restart-block"></div>
         </div>
+      </div>
+      </div>
+      <div>
         <div class="nfs-code-section" style="margin-top:10px;">
           <div class="nfs-section-header">
             <span class="nfs-block-location">FjordHub-container (automatisk)</span>
@@ -366,6 +371,7 @@ WantedBy=multi-user.target
             <div id="gpu-auto-container-status" class="nfs-code-block" style="display:block;margin-top:6px;max-height:260px;overflow:auto;white-space:pre-wrap;">Tryk på knappen for at starte automatisk installation. Live output vises her.</div>
           </div>
         </div>
+      </div>
       </div>
       <div class="nfs-input-row">
         <button type="button" class="btn btn-open" id="gpu-test-btn" onclick="runGpuPreflight()">Kør Docker GPU-test</button>
@@ -432,6 +438,10 @@ function showPanel(step) {
 
   const panel = document.getElementById(`panel-${step}`);
   if (panel) panel.classList.add('active');
+  if (panel?.querySelector('[data-gpu-helper]') && !panel.dataset.gpuChecked) {
+    panel.dataset.gpuChecked = '1';
+    openGpuHelper();
+  }
 
   document.querySelectorAll('.step-pill').forEach(p => {
     const s = parseInt(p.dataset.step);
@@ -649,6 +659,7 @@ async function waitForGpuTestReady() {
   }
   if (resultEl) resultEl.innerHTML = '<span style="color:#22c55e">✓ Alt er oppe igen — du kan køre GPU-testen nu.</span>';
   gpuTestWaitActive = false;
+  await runGpuPreflight();
 }
 
 function renderGpuSetupState(state) {
@@ -728,6 +739,7 @@ function openGpuHelper(options = {}) {
   renderGpuCommands();
   if (remember) rememberGpuHelper(true);
   document.getElementById('gpu-modal').style.display = 'flex';
+  if (resetResult) runGpuPreflight();
 }
 
 function closeGpuHelper() {
@@ -884,7 +896,12 @@ async function autoGpuContainerSetup() {
   }
 }
 
+let gpuPreflightRunning = false;
 async function runGpuPreflight() {
+  if (gpuPreflightRunning) return;
+  gpuPreflightRunning = true;
+  const instructions = document.getElementById('gpu-setup-instructions');
+  if (instructions) instructions.hidden = true;
   const btn = document.getElementById('gpu-test-btn');
   const resultEl = document.getElementById('gpu-test-result');
   const useBtn = document.getElementById('gpu-use-btn');
@@ -911,23 +928,27 @@ async function runGpuPreflight() {
       };
     }
     if (data.ok) {
-      if (resultEl) resultEl.innerHTML = `<span style="color:#22c55e">GPU-test OK. Docker kan starte med --gpus all.</span>\n${_escapeHtml(data.output || '')}`;
+      if (resultEl) resultEl.innerHTML = `<span style="color:#22c55e">GPU er allerede klar. Appen kan bruge den eksisterende opsætning.</span>\n${_escapeHtml(data.output || '')}`;
       if (useBtn) {
         useBtn.disabled = false;
         useBtn.style.opacity = '1';
         useBtn.style.cursor = 'pointer';
       }
     } else {
+      if (instructions) instructions.hidden = false;
+      const hostInstructions = document.getElementById('gpu-host-instructions');
+      if (hostInstructions) hostInstructions.hidden = data.stage !== 'devices';
       const raw = String(data.error || data.output || 'Ukendt fejl');
       let extra = '';
       if (/driver\/library version mismatch|nvml error/i.test(raw)) {
         extra = '\n\nTip: NVIDIA libs i LXC matcher ikke host-driveren endnu. Kør auto-knappen igen og se at den når helt til docker nvidia-smi uden fejl.';
       }
-      if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">GPU-test fejlede. Brug CPU eller koer PVE-kommandoerne og test igen.</span>\n${_escapeHtml(raw + extra)}`;
+      if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">GPU-adgangen kunne ikke bekræftes. Se fejlen og opsætningen ovenfor, eller vælg CPU.</span>\n${_escapeHtml(raw + extra)}`;
     }
   } catch (e) {
     if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">Netvaerksfejl: ${_escapeHtml(e.message)}</span>`;
   } finally {
+    gpuPreflightRunning = false;
     if (btn) {
       btn.disabled = false;
       btn.textContent = 'Kør Docker GPU-test';

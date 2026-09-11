@@ -8,7 +8,7 @@ from pathlib import Path
 
 from services.compose_env import build_compose_env
 from services.install_state import InstallState
-from services.nvidia_devices import discover_nvidia_devices, render_compose_override, docker_desktop_gpu, render_desktop_override
+from services.nvidia_devices import discover_nvidia_devices, render_compose_override, docker_desktop_gpu, render_desktop_override, probe_gpu
 
 
 # Inside the container, apps live under /apps/<id>.
@@ -131,6 +131,13 @@ class Installer:
 
         try:
             env_values = self._resolve_env_values(app_def, env_values)
+
+            if _is_truthy(env_values.get("ENABLE_GPU_COMPOSE")):
+                log("Tester fælles GPU-adgang før installation...")
+                gpu = probe_gpu()
+                if not gpu["ok"]:
+                    raise RuntimeError("GPU er ikke klar. Åbn GPU-hjælperen i installationen: " + gpu["error"])
+                log("GPU er allerede tilgængelig. Genbruger hostens opsætning.")
 
             if install_dir.exists() and (install_dir / ".git").exists():
                 log("Repo eksisterer - henter seneste version...")

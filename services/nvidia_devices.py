@@ -23,6 +23,25 @@ def docker_desktop_gpu() -> bool:
         return False
 
 
+def probe_gpu() -> dict:
+    """Test the shared Docker runtime without changing host configuration."""
+    try:
+        devices = discover_nvidia_devices()
+        desktop = docker_desktop_gpu()
+        if not devices and not desktop:
+            return {"ok": False, "stage": "devices", "error": "GPU-adgang mangler. Følg PVE-opsætningen og genstart LXC'en først."}
+        command = ['docker', 'run', '--rm', '--gpus', 'all']
+        for device in ([] if desktop else devices):
+            command.extend(['--device', device])
+        command.extend(['nvidia/cuda:12.4.1-base-ubuntu22.04', 'nvidia-smi'])
+        result = subprocess.run(command, capture_output=True, text=True, timeout=180)
+        output = '\n'.join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
+        return {"ok": result.returncode == 0, "stage": "ready" if result.returncode == 0 else "runtime",
+                "output": output[-4000:], "error": "" if result.returncode == 0 else (output[-1200:] or 'GPU-test fejlede')}
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"ok": False, "stage": "test_error", "error": str(exc) or 'GPU-test timeout'}
+
+
 def render_desktop_override(service_name: str) -> str:
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', service_name):
         raise ValueError('Ugyldigt GPU-service-navn')
