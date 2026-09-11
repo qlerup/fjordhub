@@ -254,7 +254,7 @@ while IFS= read -r ctid || [ -n "$ctid" ]; do
   tmp="$(mktemp)"
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
-      'lxc.mount.entry: '*nvidia*|'lxc.mount.entry: '*libcuda*)
+      'lxc.mount.entry: '*nvidia*|'lxc.mount.entry: '*libcuda*|'lxc.mount.entry: '*libnvcuvid*)
         src="${line#lxc.mount.entry: }"; src="${src%% *}"
         [ -e "$src" ] && printf '%s\n' "$line" >> "$tmp"
         ;;
@@ -294,7 +294,7 @@ while IFS= read -r ctid || [ -n "$ctid" ]; do
       add_line "lxc.mount.entry: ${src} ${rel} none ro,bind,optional,create=file"
     done
   }
-  for so in libnvidia-ml.so.1 libcuda.so.1 libnvidia-compiler.so.1 libnvidia-ptxjitcompiler.so.1; do
+  for so in libnvidia-ml.so.1 libcuda.so.1 libnvidia-compiler.so.1 libnvidia-ptxjitcompiler.so.1 libnvidia-encode.so.1 libnvcuvid.so.1; do
     add_file_mount "$(find_lib "$so")"
   done
   nvsmi="$(command -v nvidia-smi 2>/dev/null || true)"
