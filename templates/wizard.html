@@ -294,9 +294,14 @@ while IFS= read -r ctid || [ -n "$ctid" ]; do
       add_line "lxc.mount.entry: ${src} ${rel} none ro,bind,optional,create=file"
     done
   }
-  for so in libnvidia-ml.so.1 libcuda.so.1 libnvidia-compiler.so.1 libnvidia-ptxjitcompiler.so.1 libnvidia-encode.so.1 libnvcuvid.so.1; do
+  for so in libnvidia-ml.so.1 libcuda.so.1 libnvidia-compiler.so.1 libnvidia-ptxjitcompiler.so.1; do
     add_file_mount "$(find_lib "$so")"
   done
+  if grep -qxF "$ctid" /etc/fjordhub/gpu-video-cts 2>/dev/null; then
+    for so in libnvidia-encode.so.1 libnvcuvid.so.1; do
+      add_file_mount "$(find_lib "$so")"
+    done
+  fi
   nvsmi="$(command -v nvidia-smi 2>/dev/null || true)"
   [ -n "$nvsmi" ] && add_file_mount "$nvsmi"
 
@@ -772,6 +777,7 @@ function renderGpuCommands() {
     'cp "$conf" "$conf.bak.$(date +%Y%m%d%H%M%S)"',
     'mkdir -p /etc/fjordhub',
     'grep -qxF "$ctid" /etc/fjordhub/gpu-cts 2>/dev/null || echo "$ctid" >> /etc/fjordhub/gpu-cts',
+    ...({{ app.gpu_video | default(false) | tojson }} ? ['grep -qxF "$ctid" /etc/fjordhub/gpu-video-cts 2>/dev/null || echo "$ctid" >> /etc/fjordhub/gpu-video-cts'] : []),
     '',
     "cat > /usr/local/sbin/fjordhub-gpu-sync <<'FJORDHUB_GPU_SYNC'",
     syncScript,

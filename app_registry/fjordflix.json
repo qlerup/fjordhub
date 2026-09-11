@@ -11,6 +11,7 @@
   "compose_dir_env": "FJORDFLIX_DIR",
   "compose_file": "docker-compose.yml",
   "gpu_service": "app",
+  "gpu_video": true,
   "source_url": "https://github.com/qlerup/fjordflix",
   "icon_url": "https://raw.githubusercontent.com/qlerup/fjordflix/main/app/static/logos/icons/fjordflix-mark-transparent-512.png",
   "sort_order": 6,
