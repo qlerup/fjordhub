@@ -8,7 +8,7 @@ from pathlib import Path
 
 from services.compose_env import build_compose_env
 from services.install_state import InstallState
-from services.nvidia_devices import discover_nvidia_devices, render_compose_override
+from services.nvidia_devices import discover_nvidia_devices, render_compose_override, docker_desktop_gpu, render_desktop_override
 
 
 # Inside the container, apps live under /apps/<id>.
@@ -161,16 +161,17 @@ class Installer:
                 if not gpu_service:
                     raise RuntimeError("App-definitionen mangler gpu_service")
                 devices = discover_nvidia_devices()
-                if not devices:
+                desktop = docker_desktop_gpu()
+                if not devices and not desktop:
                     raise RuntimeError(
                         "Ingen NVIDIA device-filer blev fundet. Kør GPU-helperens PVE-opsætning, genstart LXC'en og prøv igen."
                     )
                 override_path = install_dir / GPU_OVERRIDE_FILE
                 override_path.write_text(
-                    render_compose_override(gpu_service, devices),
+                    render_desktop_override(gpu_service) if desktop else render_compose_override(gpu_service, devices),
                     encoding="utf-8",
                 )
-                log(f"GPU-enheder fundet automatisk: {', '.join(devices)}")
+                log('GPU-adgang via Docker Desktop / WSL-runtime' if desktop else f"GPU-enheder fundet automatisk: {', '.join(devices)}")
 
             log("Skriver .env ...")
             lines = ["# Genereret af FjordHub"]
@@ -257,6 +258,11 @@ class Installer:
                     resolved[key] = str(field.get("default", ""))
 
         resolved.update(_stringify_env(env_values or {}))
+        compose_file = str(app_def.get('compose_file') or 'docker-compose.yml')
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*\.ya?ml', compose_file):
+            raise ValueError('Ugyldigt Compose-filnavn i app-manifest')
+        if app_def.get('compose_file'):
+            resolved['COMPOSE_FILE'] = compose_file
 
         if not str(resolved.get("APP_PORT", "")).strip() and app_def.get("default_port"):
             resolved["APP_PORT"] = str(app_def["default_port"])
@@ -279,7 +285,7 @@ class Installer:
 
         if _is_truthy(resolved.get("ENABLE_GPU_COMPOSE")):
             resolved["COMPOSE_FILE"] = (
-                f"docker-compose.yml:docker-compose.gpu.yml:{GPU_OVERRIDE_FILE}"
+                f"{compose_file}:docker-compose.gpu.yml:{GPU_OVERRIDE_FILE}"
             )
             if str(resolved.get("AI_DEVICE", "")).strip().lower() == "cpu":
                 resolved["AI_DEVICE"] = "auto"

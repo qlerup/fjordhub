@@ -1,0 +1,32 @@
+{
+  "id": "fjordflix",
+  "name": "FjordFlix",
+  "tagline": "Din egen biograf med 4K-streaming",
+  "description": "Stream dit filmbibliotek med Direct Play, NVIDIA-transcoding og telefonen som fjernbetjening. Brugere og adgang administreres centralt i FjordHub.",
+  "icon": "play",
+  "accent": "#ec344e",
+  "container_name": "fjordflix",
+  "default_port": 8096,
+  "health_path": "/api/health",
+  "compose_dir_env": "FJORDFLIX_DIR",
+  "compose_file": "docker-compose.yml",
+  "gpu_service": "app",
+  "source_url": "https://github.com/qlerup/fjordflix",
+  "icon_url": "https://raw.githubusercontent.com/qlerup/fjordflix/main/app/static/fjordflix.svg",
+  "sort_order": 6,
+  "setup_steps": [
+    {"id":"basic","title":"Grundlæggende indstillinger","fields":[
+      {"key":"APP_PORT","label":"Web-port","type":"number","default":"8096","hint":"Vælg en ledig port, hvis en solo-installation allerede bruger 8096."},
+      {"key":"TZ","label":"Tidszone","type":"text","default":"Europe/Copenhagen"},
+      {"key":"REMOTE_PUBLIC_URL","label":"Adresse til telefonens fjernbetjening (valgfri)","type":"text","default":"","hint":"Fx http://192.168.1.100:8096. Tomt felt bruger den adresse, appen åbnes på. Telefonen skal kunne nå adressen."}
+    ]},
+    {"id":"gpu","title":"Transcoding og GPU","gpu_helper":true,"fields":[
+      {"key":"ENABLE_GPU_COMPOSE","label":"Aktiver NVIDIA GPU","type":"toggle","default":"0","hint":"Slå til efter GPU-test. FjordFlix og FjordLens kan bruge samme GPU og deler dens kapacitet."},
+      {"key":"MAX_TRANSCODES","label":"Maksimale samtidige konverteringer","type":"number","default":"2","hint":"Begrænser FjordFlix-belastningen. GPU-hukommelse og kapacitet deles med andre apps; Direct Play bruger ikke encoderen."}
+    ]},
+    {"id":"storage","title":"Film og arbejdsplads","fields":[
+      {"key":"DATA_DIR","label":"Database og transcoding-cache","type":"path","default":"/opt/fjordflix-data/appdata","hint":"Lokal SSD anbefales. Indeholder brugerhistorik, billeder og midlertidige streams."},
+      {"key":"UPLOADS_HOST_DIR","label":"Upload-mappe til film","type":"path","default":"/opt/fjordflix-data/media","hint":"Originalfiler kan ligge på lokal disk eller et monteret NAS-drev."}
+    ]}
+  ]
+}

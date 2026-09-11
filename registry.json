@@ -2,6 +2,10 @@
   "schema": "fjordhub-registry/v1",
   "apps": [
     {
+      "id": "fjordflix",
+      "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordflix/main/fjordhub.json"
+    },
+    {
       "id": "fjordlens",
       "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordlens/main/fjordhub.json"
     },

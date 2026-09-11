@@ -25,7 +25,7 @@ from services.resource_monitor import ResourceMonitor
 from services.package_catalog import PackageCatalog
 from services.package_manager import PackageManager, PackageError
 from services.password_reset import PasswordResetService
-from services.nvidia_devices import discover_nvidia_devices
+from services.nvidia_devices import discover_nvidia_devices, docker_desktop_gpu
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
@@ -1718,14 +1718,15 @@ def api_gpu_preflight():
             "ok": False,
             "error": f"Kunne ikke undersøge NVIDIA device-filer: {exc}",
         }), 500
-    if not devices:
+    desktop = docker_desktop_gpu()
+    if not devices and not desktop:
         return jsonify({
             "ok": False,
             "error": "Ingen NVIDIA device-filer blev fundet i LXC-systemet. Kør PVE GPU-opsætningen og genstart LXC'en.",
         }), 409
 
     command = ["docker", "run", "--rm", "--gpus", "all"]
-    for device in devices:
+    for device in ([] if desktop else devices):
         command.extend(["--device", device])
     command.extend([
         "nvidia/cuda:12.4.1-base-ubuntu22.04",

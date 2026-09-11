@@ -332,7 +332,7 @@ WantedBy=multi-user.target
   <div id="gpu-modal" class="nfs-modal-overlay" style="display:none;" onclick="if(event.target===this)closeGpuHelper()">
     <div class="nfs-modal">
       <h3>GPU passthrough hjælper — {{ app.name }}</h3>
-      <p class="nfs-modal-desc">Brug denne før installation, hvis AI-containeren skal starte med NVIDIA GPU. Hvis testen ikke går igennem, skal installationen køre CPU.</p>
+      <p class="nfs-modal-desc">Brug denne før installation, hvis appen skal starte med NVIDIA GPU. Hvis testen ikke går igennem, skal installationen køre CPU.</p>
       <div class="nfs-input-row">
         <label>Proxmox LXC VMID</label>
         <input id="gpu-vmid" type="text" placeholder="100" oninput="renderGpuCommands()">

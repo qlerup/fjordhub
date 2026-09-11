@@ -73,6 +73,7 @@ def _user_access_dict(row) -> dict:
         "hub_role": str(row["hub_role"] or "user"),
         "role": str(row["app_role"] or "user"),
         "created_at": str(row["created_at"] or ""),
+        "must_change_password": bool(row["must_change_password"]) if "must_change_password" in row.keys() else False,
     }
 
 
@@ -604,7 +605,7 @@ class AuthService:
             rows = conn.execute(
                 """
                 SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.language,
-                       u.role AS hub_role, u.created_at,
+                       u.role AS hub_role, u.created_at, u.must_change_password,
                        a.role AS app_role
                 FROM user_app_access a
                 JOIN users u ON u.id = a.user_id

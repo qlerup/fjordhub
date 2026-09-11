@@ -1,5 +1,6 @@
 import os
 import re
+import subprocess
 from pathlib import Path
 
 
@@ -11,6 +12,22 @@ _CORE_DEVICES = (
     "nvidia-uvm-tools",
     "nvidia-modeset",
 )
+
+
+def docker_desktop_gpu() -> bool:
+    """Desktop/WSL exposes GPUs through the runtime, not Linux /dev/nvidia mounts."""
+    try:
+        result = subprocess.run(['docker', 'info', '--format', '{{.OperatingSystem}}'], capture_output=True, text=True, timeout=10)
+        return result.returncode == 0 and 'docker desktop' in result.stdout.lower()
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def render_desktop_override(service_name: str) -> str:
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', service_name):
+        raise ValueError('Ugyldigt GPU-service-navn')
+    # Reset any Linux device paths in an app's own GPU compose file; retain gpus: all.
+    return f'services:\n  {service_name}:\n    devices: !reset []\n'
 
 
 def _natural_device_key(path: Path) -> tuple[int, int, str]:

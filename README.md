@@ -137,6 +137,10 @@ Any Docker Compose project can join the catalog:
 
 Apps can optionally integrate with the hub's user API (`/api/hub/apps/authenticate`, `/api/hub/user-sync`, `/api/hub/sso-verify`) to share the hub's user accounts and accept SSO logins instead of keeping their own.
 
+FjordFlix is available in the catalog with central accounts, app-specific `admin`/`user` roles and SSO. It disables its local signup/invitation system when managed by FjordHub and rechecks access while it is in use. Grant users access through **Users → FjordFlix**. The manifest's optional `compose_file` selects the managed Compose file explicitly, so an app can retain a separate standalone Compose setup.
+
+The FjordFlix wizard offers CPU or NVIDIA transcoding, separate movie and database/cache directories, a remote-control URL and a simultaneous conversion limit. FjordLens and FjordFlix can share the same GPU; they share its VRAM and processing capacity without automatic workload prioritization. On Docker Desktop/WSL, GPU access uses the NVIDIA runtime without Linux `/dev/nvidia*` bind mounts; Linux/LXC continues to use device discovery.
+
 ## Updates
 
 - **Apps** — the dashboard checks each installed app's repository for new commits. Updating pulls the latest code and re-runs compose for that app only.
