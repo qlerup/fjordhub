@@ -28,7 +28,7 @@ class FjordFlixIntegrationTests(unittest.TestCase):
         self.assertEqual(result['COMPOSE_FILE'],'docker-compose.yml')
         self.assertEqual(result['ENABLE_GPU_COMPOSE'],'0')
         self.assertEqual(result['FJORDHUB_API_KEY'],'test-key')
-        self.assertEqual(result['APP_PORT'],'8096')
+        self.assertEqual(result['APP_PORT'],'8097')
         self.assertEqual(result['MAX_TRANSCODES'],'2')
 
     def test_gpu_uses_app_service_and_shared_device(self):
