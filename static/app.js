@@ -730,6 +730,7 @@ async function loadMediaGuide() {
   if(data.running || data.active || data.error) showMediaStep(4,false);
   if (data.domain) {
     document.getElementById('media-guide-domain').value=data.domain;
+    updateMediaDnsPreview();
     document.getElementById('media-guide-mode').value=data.mode || 'managed';
     document.getElementById('media-use-tunnel').value='yes';
     document.getElementById('media-guide-details').hidden=false;
@@ -760,6 +761,7 @@ if(location.pathname.endsWith('/wizard')) {
 }
 
 function showMediaStep(step, focus = true) {
+  updateMediaDnsPreview();
   document.getElementById('media-guide-confirm').value = document.getElementById('media-guide-domain').value.trim();
   document.querySelectorAll('[data-media-step]').forEach(panel => panel.hidden = Number(panel.dataset.mediaStep) !== step);
   document.getElementById('media-step-label').textContent = `Trin ${step} af 4`;
@@ -788,3 +790,16 @@ document.getElementById('media-guide')?.addEventListener('click',event=>{
   showMediaStep(step);
 });
 if(document.getElementById('media-guide')) showMediaStep(1,false);
+
+function updateMediaDnsPreview() {
+  const value=document.getElementById('media-guide-domain').value.trim();
+  let hostname='';
+  try {
+    const url=new URL(value.includes('://') ? value : `https://${value}`);
+    if(url.protocol==='https:' && !url.username && !url.password && !url.port && url.pathname==='/' && !url.search && !url.hash && /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(url.hostname)) hostname=url.hostname;
+  } catch (_) {}
+  // Use the complete name so nested subdomains and multi-part zone names work too.
+  document.getElementById('media-dns-name').textContent=hostname || '—';
+  document.getElementById('media-dns-target').textContent=hostname ? `Til ${hostname} · brug hele domænet i Name` : value ? 'Indtast et gyldigt videodomæne uden sti' : 'Indtast videodomænet ovenfor';
+}
+document.getElementById('media-guide-domain')?.addEventListener('input',updateMediaDnsPreview);
