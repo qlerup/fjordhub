@@ -66,6 +66,26 @@ class MediaGatewayTests(unittest.TestCase):
             self.assertEqual(self.gateway.status()['error'],'TLS failed')
             self.assertFalse(self.gateway.status()['running'])
 
+    def test_bundled_traefik_keeps_port_80_and_routes_media(self):
+        client=self.manager.client
+        client.containers.get.side_effect=docker.errors.NotFound('missing')
+        proxy=MagicMock();proxy.name='fjordhub-traefik'
+        proxy.labels={'com.docker.compose.project':'fjordhub','com.docker.compose.service':'traefik'}
+        proxy.attrs={'Config':{'Cmd':['--providers.docker=true','--entrypoints.web.address=:80']},'NetworkSettings':{'Networks':{'fjord-net':{}},'Ports':{'80/tcp':[{'HostPort':'80'}]}}}
+        client.containers.list.return_value=[proxy]
+        self.gateway.ensure_gateway(client,self.app,'media.example.com')
+        args=client.containers.create.call_args.kwargs
+        self.assertEqual(args['ports'],{'443/tcp':443})
+        self.assertEqual(args['network'],'fjord-net')
+        self.assertEqual(args['labels']['traefik.http.routers.fjordhub-media.rule'],'Host(`media.example.com`)')
+        self.assertEqual(args['labels']['traefik.http.services.fjordhub-media.loadbalancer.server.port'],'80')
+        proxy.stop.assert_not_called()
+        proxy.remove.assert_not_called()
+        # A renamed third-party proxy must not be silently taken over.
+        proxy.labels={}
+        with self.assertRaisesRegex(RuntimeError,'bruges allerede'):
+            self.gateway.ensure_gateway(client,self.app,'media.example.com')
+
     def test_existing_proxy_only_activates_after_proof(self):
         self.gateway.lock.acquire()
         with patch('services.media_gateway.flix',return_value={'media_url':'','web_url':''}) as flix, patch.object(self.gateway,'verify') as verify:

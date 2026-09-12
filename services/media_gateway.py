@@ -16,6 +16,26 @@ LABEL = 'dk.fjordhub.media-gateway'
 STATE = '__media_gateway__'
 
 
+def hub_traefik(container):
+    """Recognize the bundled proxy by ownership, network and actual entrypoint."""
+    labels = container.labels
+    command = container.attrs.get('Config', {}).get('Cmd') or []
+    return (container.name == 'fjordhub-traefik'
+            and labels.get('com.docker.compose.project') == 'fjordhub'
+            and labels.get('com.docker.compose.service') == 'traefik'
+            and 'fjord-net' in container.attrs.get('NetworkSettings', {}).get('Networks', {})
+            and '--providers.docker=true' in command
+            and '--entrypoints.web.address=:80' in command)
+
+
+def traefik_labels(host):
+    prefix = 'traefik.http.routers.fjordhub-media'
+    return {'traefik.enable':'true', 'traefik.docker.network':'fjord-net',
+            prefix+'.rule':f'Host(`{host}`)', prefix+'.entrypoints':'web',
+            prefix+'.priority':'10000', prefix+'.service':'fjordhub-media',
+            'traefik.http.services.fjordhub-media.loadbalancer.server.port':'80'}
+
+
 def domain(value):
     value = str(value or '').strip().lower()
     parsed = urlsplit(value if '://' in value else 'https://' + value)
@@ -137,6 +157,7 @@ class MediaGateway:
         if gateway and gateway.labels.get('dk.fjordhub.media-domain') != host:
             raise RuntimeError('FjordHubs gateway bruger et andet domæne. Den er ikke ændret.')
         conflicts = []
+        via_traefik = False
         for container in client.containers.list():
             if gateway and container.id == gateway.id:
                 continue
@@ -145,6 +166,9 @@ class MediaGateway:
                     continue
                 for binding in bindings or []:
                     if binding.get('HostPort') in ('80', '443'):
+                        if binding['HostPort'] == '80' and target == '80/tcp' and hub_traefik(container):
+                            via_traefik = True
+                            continue
                         address = binding.get('HostIp') or '0.0.0.0'
                         if ':' in address:
                             address = f'[{address}]'
@@ -158,13 +182,30 @@ class MediaGateway:
         if not bindings:
             raise RuntimeError('FjordFlix skal have sin web-port udgivet på Docker-værten.')
         port = int(bindings[0]['HostPort'])
+        labels = {LABEL:'1', 'dk.fjordhub.media-domain':host}
+        ports = {'443/tcp':443}
+        network_options = {}
+        if via_traefik:
+            labels.update(traefik_labels(host))
+            network_options['network'] = 'fjord-net'
+            self.save(phase='Genbruger FjordHubs Traefik på port 80. Caddy håndterer HTTPS på port 443…')
+            if gateway and gateway.labels.get('traefik.http.routers.fjordhub-media.rule') != labels['traefik.http.routers.fjordhub-media.rule']:
+                gateway.reload()
+                if gateway.status == 'running':
+                    raise RuntimeError('En aktiv gateway har en anden portopsætning. Den er ikke ændret.')
+                # Retry a failed, stopped gateway with the correct published ports.
+                # Certificates and configuration remain in the named volumes.
+                gateway.remove()
+                gateway = None
+        else:
+            ports['80/tcp'] = 80
         if not gateway:
             self.save(phase='Henter og installerer HTTPS-gateway…')
             client.images.pull('caddy:2')
             gateway = client.containers.create('caddy:2', name=NAME,
                 command=['caddy','run','--config','/etc/caddy/Caddyfile','--adapter','caddyfile'],
-                labels={LABEL:'1', 'dk.fjordhub.media-domain':host},
-                ports={'80/tcp':80,'443/tcp':443}, extra_hosts={'host.docker.internal':'host-gateway'},
+                labels=labels,
+                ports=ports, extra_hosts={'host.docker.internal':'host-gateway'}, **network_options,
                 volumes={NAME+'-data':{'bind':'/data','mode':'rw'}, NAME+'-config':{'bind':'/config','mode':'rw'}, NAME+'-etc':{'bind':'/etc/caddy','mode':'rw'}},
                 restart_policy={'Name':'unless-stopped'})
         configure_file(gateway, caddyfile(host, f'host.docker.internal:{port}'))
