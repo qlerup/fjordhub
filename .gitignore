@@ -7,3 +7,4 @@ __pycache__/
 apps/*
 !apps/.gitkeep
 packages_src/dist/
+test-results/

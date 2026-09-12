@@ -207,3 +207,11 @@ app_registry/       Local fallback manifests for the built-in catalog
 templates/ static/  Server-rendered UI (Jinja2, vanilla JS)
 registry.json       The default app registry served from this repo
 ```
+
+### FjordFlix: Cloudflare Tunnel and direct video
+
+The FjordFlix installer includes **Adgang og Cloudflare**. Choose No to skip gateway setup, or Yes to follow the DNS and router guide. After app installation, FjordHub configures its own Caddy container and verifies HTTPS with a temporary proof served by that FjordFlix instance before enabling direct delivery. The same guide is available from the gear on the app card. Update both FjordHub and FjordFlix first for an existing installation.
+
+Certificates and configuration persist in Docker volumes; retries reuse the gateway. Other services occupying ports 80/443 are not changed. You can select an existing reverse proxy instead and configure its media-only route. Failed verification leaves playback settings unchanged. Web and media require different HTTPS domains. DNS and router configuration remain steps in their respective interfaces; automatic dynamic DNS is not included. Test playback from outside the LAN after setup.
+
+Validation: `python -m unittest discover -s tests -q`. `tests/browser_media_guide.py` tests the shared UI using isolated state. `tests/docker_media_gateway.py` uses a disposable FjordFlix on 8099 and real Caddy on test ports without requesting public certificates.

@@ -61,6 +61,7 @@
     {% for step in steps %}
     <div class="wizard-panel" id="panel-{{ loop.index }}">
       <h2>{{ step.title }}</h2>
+      {% if step.id == 'media_gateway' %}{% include 'media_gateway.html' %}{% endif %}
       {% set path_fields = step.fields | selectattr('type', 'equalto', 'path') | list %}
       {% if path_fields %}
       <div style="margin-bottom:16px;">
@@ -527,6 +528,7 @@ function buildSummary() {
 }
 
 async function startInstall() {
+  if (APP_ID === 'fjordflix' && !validateMediaGuide()) return;
   // Collect all values including secrets
   {% for step in steps %}
   {% for field in step.fields %}
@@ -554,6 +556,7 @@ async function startInstall() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       env: VALUES,
+      media_gateway: APP_ID === 'fjordflix' && document.getElementById('media-use-tunnel')?.value === 'yes' ? mediaGuideData() : null,
     }),
   });
   const data = await res.json();
@@ -581,6 +584,11 @@ async function pollInstall() {
   } else if (data.state === 'installed') {
     document.getElementById('progress-title').textContent = `✓ ${APP_NAME} er installeret!`;
     document.getElementById('progress-done').style.display = '';
+    if (APP_ID === 'fjordflix' && document.getElementById('media-use-tunnel')?.value === 'yes') {
+      document.getElementById('progress-done').prepend(document.getElementById('media-guide'));
+      document.getElementById('media-guide-start').hidden = false;
+      loadMediaGuide().catch(mediaGuideError);
+    }
   } else if (data.state === 'failed') {
     document.getElementById('progress-title').textContent = '✗ Installation fejlede';
     appendLog(`Fejl: ${data.error || 'ukendt'}`);

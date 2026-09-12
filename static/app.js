@@ -523,6 +523,8 @@ async function openAppSettings(card) {
   const appId = card?.dataset.appId;
   if (!appId) return;
   _settingsAppId = appId;
+  const guide = document.getElementById('media-guide');
+  if (guide) guide.hidden = appId !== 'fjordflix';
   const modal = document.getElementById('app-settings-modal');
   const title = document.getElementById('app-settings-title');
   const input = document.getElementById('app-external-url');
@@ -537,6 +539,10 @@ async function openAppSettings(card) {
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || 'Kunne ikke hente indstillinger');
     if (input) { input.value = data.external_url || ''; input.focus(); }
+    if (appId === 'fjordflix') {
+      document.getElementById('media-guide-web').value = data.external_url || '';
+      await loadMediaGuide();
+    }
     if (status) {
       status.textContent = data.external_url
         ? `Aktiv adresse: ${data.external_url}`
@@ -696,3 +702,57 @@ tickRelativeTime();
 setInterval(fetchStatuses,    8000);
 setInterval(fetchUpdateStatuses, 60000);
 setInterval(checkDockerHealth, 30000);
+
+// Shared installation/settings guide for direct media.
+let mediaGuideTimer;
+function mediaGuideData() {
+  return {web_url:document.getElementById('media-guide-web').value.trim(), domain:document.getElementById('media-guide-domain').value.trim(), mode:document.getElementById('media-guide-mode').value};
+}
+function validateMediaGuide() {
+  if (document.getElementById('media-use-tunnel')?.value !== 'yes') return true;
+  const data=mediaGuideData();
+  if (!data.web_url || !data.domain || !document.getElementById('media-guide-ready').checked) {
+    alert('Udfyld web- og videodomæne og bekræft DNS/portvideresendelse i trinnet Adgang og Cloudflare.');
+    return false;
+  }
+  return true;
+}
+async function loadMediaGuide() {
+  clearTimeout(mediaGuideTimer);
+  const response=await fetch('/api/apps/fjordflix/media-gateway');
+  const data=await response.json();
+  if (!response.ok) throw new Error(data.error || 'Kunne ikke hente gateway-status.');
+  const status=document.getElementById('media-guide-status');
+  status.textContent=[data.phase,data.error].filter(Boolean).join(' ');
+  status.className='app-settings-status '+(data.error?'err':data.active?'ok':'');
+  document.getElementById('media-guide-start').disabled=!!data.running;
+  if (data.domain) {
+    document.getElementById('media-guide-domain').value=data.domain;
+    document.getElementById('media-guide-mode').value=data.mode || 'managed';
+    document.getElementById('media-use-tunnel').value='yes';
+    document.getElementById('media-guide-details').hidden=false;
+  }
+  if(data.running || data.waiting_install) mediaGuideTimer=setTimeout(()=>loadMediaGuide().catch(mediaGuideError),1500);
+}
+function mediaGuideError(error) {
+  document.getElementById('media-guide-status').textContent=error.message;
+  document.getElementById('media-guide-start').disabled=false;
+}
+async function startMediaGuide() {
+  if (!validateMediaGuide()) return;
+  document.getElementById('media-guide-start').disabled=true;
+  try {
+    const response=await fetch('/api/apps/fjordflix/media-gateway',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(mediaGuideData())});
+    const data=await response.json();
+    if(!response.ok) throw new Error(data.error || 'Opsætningen kunne ikke startes.');
+    await loadMediaGuide();
+  } catch(error) { mediaGuideError(error); }
+}
+document.getElementById('media-use-tunnel')?.addEventListener('change',event=>{
+  document.getElementById('media-guide-details').hidden=event.target.value!=='yes';
+});
+document.getElementById('media-guide-start')?.addEventListener('click',startMediaGuide);
+if(location.pathname.endsWith('/wizard')) {
+  const button=document.getElementById('media-guide-start');
+  if(button) button.hidden=true;
+}

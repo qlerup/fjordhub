@@ -26,6 +26,7 @@ from services.package_catalog import PackageCatalog
 from services.package_manager import PackageManager, PackageError
 from services.password_reset import PasswordResetService
 from services.nvidia_devices import probe_gpu
+from services.media_gateway import MediaGateway, domain as media_domain
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
@@ -90,6 +91,7 @@ _install_state   = InstallState(DATA_DIR)
 _installer       = Installer(_install_state)
 _update_manager  = UpdateManager(_install_state)
 docker_mgr       = DockerManager()
+media_gateway    = MediaGateway(docker_mgr, _install_state)
 resource_monitor = ResourceMonitor(docker_mgr)
 package_manager  = PackageManager(DATA_DIR)
 
@@ -1610,6 +1612,26 @@ def api_app_settings(app_id):
     })
 
 
+@app.route('/api/apps/fjordflix/media-gateway', methods=['GET', 'POST'])
+@login_required
+def api_media_gateway():
+    if not current_user.is_admin:
+        return jsonify(ok=False, error='Kun administratorer kan opsætte direkte video.'), 403
+    if request.method == 'GET':
+        return jsonify(ok=True, **media_gateway.status())
+    data = request.get_json(silent=True) or {}
+    try:
+        app_def = _get_app('fjordflix')
+        if not app_def:
+            raise ValueError('FjordFlix findes ikke i kataloget.')
+        web = 'https://' + media_domain(data.get('web_url', ''))
+        media_gateway.start(app_def, data.get('domain', ''), web, data.get('mode', 'managed'))
+        _install_state.set_external_url('fjordflix', web)
+    except ValueError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+    return jsonify(ok=True), 202
+
+
 @app.route("/api/apps/<app_id>/link-hub", methods=["POST"])
 @login_required
 def api_link_hub(app_id):
@@ -2531,7 +2553,9 @@ def install_wizard(app_id):
         for field in step.get("fields", []):
             if field.get("type") == "auto_secret":
                 pregenerated[field["key"]] = generate_secret()
-    steps = a.get("setup_steps", [])
+    steps = list(a.get("setup_steps", []))
+    if app_id == 'fjordflix':
+        steps.append({'id':'media_gateway', 'title':'Adgang og Cloudflare', 'fields':[]})
     return render_template(
         "wizard.html",
         app=a,
@@ -2550,6 +2574,16 @@ def install_app(app_id):
     env_values = body.get("env", {})
     if not isinstance(env_values, dict):
         return jsonify({"error": "env must be an object"}), 400
+    media_choice = body.get('media_gateway') if app_id == 'fjordflix' else None
+    if media_choice:
+        try:
+            if not isinstance(media_choice, dict):
+                raise ValueError('Ugyldig videoopsætning.')
+            media_choice = {**media_choice, 'domain':media_domain(media_choice.get('domain')), 'web_url':'https://' + media_domain(media_choice.get('web_url'))}
+            if media_choice['domain'] == media_domain(media_choice['web_url']) or media_choice.get('mode') not in ('managed','existing'):
+                raise ValueError('Vælg forskellige web- og videodomæner og en gyldig HTTPS-indgang.')
+        except ValueError as exc:
+            return jsonify(ok=False, error=str(exc)), 400
     # Generate hub key and inject so the app can authenticate back to FjordHub
     hub_key = generate_secret(32)
     _auth.save_hub_key(app_id, hub_key)
@@ -2558,8 +2592,17 @@ def install_app(app_id):
     env_values["FJORDHUB_URL"] = f"http://host.docker.internal:{APP_PORT}"
 
     installer_user_id = int(current_user.id)
-    on_success = lambda: _auth.set_user_app_access(installer_user_id, app_id, "admin")
+    def on_success():
+        _auth.set_user_app_access(installer_user_id, app_id, "admin")
+        if media_choice:
+            try:
+                media_gateway.start(a, media_choice['domain'], media_choice['web_url'], media_choice['mode'])
+                _install_state.set_external_url(app_id, media_choice['web_url'])
+            except Exception as exc:
+                media_gateway.save(waiting_install=False, phase='Videoopsætning kunne ikke starte. Åbn app-indstillinger og prøv igen.', error=str(exc))
 
+    if media_choice:
+        media_gateway.save(waiting_install=True, phase='Afventer installationen af FjordFlix…', error='', domain=media_choice['domain'], mode=media_choice['mode'])
     _installer.start_install(a, env_values, on_success=on_success)
     return jsonify({"ok": True, "message": "Installation startet"})
 

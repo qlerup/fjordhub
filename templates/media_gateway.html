@@ -1,0 +1,42 @@
+<section id="media-guide" class="media-guide">
+  <h3>Adgang og Cloudflare</h3>
+  <div class="form-field"><label for="media-use-tunnel">Vil du tilgå FjordFlix gennem Cloudflare Tunnel?</label>
+    <select id="media-use-tunnel"><option value="no">Nej – almindelig adgang</option><option value="yes">Ja – web via Tunnel, video direkte</option></select>
+    <p class="field-hint">Ved nej installeres ingen ekstra gateway. Du kan tilvælge den her senere.</p>
+  </div>
+  <div id="media-guide-details" hidden>
+    <p>Du logger ind og vælger film på webdomænet. Afspilleren henter videoen direkte fra videodomænet med en kortvarig adgangsbillet.</p>
+    <div class="form-field"><label for="media-guide-web">Webdomæne gennem Tunnel</label><input id="media-guide-web" placeholder="film.ditdomæne.dk" autocomplete="off"></div>
+    <div class="form-field"><label for="media-guide-domain">Direkte videodomæne</label><input id="media-guide-domain" placeholder="media.ditdomæne.dk" autocomplete="off"></div>
+    <details open><summary>1. Opret DNS-posten i Cloudflare</summary>
+      <ol><li>Åbn Cloudflare, vælg domænet som videoadressen tilhører, og åbn <strong>DNS → Records → Add record</strong>.</li>
+      <li>Vælg <strong>Type: A</strong>. Skriv <strong>media</strong> i Name, hvis din ønskede adresse er media.ditdomæne.dk.</li>
+      <li>I <strong>IPv4 address</strong> skriver du routerens offentlige WAN-IP. Den skal svare til den offentlige IP, du ser fra dit hjemmenetværk.</li>
+      <li>Slå den orange sky fra: <strong>Proxy status: DNS only</strong> (grå sky). Vælg <strong>TTL: Auto</strong>, og gem.</li>
+      <li>Behold webdomænets eksisterende Tunnel. Videodomænet skal have sin egen A-post.</li></ol>
+      <p>Hvis WAN-IP ikke er offentlig, kræves en offentlig forbindelse fra udbyderen eller en anden direkte indgang. Hvis IP'en ændres, skal DNS-posten opdateres; dynamisk DNS kan automatisere det.</p>
+    </details>
+    <details open><summary>2. Opret portvideresendelser på routeren</summary>
+      <p>Find <strong>Port Forwarding</strong>. I UniFi kan den ligge under <strong>Settings → Policy Table → Create New Policy → Port Forwarding</strong>, afhængigt af version.</p>
+      <table><thead><tr><th>Felt</th><th>HTTP-regel</th><th>HTTPS-regel</th></tr></thead><tbody>
+        <tr><td>Name</td><td>FjordFlix HTTP</td><td>FjordFlix HTTPS</td></tr>
+        <tr><td>WAN Interface</td><td colspan="2">Din internetforbindelse, typisk WAN1</td></tr>
+        <tr><td>WAN Port</td><td>80</td><td>443</td></tr>
+        <tr><td>From</td><td>Any</td><td>Any</td></tr>
+        <tr><td>Forward IP Address</td><td colspan="2">Den lokale IP på serveren, der kører FjordHub-apps, fx 10.10.0.238</td></tr>
+        <tr><td>Forward Port</td><td>80</td><td>443</td></tr>
+        <tr><td>Protocol</td><td>TCP</td><td>TCP</td></tr>
+      </tbody></table>
+      <p>Gem begge regler. Brug serverens lokale IP – ved Proxmox er det normalt FjordHub-containerens IP. Det er gatewayens porte, der videresendes; appens web-port skal ikke eksponeres direkte. Reservér serverens lokale IP i routeren.</p>
+    </details>
+    <details><summary>3. Vælg HTTPS-indgang</summary>
+      <div class="form-field"><label for="media-guide-mode">HTTPS-indgang</label><select id="media-guide-mode"><option value="managed">FjordHub installerer og vedligeholder Caddy-certifikatet</option><option value="existing">Jeg har allerede en HTTPS reverse proxy</option></select></div>
+      <p>FjordHub genbruger sin egen gateway, hvis den allerede findes. Hvis en anden tjeneste bruger port 80 eller 443, viser guiden det og stopper installationen af gatewayen.</p>
+      <p>Ved eksisterende reverse proxy: tilføj videodomænet med et gyldigt HTTPS-certifikat. Send kun <code>/media/*</code> til FjordFlix-serverens lokale IP og web-port (standard 8097), og bevar Host-headeren. Returnér 404 for andre stier. Deaktivér adgangslogs med fulde video-URL'er.</p>
+    </details>
+    <label class="media-ready"><input id="media-guide-ready" type="checkbox"> Jeg har gemt DNS og portvideresendelserne.</label>
+    <p class="field-hint">FjordHub starter gatewayen, afventer HTTPS og tester forbindelsen, før video aktiveres. Ved fejl kan du rette opsætningen og prøve igen. Kontrollér også afspilning fra mobilnettet bagefter.</p>
+    <button type="button" id="media-guide-start" class="btn-install">Opsæt og test direkte video</button>
+  </div>
+  <p id="media-guide-status" class="app-settings-status" role="status" aria-live="polite"></p>
+</section>

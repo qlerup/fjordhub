@@ -107,6 +107,26 @@ class AppUrlTests(unittest.TestCase):
                 self.assertEqual(client.get('/api/hub/apps/config?app_id=fjordflix').status_code, 400)
                 self.assertEqual(client.get('/api/hub/apps/config?app_id=fjordlens', headers={'X-Hub-Key':'flix-key'}).status_code, 401)
 
+    def test_media_guide_admin_and_installer_callback(self):
+        fjordhub._auth.create_user('media-admin','admin-secret',role='admin')
+        fjordhub._auth.create_user('media-viewer','viewer-secret')
+        app_def={'id':'fjordflix','container_name':'fjordflix'}
+        with patch.object(fjordhub,'media_gateway') as gateway, patch.object(fjordhub,'_installer') as installer, patch.object(fjordhub,'_get_app',return_value=app_def):
+            with fjordhub.app.test_client() as client:
+                client.post('/login',data={'username':'media-viewer','password':'viewer-secret'})
+                self.assertEqual(client.post('/api/apps/fjordflix/media-gateway',json={}).status_code,403)
+                client.post('/logout')
+                client.post('/login',data={'username':'media-admin','password':'admin-secret'})
+                choice={'domain':'media.example.com','web_url':'film.example.com','mode':'managed'}
+                self.assertEqual(client.post('/apps/fjordflix/install',json={'env':{},'media_gateway':choice}).status_code,200)
+                gateway.start.assert_not_called()
+                installer.start_install.call_args.kwargs['on_success']()
+                gateway.start.assert_called_once_with(app_def,'media.example.com','https://film.example.com','managed')
+                gateway.reset_mock()
+                self.assertEqual(client.post('/apps/fjordflix/install',json={'env':{},'media_gateway':None}).status_code,200)
+                installer.start_install.call_args.kwargs['on_success']()
+                gateway.start.assert_not_called()
+
     def _write_fake_proc(self, net_subdir="net", fib_trie=FIB_TRIE, route=ROUTE):
         proc_root = Path(self.tempdir.name) / "proc"
         net_dir = proc_root / net_subdir
