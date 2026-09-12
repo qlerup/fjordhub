@@ -6,8 +6,8 @@
   </div>
   <div id="media-guide-details" hidden>
     <p>Du logger ind og vælger film på webdomænet. Afspilleren henter videoen direkte fra videodomænet med en kortvarig adgangsbillet.</p>
-    <div class="form-field"><label for="media-guide-web">Webdomæne gennem Tunnel</label><input id="media-guide-web" placeholder="film.ditdomæne.dk" autocomplete="off"></div>
-    <div class="form-field"><label for="media-guide-domain">Direkte videodomæne</label><input id="media-guide-domain" placeholder="media.ditdomæne.dk" autocomplete="off"></div>
+    <div class="form-field"><label for="media-guide-web">Webdomæne gennem Tunnel</label><input id="media-guide-web" type="text" placeholder="film.ditdomæne.dk" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
+    <div class="form-field"><label for="media-guide-domain">Direkte videodomæne</label><input id="media-guide-domain" type="text" placeholder="media.ditdomæne.dk" autocomplete="off" autocapitalize="none" spellcheck="false"></div>
     <details open><summary>1. Opret DNS-posten i Cloudflare</summary>
       <ol><li>Åbn Cloudflare, vælg domænet som videoadressen tilhører, og åbn <strong>DNS → Records → Add record</strong>.</li>
       <li>Vælg <strong>Type: A</strong>. Skriv <strong>media</strong> i Name, hvis din ønskede adresse er media.ditdomæne.dk.</li>
