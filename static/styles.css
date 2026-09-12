@@ -1945,3 +1945,56 @@ canvas.resource-chart-canvas {
 .media-ready { display: flex; gap: 10px; align-items: center; margin: 18px 0; }
 .media-ready input { width: auto; }
 .app-settings-modal { max-height: 90vh; overflow-y: auto; }
+
+/* Shared media guide: numbered steps and compact reference fields. */
+.app-settings-modal:has(.media-guide:not([hidden])) { width: 640px; max-width: calc(100vw - 32px); }
+.media-guide-heading { margin-bottom: 22px; }
+.media-guide-kicker { color: var(--accent); font-size: .68rem; letter-spacing: .12em; font-weight: 700; }
+.media-guide-heading h3 { font-size: 1.2rem; margin: 6px 0; }
+.media-guide-heading p { color: var(--text-muted); font-size: .86rem; }
+.media-guide .media-step { margin: 14px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); overflow: hidden; }
+.media-guide .media-step-heading { display: flex; align-items: center; gap: 12px; padding: 18px; list-style: none; }
+.media-step-heading::-webkit-details-marker { display: none; }
+.media-step-heading > div, .media-step-heading > span:nth-child(2) { min-width: 0; flex: 1; }
+.media-step-heading h4, .media-step-heading strong { margin: 0; font-size: .92rem; font-weight: 650; display: block; }
+.media-step-heading p, .media-step-heading small { display: block; color: var(--text-muted); font-size: .77rem; margin: 3px 0 0; font-weight: 400; line-height: 1.5; }
+.media-step-number { flex: 0 0 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 700; font-size: .85rem; }
+.media-step-chevron { color: var(--text-muted); transition: transform .15s; }
+.media-step[open] > summary .media-step-chevron { transform: rotate(180deg); }
+.media-step > summary:hover { background: rgba(255,255,255,.025); }
+.media-guide summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; border-radius: 10px; }
+.media-step-body { padding: 0 18px 18px; }
+.media-step-body > p { font-size: .83rem; margin: 0 0 12px; }
+.media-step-body .form-field:last-child { margin-bottom: 0; }
+.media-path { display: flex; flex-wrap: wrap; gap: 5px 9px; font-size: .77rem; padding: 12px; border-radius: 8px; background: var(--surface); margin: 10px 0; }
+.media-path span { color: var(--text-muted); }
+.media-values { margin: 12px 0; font-size: .82rem; }
+.media-values > div { display: grid; grid-template-columns: minmax(100px, .8fr) 1.2fr; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+.media-values > div:last-child { border-bottom: 0; }
+.media-values dt { color: var(--text-muted); }
+.media-values dd { margin: 0; overflow-wrap: anywhere; }
+.media-values small { display: block; color: var(--text-muted); font-size: .74rem; margin-top: 3px; }
+.media-dns-badge { display: inline-block; padding: 2px 9px; border: 1px solid var(--border); border-radius: 6px; font-weight: 600; }
+.media-guide .media-note { border-left: 2px solid var(--accent); padding: 7px 12px; margin-top: 14px; color: var(--text-muted); font-size: .8rem; }
+.media-guide .media-extra { margin: 14px 0 0; font-size: .79rem; color: var(--text-muted); }
+.media-extra summary { font-size: .79rem; font-weight: 500; }
+.media-extra p { margin-top: 10px; }
+.media-guide .media-subheading { font-size: .75rem; font-weight: 600; margin-top: 20px; }
+.media-guide .media-ready { font-size: .83rem; align-items: flex-start; padding: 13px; border: 1px solid var(--border); border-radius: 8px; }
+.media-ready input { margin-top: 3px; accent-color: var(--accent); }
+.media-step-body > .btn-install { width: 100%; justify-content: center; margin-bottom: 12px; }
+@media (max-width: 480px) {
+  .media-guide .media-step-heading { padding: 14px; gap: 10px; }
+  .media-step-body { padding: 0 14px 14px; }
+  .media-guide table { font-size: 11px; }
+  .media-guide th, .media-guide td { padding: 8px 5px; }
+  .media-values > div { grid-template-columns: minmax(85px, .8fr) 1.2fr; gap: 8px; }
+}
+
+.media-progress { margin-top: 22px; color: var(--text-muted); font-size: .76rem; }
+.media-progress-track { height: 3px; background: var(--border); border-radius: 4px; margin-top: 9px; overflow: hidden; }
+.media-progress-track span { display: block; height: 100%; width: 25%; background: var(--accent); transition: width .2s; }
+.media-step-actions { display: flex; justify-content: space-between; gap: 10px; margin-top: 22px; }
+.media-step-actions > :only-child { margin-left: auto; }
+.media-guide [data-media-step][hidden] { display: none; }
+@media(max-width:480px) { .media-step-actions { flex-wrap: wrap; } .media-step-actions button { flex: 1 1 auto; white-space: normal; } }

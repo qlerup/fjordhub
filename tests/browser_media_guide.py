@@ -40,7 +40,8 @@ with tempfile.TemporaryDirectory() as tmp:
         page.locator('#media-use-tunnel').select_option('yes')
         expect(page.locator('#media-guide-details')).to_be_visible()
         expect(page.locator('#media-guide-start')).to_be_hidden()
-        assert page.locator('#media-guide').inner_text().find('DNS only')>=0
+        assert page.locator('#media-guide').text_content().find('DNS only')>=0
+        assert page.locator('[data-media-step]:visible').count()==1
         page.locator('#media-use-tunnel').select_option('no')
         assert page.evaluate('validateMediaGuide()')
         gateway.start.assert_not_called()
@@ -49,6 +50,17 @@ with tempfile.TemporaryDirectory() as tmp:
         expect(page.locator('#media-guide-web')).to_have_value('https://film.example.com')
         page.locator('#media-use-tunnel').select_option('yes')
         page.locator('#media-guide-domain').fill('media.example.com')
+        page.locator('[data-media-next="2"]').click()
+        expect(page.locator('[data-media-step="2"]')).to_be_visible()
+        page.locator('[data-media-next="3"]').click()
+        expect(page.locator('[data-media-step="3"]')).to_be_visible()
+        page.locator('[data-media-back="2"]').click()
+        expect(page.locator('[data-media-step="2"]')).to_be_visible()
+        out=Path(__file__).parents[1]/'test-results';out.mkdir(exist_ok=True)
+        page.screenshot(path=str(out/'media-guide-dns.png'))
+        page.locator('[data-media-next="3"]').click()
+        page.locator('[data-media-next="4"]').click()
+        expect(page.locator('#media-guide-ready')).to_be_checked()
         page.locator('#media-guide-ready').check()
         page.locator('#media-guide-start').click()
         page.wait_for_timeout(300)
@@ -56,6 +68,7 @@ with tempfile.TemporaryDirectory() as tmp:
         out=Path(__file__).parents[1]/'test-results';out.mkdir(exist_ok=True)
         page.screenshot(path=str(out/'media-guide.png'))
         page.set_viewport_size({'width':390,'height':844})
+        page.screenshot(path=str(out/'media-guide-mobile.png'))
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         assert not errors,errors
         print('PASS: installer yes/no, detailed DNS/port guide, settings prefill, setup API, mobile width, no JS errors.')

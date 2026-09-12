@@ -525,6 +525,7 @@ async function openAppSettings(card) {
   _settingsAppId = appId;
   const guide = document.getElementById('media-guide');
   if (guide) guide.hidden = appId !== 'fjordflix';
+  if (guide && appId === 'fjordflix') showMediaStep(1,false);
   const modal = document.getElementById('app-settings-modal');
   const title = document.getElementById('app-settings-title');
   const input = document.getElementById('app-external-url');
@@ -726,6 +727,7 @@ async function loadMediaGuide() {
   status.textContent=[data.phase,data.error].filter(Boolean).join(' ');
   status.className='app-settings-status '+(data.error?'err':data.active?'ok':'');
   document.getElementById('media-guide-start').disabled=!!data.running;
+  if(data.running || data.active || data.error) showMediaStep(4,false);
   if (data.domain) {
     document.getElementById('media-guide-domain').value=data.domain;
     document.getElementById('media-guide-mode').value=data.mode || 'managed';
@@ -756,3 +758,32 @@ if(location.pathname.endsWith('/wizard')) {
   const button=document.getElementById('media-guide-start');
   if(button) button.hidden=true;
 }
+
+function showMediaStep(step, focus = true) {
+  document.querySelectorAll('[data-media-step]').forEach(panel => panel.hidden = Number(panel.dataset.mediaStep) !== step);
+  document.getElementById('media-step-label').textContent = `Trin ${step} af 4`;
+  document.getElementById('media-step-progress').style.width = `${step * 25}%`;
+  if (focus) {
+    const heading=document.querySelector(`[data-media-step="${step}"] .media-step-heading`);
+    heading.setAttribute('tabindex','-1');
+    heading.focus({preventScroll:true});
+    heading.scrollIntoView({block:'nearest',behavior:'smooth'});
+  }
+}
+document.getElementById('media-guide')?.addEventListener('click',event=>{
+  const next=event.target.closest('[data-media-next]');
+  const back=event.target.closest('[data-media-back]');
+  if(!next && !back) return;
+  const step=Number(next?.dataset.mediaNext || back.dataset.mediaBack);
+  if(next && step === 2) {
+    for(const id of ['media-guide-web','media-guide-domain']) {
+      const input=document.getElementById(id);
+      input.setCustomValidity(input.value.trim() ? '' : 'Indtast domænet for at fortsætte.');
+      if(!input.reportValidity()) return;
+    }
+  }
+  if(step < 4) document.getElementById('media-guide-ready').checked=false;
+  if(next && step === 4) document.getElementById('media-guide-ready').checked=true;
+  showMediaStep(step);
+});
+if(document.getElementById('media-guide')) showMediaStep(1,false);
