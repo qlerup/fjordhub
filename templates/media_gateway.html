@@ -1,4 +1,4 @@
-﻿<section id="media-guide" class="media-guide">
+<section id="media-guide" class="media-guide">
   <header class="media-guide-heading"><span class="media-guide-kicker">DIREKTE VIDEO</span><h3>Adgang og Cloudflare</h3><p>Fire trin fra domæne til sikker afspilning.</p></header>
   <div class="form-field"><label for="media-use-tunnel">Vil du bruge Cloudflare Tunnel?</label>
     <select id="media-use-tunnel"><option value="no">Nej – almindelig adgang</option><option value="yes">Ja – web via Tunnel, video direkte</option></select>
@@ -7,26 +7,19 @@
   <div id="media-guide-details" hidden>
     <div class="media-progress" aria-live="polite"><span id="media-step-label">Trin 1 af 4</span><div class="media-progress-track"><span id="media-step-progress"></span></div></div>
     <section class="media-step" data-media-step="1">
-      <div class="media-step-heading"><span class="media-step-number">1</span><div><h4>Vælg dine adresser</h4><p>Én til biblioteket. Én til videoen.</p></div></div>
-      <div class="media-step-body">
-        <div class="form-field"><label for="media-guide-web">Webdomæne gennem Tunnel</label><input id="media-guide-web" type="text" placeholder="film.ditdomæne.dk" autocomplete="off" autocapitalize="none" spellcheck="false"><p class="field-hint">Her logger du ind og vælger film.</p></div>
-        <div class="form-field"><label for="media-guide-domain">Direkte videodomæne</label><input id="media-guide-domain" type="text" placeholder="media.ditdomæne.dk" autocomplete="off" autocapitalize="none" spellcheck="false"><p class="field-hint">Afspilleren bruger adressen automatisk i baggrunden.</p></div>
-        <div class="media-step-actions"><button type="button" class="btn-install" data-media-next="2">Fortsæt til Cloudflare →</button></div>
-      </div>
-    </section>
-    <section class="media-step" data-media-step="2" hidden>
-      <div class="media-step-heading"><span class="media-step-number">2</span><span><strong>Opret DNS i Cloudflare</strong><small>Forbind videodomænet med din server.</small></span></div>
+      <div class="media-step-heading"><span class="media-step-number">1</span><span><strong>Opret DNS i Cloudflare</strong><small>Forbind videodomænet med din server.</small></span></div>
       <div class="media-step-body">
         <p>Vælg dit domæne i Cloudflare, og åbn:</p>
+        <div class="form-field"><label for="media-guide-domain">Videodomænet du vil oprette</label><input id="media-guide-domain" type="text" placeholder="media.ditdomæne.dk" autocomplete="off" autocapitalize="none" spellcheck="false"><p class="field-hint">Vælg adressen her og opret den med guiden nedenfor. Den behøver ikke findes endnu.</p></div>
         <div class="media-path">DNS <span>→</span> Records <span>→</span> Add record</div>
         <dl class="media-values"><div><dt>Type</dt><dd><code>A</code></dd></div><div><dt>Name</dt><dd><code>media</code><small>Til media.ditdomæne.dk</small></dd></div><div><dt>IPv4 address</dt><dd>Din offentlige WAN-IP</dd></div><div><dt>Proxy status</dt><dd><span class="media-dns-badge">DNS only</span><small>Grå sky – slå proxy fra</small></dd></div><div><dt>TTL</dt><dd>Auto</dd></div></dl>
         <p class="media-note">Tryk <strong>Save</strong>. Behold webdomænets eksisterende Tunnel.</p>
         <details class="media-extra"><summary>Hvilken IP skal jeg bruge?</summary><p>Brug WAN-IP'en fra routerens internetindstillinger. Den skal være offentlig og svare til den IP, du ser fra dit hjemmenetværk. Er den ikke offentlig, skal du have en offentlig forbindelse fra udbyderen eller en anden direkte indgang.</p><p>Ændrer din IP sig, skal DNS-posten opdateres. Dynamisk DNS kan automatisere det.</p></details>
-        <div class="media-step-actions"><button type="button" class="btn btn-open" data-media-back="1">← Tilbage</button><button type="button" class="btn-install" data-media-next="3">Ja, det er færdigt – fortsæt →</button></div>
+        <div class="media-step-actions"><button type="button" class="btn-install" data-media-next="2">Ja, det er færdigt – fortsæt →</button></div>
       </div>
     </section>
-    <section class="media-step" data-media-step="3" hidden>
-      <div class="media-step-heading"><span class="media-step-number">3</span><span><strong>Åbn forbindelsen i routeren</strong><small>Opret to regler under Port Forwarding.</small></span></div>
+    <section class="media-step" data-media-step="2" hidden>
+      <div class="media-step-heading"><span class="media-step-number">2</span><span><strong>Åbn forbindelsen i routeren</strong><small>Opret to regler under Port Forwarding.</small></span></div>
       <div class="media-step-body">
         <p>I UniFi kan menuen hedde:</p><div class="media-path">Settings <span>→</span> Policy Table <span>→</span> Create New Policy <span>→</span> Port Forwarding</div>
         <p class="field-hint">Placeringen afhænger af din UniFi-version.</p>
@@ -40,7 +33,15 @@
         <dl class="media-values"><div><dt>WAN Interface</dt><dd>Din internetforbindelse<small>Typisk WAN1</small></dd></div><div><dt>From</dt><dd>Any</dd></div><div><dt>Forward IP Address</dt><dd>FjordHub-serverens lokale IP<small>Fx 10.10.0.238</small></dd></div></dl>
         <p class="media-note">Gem begge regler. Ved Proxmox bruges normalt FjordHub-containerens IP.</p>
         <details class="media-extra"><summary>Om serverens adresse og porte</summary><p>Reservér serverens lokale IP i routeren. Port 80 og 443 skal pege på HTTPS-gatewayen. FjordFlix' egen web-port skal ikke eksponeres direkte.</p></details>
-        <div class="media-step-actions"><button type="button" class="btn btn-open" data-media-back="2">← Tilbage</button><button type="button" class="btn-install" data-media-next="4">Ja, det er færdigt – fortsæt →</button></div>
+        <div class="media-step-actions"><button type="button" class="btn btn-open" data-media-back="1">← Tilbage</button><button type="button" class="btn-install" data-media-next="3">Ja, det er færdigt – fortsæt →</button></div>
+      </div>
+    </section>
+    <section class="media-step" data-media-step="3" hidden>
+      <div class="media-step-heading"><span class="media-step-number">3</span><div><h4>Bekræft dine adresser</h4><p>Én til biblioteket. Én til videoen.</p></div></div>
+      <div class="media-step-body">
+        <div class="form-field"><label for="media-guide-web">Webdomæne gennem Tunnel</label><input id="media-guide-web" type="text" placeholder="film.ditdomæne.dk" autocomplete="off" autocapitalize="none" spellcheck="false"><p class="field-hint">Her logger du ind og vælger film.</p></div>
+        <div class="form-field"><label for="media-guide-confirm">Videodomæne fra DNS-trinnet</label><input id="media-guide-confirm" type="text" readonly><p class="field-hint">Vil du ændre adressen? Gå tilbage til trin 1 og ret DNS-posten.</p></div>
+        <div class="media-step-actions"><button type="button" class="btn btn-open" data-media-back="2">← Tilbage</button><button type="button" class="btn-install" data-media-next="4">Adresserne er korrekte – fortsæt →</button></div>
       </div>
     </section>
     <section class="media-step" data-media-step="4" hidden>
@@ -51,7 +52,7 @@
         <label class="media-ready"><input id="media-guide-ready" type="checkbox"><span>DNS og portvideresendelser er gemt</span></label>
         <button type="button" id="media-guide-start" class="btn-install">Opsæt og test direkte video</button>
         <p class="field-hint">Video aktiveres først, når HTTPS-testen består. Prøv også en film fra mobilnettet bagefter.</p>
-        <div class="media-step-actions"><button type="button" class="btn btn-open" data-media-back="3">← Tilbage til routeren</button></div>
+        <div class="media-step-actions"><button type="button" class="btn btn-open" data-media-back="3">← Tilbage til adresserne</button></div>
       </div>
     </section>
   </div>

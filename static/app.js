@@ -760,6 +760,7 @@ if(location.pathname.endsWith('/wizard')) {
 }
 
 function showMediaStep(step, focus = true) {
+  document.getElementById('media-guide-confirm').value = document.getElementById('media-guide-domain').value.trim();
   document.querySelectorAll('[data-media-step]').forEach(panel => panel.hidden = Number(panel.dataset.mediaStep) !== step);
   document.getElementById('media-step-label').textContent = `Trin ${step} af 4`;
   document.getElementById('media-step-progress').style.width = `${step * 25}%`;
@@ -775,8 +776,8 @@ document.getElementById('media-guide')?.addEventListener('click',event=>{
   const back=event.target.closest('[data-media-back]');
   if(!next && !back) return;
   const step=Number(next?.dataset.mediaNext || back.dataset.mediaBack);
-  if(next && step === 2) {
-    for(const id of ['media-guide-web','media-guide-domain']) {
+  if(next && (step === 2 || step === 4)) {
+    for(const id of step === 2 ? ['media-guide-domain'] : ['media-guide-web']) {
       const input=document.getElementById(id);
       input.setCustomValidity(input.value.trim() ? '' : 'Indtast domænet for at fortsætte.');
       if(!input.reportValidity()) return;

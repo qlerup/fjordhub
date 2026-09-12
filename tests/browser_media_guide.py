@@ -42,6 +42,7 @@ with tempfile.TemporaryDirectory() as tmp:
         expect(page.locator('#media-guide-start')).to_be_hidden()
         assert page.locator('#media-guide').text_content().find('DNS only')>=0
         assert page.locator('[data-media-step]:visible').count()==1
+        expect(page.locator('[data-media-step="1"]')).to_contain_text('Opret DNS i Cloudflare')
         page.locator('#media-use-tunnel').select_option('no')
         assert page.evaluate('validateMediaGuide()')
         gateway.start.assert_not_called()
@@ -52,8 +53,11 @@ with tempfile.TemporaryDirectory() as tmp:
         page.locator('#media-guide-domain').fill('media.example.com')
         page.locator('[data-media-next="2"]').click()
         expect(page.locator('[data-media-step="2"]')).to_be_visible()
+        expect(page.locator('[data-media-step="2"]')).to_contain_text('Åbn forbindelsen i routeren')
         page.locator('[data-media-next="3"]').click()
         expect(page.locator('[data-media-step="3"]')).to_be_visible()
+        expect(page.locator('#media-guide-confirm')).to_have_value('media.example.com')
+        expect(page.locator('#media-guide-web')).to_have_value('https://film.example.com')
         page.locator('[data-media-back="2"]').click()
         expect(page.locator('[data-media-step="2"]')).to_be_visible()
         out=Path(__file__).parents[1]/'test-results';out.mkdir(exist_ok=True)
