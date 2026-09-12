@@ -40,12 +40,23 @@ class MediaGatewayTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError,'anden container'):
             self.gateway.ensure_gateway(client,self.app,'media.example.com')
         client.containers.get.side_effect=docker.errors.NotFound('missing')
-        other=MagicMock();other.attrs={'NetworkSettings':{'Ports':{'443/tcp':[{'HostPort':'443'}]}}}
+        other=MagicMock();other.name='existing-proxy';other.attrs={'NetworkSettings':{'Ports':{'443/tcp':[{'HostPort':'443','HostIp':'0.0.0.0'}]}}}
         client.containers.list.return_value=[other]
-        with self.assertRaisesRegex(RuntimeError,'bruges allerede'):
+        with self.assertRaisesRegex(RuntimeError,r'existing-proxy: 0\.0\.0\.0:443'):
             self.gateway.ensure_gateway(client,self.app,'media.example.com')
         client.containers.create.assert_not_called()
         other.stop.assert_not_called()
+
+    def test_udp_port_does_not_block_tcp_gateway(self):
+        client=self.manager.client
+        own=client.containers.get.return_value
+        own.labels={LABEL:'1','dk.fjordhub.media-domain':'media.example.com'}
+        own.status='running';own.exec_run.return_value.exit_code=0
+        other=MagicMock();other.id='other'
+        other.attrs={'NetworkSettings':{'Ports':{'443/udp':[{'HostPort':'443'}]}}}
+        client.containers.list.return_value=[other]
+        self.gateway.ensure_gateway(client,self.app,'media.example.com')
+        own.exec_run.assert_called_once()
 
     def test_failed_https_never_activates(self):
         self.gateway.lock.acquire()

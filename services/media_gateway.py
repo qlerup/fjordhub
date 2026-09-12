@@ -136,12 +136,22 @@ class MediaGateway:
             raise RuntimeError('Gateway-navnet bruges af en anden container. Den er ikke ændret.')
         if gateway and gateway.labels.get('dk.fjordhub.media-domain') != host:
             raise RuntimeError('FjordHubs gateway bruger et andet domæne. Den er ikke ændret.')
+        conflicts = []
         for container in client.containers.list():
             if gateway and container.id == gateway.id:
                 continue
-            for bindings in container.attrs.get('NetworkSettings', {}).get('Ports', {}).values():
-                if any(b.get('HostPort') in ('80','443') for b in (bindings or [])):
-                    raise RuntimeError('Port 80 eller 443 bruges allerede. Vælg eksisterende HTTPS-indgang og konfigurér video-ruten dér.')
+            for target, bindings in container.attrs.get('NetworkSettings', {}).get('Ports', {}).items():
+                if not target.endswith('/tcp'):
+                    continue
+                for binding in bindings or []:
+                    if binding.get('HostPort') in ('80', '443'):
+                        address = binding.get('HostIp') or '0.0.0.0'
+                        if ':' in address:
+                            address = f'[{address}]'
+                        conflicts.append(f"{container.name}: {address}:{binding['HostPort']} → {target}")
+        if conflicts:
+            details = '; '.join(dict.fromkeys(conflicts))
+            raise RuntimeError(f'TCP-portene bruges allerede af {details}. Hvis containeren er din HTTPS reverse proxy, vælg eksisterende HTTPS-indgang og tilføj videodomænet dér. Ellers skal portkonflikten afklares først. Ingen containere er stoppet.')
         app_container.reload()
         bindings = app_container.attrs['NetworkSettings']['Ports'].get('8080/tcp') or []
         bindings = [b for b in bindings if b.get('HostIp') in ('0.0.0.0', '')]
