@@ -726,7 +726,9 @@ async function loadMediaGuide() {
   const status=document.getElementById('media-guide-status');
   status.textContent=[data.phase,data.error].filter(Boolean).join(' ');
   status.className='app-settings-status '+(data.error?'err':data.active?'ok':'');
-  document.getElementById('media-guide-start').disabled=!!data.running;
+  const complete=!!data.active && !data.running && !data.waiting_install && !data.error;
+  showMediaCompletion(complete);
+  document.getElementById('media-guide-start').disabled=!!data.running || complete;
   if(data.running || data.active || data.error) showMediaStep(4,false);
   if (data.domain) {
     document.getElementById('media-guide-domain').value=data.domain;
@@ -738,11 +740,13 @@ async function loadMediaGuide() {
   if(data.running || data.waiting_install) mediaGuideTimer=setTimeout(()=>loadMediaGuide().catch(mediaGuideError),1500);
 }
 function mediaGuideError(error) {
+  showMediaCompletion(false);
   document.getElementById('media-guide-status').textContent=error.message;
   document.getElementById('media-guide-start').disabled=false;
 }
 async function startMediaGuide() {
   if (!validateMediaGuide()) return;
+  showMediaCompletion(false);
   document.getElementById('media-guide-start').disabled=true;
   try {
     const response=await fetch('/api/apps/fjordflix/media-gateway',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(mediaGuideData())});
@@ -755,6 +759,20 @@ document.getElementById('media-use-tunnel')?.addEventListener('change',event=>{
   document.getElementById('media-guide-details').hidden=event.target.value!=='yes';
 });
 document.getElementById('media-guide-start')?.addEventListener('click',startMediaGuide);
+function showMediaCompletion(complete) {
+  document.getElementById('media-guide-done').hidden=!complete;
+  const button=document.getElementById('media-guide-start');
+  button.disabled=complete;
+  button.textContent=complete ? 'Direkte video er aktiveret' : 'Opsæt og test direkte video';
+}
+document.getElementById('media-guide-done')?.addEventListener('click',()=>{
+  clearTimeout(mediaGuideTimer);
+  if(location.pathname.endsWith('/wizard')) location.assign('/');
+  else closeAppSettings();
+});
+for(const id of ['media-guide-web','media-guide-domain','media-guide-mode']) {
+  document.getElementById(id)?.addEventListener('change',()=>showMediaCompletion(false));
+}
 if(location.pathname.endsWith('/wizard')) {
   const button=document.getElementById('media-guide-start');
   if(button) button.hidden=true;

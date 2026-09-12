@@ -85,6 +85,19 @@ with tempfile.TemporaryDirectory() as tmp:
         page.set_viewport_size({'width':390,'height':844})
         page.screenshot(path=str(out/'media-guide-mobile.png'))
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        gateway.status.return_value={'active':True,'running':False,'phase':'Direkte video er aktiveret.'}
+        page.evaluate('loadMediaGuide()')
+        expect(page.locator('#media-guide-start')).to_be_disabled()
+        expect(page.locator('#media-guide-done')).to_be_visible()
+        # An unsuccessful retry must remain actionable even if an earlier setup was active.
+        gateway.status.return_value={'active':True,'running':False,'error':'HTTPS-test fejlede'}
+        page.evaluate('loadMediaGuide()')
+        expect(page.locator('#media-guide-start')).to_be_enabled()
+        expect(page.locator('#media-guide-done')).to_be_hidden()
+        gateway.status.return_value={'active':True,'running':False}
+        page.evaluate('loadMediaGuide()')
+        page.locator('#media-guide-done').click()
+        expect(page.locator('#app-settings-modal')).not_to_have_class('modal-overlay is-open')
         assert not errors,errors
         print('PASS: installer yes/no, detailed DNS/port guide, settings prefill, setup API, mobile width, no JS errors.')
         browser.close()
