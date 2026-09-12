@@ -47,7 +47,11 @@ with tempfile.TemporaryDirectory() as tmp:
         assert page.evaluate('validateMediaGuide()')
         gateway.start.assert_not_called()
         page.goto('http://hub.test/')
+        assert '?v=' in page.locator('script[src*="app.js"]').get_attribute('src')
+        gateway.status.return_value={'domain':'media.gleruphub.dk','mode':'managed'}
         page.evaluate("openAppSettings(document.querySelector('[data-app-id=fjordflix]'))")
+        expect(page.locator('#media-dns-name')).to_have_text('media.gleruphub.dk')
+        gateway.status.return_value={}
         expect(page.locator('#media-guide-web')).to_have_value('https://film.example.com')
         page.locator('#media-use-tunnel').select_option('yes')
         page.locator('#media-guide-domain').fill('media.example.com')

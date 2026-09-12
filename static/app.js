@@ -803,3 +803,8 @@ function updateMediaDnsPreview() {
   document.getElementById('media-dns-target').textContent=hostname ? `Til ${hostname} · brug hele domænet i Name` : value ? 'Indtast et gyldigt videodomæne uden sti' : 'Indtast videodomænet ovenfor';
 }
 document.getElementById('media-guide-domain')?.addEventListener('input',updateMediaDnsPreview);
+document.getElementById('media-guide-domain')?.addEventListener('change',updateMediaDnsPreview);
+document.getElementById('media-guide-domain')?.addEventListener('focus',updateMediaDnsPreview);
+window.addEventListener('pageshow',()=>{
+  if(document.getElementById('media-guide-domain')) updateMediaDnsPreview();
+});
