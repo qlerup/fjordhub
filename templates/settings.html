@@ -64,7 +64,23 @@
       <p>Brug <code>GET {{ url_for('api_integration_apps', _external=True) }}</code> med headeren <code>Authorization: Bearer DIT_TOKEN</code>.</p>
       <form id="access-token-form">
         <div class="auth-field"><label for="token-name">Navn</label><input id="token-name" name="name" maxlength="80" placeholder="Fx min anden app" required></div>
-        <div class="auth-field"><label for="token-days">Udløber efter</label><select id="token-days" name="days"><option value="30">30 dage</option><option value="90" selected>90 dage</option><option value="365">365 dage</option></select></div>
+        <div class="auth-field">
+          <label id="token-days-label" for="token-days-trigger">Udløber efter</label>
+          <input id="token-days" name="days" type="hidden" value="90">
+          <div class="settings-select" id="token-days-select">
+            <button id="token-days-trigger" class="settings-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="token-days-options" aria-labelledby="token-days-label token-days-value">
+              <span id="token-days-value">90 dage</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div id="token-days-options" class="settings-select-options" role="listbox" aria-labelledby="token-days-label" hidden>
+              {% for days in [30, 90, 365] %}
+              <div class="settings-select-option" role="option" tabindex="-1" data-value="{{ days }}" aria-selected="{{ 'true' if days == 90 else 'false' }}">
+                <span>{{ days }} dage</span><span class="settings-select-check" aria-hidden="true">✓</span>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
         <button class="btn-install" type="submit">Opret adgangstoken</button>
       </form>
       <p id="token-error" class="auth-error" role="alert" hidden></p>
@@ -147,6 +163,58 @@
 
 <script>
 (function () {
+  const select = document.getElementById('token-days-select');
+  const trigger = document.getElementById('token-days-trigger');
+  const menu = document.getElementById('token-days-options');
+  const options = Array.from(menu.querySelectorAll('[role="option"]'));
+  const input = document.getElementById('token-days');
+  function closeSelect(restoreFocus) {
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) trigger.focus();
+  }
+  function openSelect(index) {
+    menu.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    options[index === undefined ? options.findIndex(option => option.dataset.value === input.value) : index].focus();
+  }
+  function choose(option) {
+    input.value = option.dataset.value;
+    document.getElementById('token-days-value').textContent = option.dataset.value + ' dage';
+    options.forEach(item => item.setAttribute('aria-selected', String(item === option)));
+    closeSelect(true);
+  }
+  trigger.addEventListener('click', function () {
+    if (menu.hidden) openSelect(); else closeSelect(true);
+  });
+  trigger.addEventListener('keydown', function (event) {
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault();
+      openSelect(event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1 : undefined);
+    }
+  });
+  options.forEach(option => option.addEventListener('click', () => choose(option)));
+  menu.addEventListener('keydown', function (event) {
+    const index = options.indexOf(document.activeElement);
+    if (['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' ', 'Escape'].includes(event.key)) event.preventDefault();
+    if (event.key === 'ArrowDown') options[(index + 1) % options.length].focus();
+    if (event.key === 'ArrowUp') options[(index + options.length - 1) % options.length].focus();
+    if (event.key === 'Home') options[0].focus();
+    if (event.key === 'End') options[options.length - 1].focus();
+    if (event.key === 'Enter' || event.key === ' ') choose(options[index]);
+    if (event.key === 'Escape') closeSelect(true);
+    if (/^[0-9]$/.test(event.key)) {
+      const match = options.find(option => option.dataset.value.startsWith(event.key));
+      if (match) { event.preventDefault(); match.focus(); }
+    }
+  });
+  select.addEventListener('focusout', function (event) {
+    if (!select.contains(event.relatedTarget)) closeSelect(false);
+  });
+  document.addEventListener('pointerdown', function (event) {
+    if (!select.contains(event.target)) closeSelect(false);
+  });
+
   const form = document.getElementById('access-token-form');
   const error = document.getElementById('token-error');
   const secret = document.getElementById('token-secret');
@@ -166,7 +234,7 @@
   form.addEventListener('submit', async function (event) {
     event.preventDefault();
     error.hidden = true;
-    const button = form.querySelector('button');
+    const button = form.querySelector('button[type="submit"]');
     button.disabled = true;
     try {
       const result = await send({{ url_for('create_access_token')|tojson }}, {
