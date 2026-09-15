@@ -14,12 +14,13 @@
   </div>
 
   <nav class="settings-tabs">
-    <a class="settings-tab {% if section != 'update' %}active{% endif %}" href="{{ url_for('settings', section='general') }}" data-tab="general">Generelt</a>
+    <a class="settings-tab {% if section == 'general' %}active{% endif %}" href="{{ url_for('settings', section='general') }}" data-tab="general">Generelt</a>
     <a class="settings-tab {% if section == 'update' %}active{% endif %}" href="{{ url_for('settings', section='update') }}" data-tab="update">Opdatering</a>
+    <a class="settings-tab {% if section == 'tokens' %}active{% endif %}" href="{{ url_for('settings', section='tokens') }}" data-tab="tokens">Adgangstokens</a>
   </nav>
 
   {# ── Generelt ── #}
-  <div id="pane-general" {% if section == 'update' %}hidden{% endif %}>
+  <div id="pane-general" {% if section != 'general' %}hidden{% endif %}>
     <div class="settings-card">
       <div class="settings-card-head">
         <h2>Generelt</h2>
@@ -52,6 +53,38 @@
         </div>
         <button type="submit" class="btn-install">Test og gem</button>
       </form>
+    </div>
+  </div>
+
+  <div id="pane-tokens" {% if section != 'tokens' %}hidden{% endif %}>
+    <div class="settings-card">
+      <div class="settings-card-head"><h2>Adgangstokens</h2></div>
+      <p>Giv en anden app læseadgang til kataloget over apps, der kan installeres gennem FjordHub: app-id, navn og beskrivelse.</p>
+      <p>Adgangen virker kun på det lokale netværk (LAN). Brug FjordHubs lokale adresse i den anden app.</p>
+      <p>Brug <code>GET {{ url_for('api_integration_apps', _external=True) }}</code> med headeren <code>Authorization: Bearer DIT_TOKEN</code>.</p>
+      <form id="access-token-form">
+        <div class="auth-field"><label for="token-name">Navn</label><input id="token-name" name="name" maxlength="80" placeholder="Fx min anden app" required></div>
+        <div class="auth-field"><label for="token-days">Udløber efter</label><select id="token-days" name="days"><option value="30">30 dage</option><option value="90" selected>90 dage</option><option value="365">365 dage</option></select></div>
+        <button class="btn-install" type="submit">Opret adgangstoken</button>
+      </form>
+      <p id="token-error" class="auth-error" role="alert" hidden></p>
+      <div id="token-created" hidden aria-live="polite">
+        <p>Tokenet vises kun denne ene gang. Kopiér det, inden du forlader siden.</p>
+        <div class="auth-field"><label for="token-secret">Dit nye adgangstoken</label><input id="token-secret" readonly autocomplete="off" spellcheck="false"></div>
+        <button id="token-copy" class="btn-open" type="button">Kopiér token</button>
+        <a class="btn-open" href="{{ url_for('settings', section='tokens') }}">Færdig</a>
+      </div>
+    </div>
+    <div class="settings-card">
+      <div class="settings-card-head"><h2>Oprettede tokens</h2></div>
+      {% for token in access_tokens %}
+      <div style="padding:12px 0;border-bottom:1px solid var(--border)">
+        <strong>{{ token.name }}</strong> <span class="badge">{{ token.status }}</span>
+        <p><code>{{ token.prefix }}…</code> · Oprettet {{ token.created_at[:10] }} · Udløber {{ token.expires_at[:10] }}</p>
+        <p>Senest brugt: {{ token.last_used_at[:16]|replace('T', ' ') if token.last_used_at else 'Aldrig' }} (UTC)</p>
+        {% if not token.revoked_at %}<button type="button" class="btn-open" data-revoke-token="{{ token.id }}">Tilbagekald</button>{% endif %}
+      </div>
+      {% else %}<p>Der er endnu ikke oprettet adgangstokens.</p>{% endfor %}
     </div>
   </div>
 
@@ -113,6 +146,59 @@
 </div>
 
 <script>
+(function () {
+  const form = document.getElementById('access-token-form');
+  const error = document.getElementById('token-error');
+  const secret = document.getElementById('token-secret');
+  async function send(url, data) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': {{ access_token_csrf|tojson }}},
+      body: JSON.stringify(data),
+      cache: 'no-store'
+    });
+    if (response.redirected) throw new Error('Din session er udløbet. Genindlæs siden.');
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Handlingen mislykkedes.');
+    return result;
+  }
+  function showError(err) { error.textContent = err.message; error.hidden = false; }
+  form.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    error.hidden = true;
+    const button = form.querySelector('button');
+    button.disabled = true;
+    try {
+      const result = await send({{ url_for('create_access_token')|tojson }}, {
+        name: document.getElementById('token-name').value,
+        days: Number(document.getElementById('token-days').value)
+      });
+      secret.value = result.token;
+      form.hidden = true;
+      document.getElementById('token-created').hidden = false;
+      secret.focus();
+      secret.select();
+    } catch (err) { showError(err); button.disabled = false; }
+  });
+  document.getElementById('token-copy').addEventListener('click', async function () {
+    try { await navigator.clipboard.writeText(secret.value); this.textContent = 'Kopieret'; }
+    catch (_) { secret.focus(); secret.select(); showError(new Error('Kopiér det markerede token manuelt.')); }
+  });
+  document.querySelectorAll('[data-revoke-token]').forEach(function (button) {
+    button.addEventListener('click', async function () {
+      if (!confirm('Tilbagekald tokenet? Apps, der bruger det, mister straks adgangen.')) return;
+      button.disabled = true;
+      error.hidden = true;
+      try {
+        await send('/settings/access-tokens/' + button.dataset.revokeToken + '/revoke', {});
+        button.parentElement.querySelector('.badge').textContent = 'Tilbagekaldt';
+        button.remove();
+      } catch (err) { showError(err); button.disabled = false; }
+    });
+  });
+  window.addEventListener('pagehide', function () { secret.value = ''; });
+})();
+
 (function () {
   var form = document.getElementById('mail-settings-form');
   if (!form) return;

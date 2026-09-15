@@ -7,13 +7,15 @@ import warnings
 import threading
 import shlex
 import ipaddress
+import secrets
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 import requests
-from flask import Flask, render_template, jsonify, request, redirect, url_for, Response, send_file
+from flask import Flask, render_template, jsonify, request, redirect, url_for, Response, send_file, session
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 
 from services.auth import AuthService
+from services.local_network import is_local_request
 from services.docker_manager import DockerManager
 from services.registry import AppRegistry
 from services.remote_registry import RemoteRegistry
@@ -132,6 +134,7 @@ _AUTH_EXEMPT = {
     "api_hub_app_users",
     "api_hub_app_user",
     "api_hub_sso_verify",
+    "api_integration_apps",
 }
 
 _sso_tokens: dict = {}
@@ -693,11 +696,16 @@ def settings():
     if not current_user.is_admin:
         return redirect(url_for("dashboard"))
     section = request.args.get("section", "general")
+    if section not in {"general", "update", "tokens"}:
+        section = "general"
+    session.setdefault("access_token_csrf", secrets.token_urlsafe(32))
     mail_settings = _password_reset.mail_settings()
     return render_template(
         "settings.html",
         active_page="settings",
         section=section,
+        access_tokens=_auth.list_access_tokens(),
+        access_token_csrf=session["access_token_csrf"],
         hub_src_configured=bool(FJORDHUB_SRC_DIR or FJORDHUB_UPDATER_URL),
         mail_configured=bool(mail_settings),
         smtp_user=(mail_settings or {}).get("user", ""),
@@ -707,6 +715,68 @@ def settings():
         mail_saved=str(request.args.get("mail_saved") or "") == "1",
         mail_error=str(request.args.get("mail_error") or ""),
     )
+
+
+def _access_token_management_error():
+    if not current_user.is_admin:
+        return jsonify({"error": "Kræver administratoradgang."}), 403
+    csrf = request.headers.get("X-CSRF-Token", "")
+    if not csrf or not secrets.compare_digest(csrf, session.get("access_token_csrf", "")):
+        return jsonify({"error": "Genindlæs siden og prøv igen."}), 403
+    return None
+
+
+@app.route("/settings/access-tokens", methods=["POST"])
+def create_access_token():
+    error = _access_token_management_error()
+    if error is not None:
+        return error
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Ugyldige oplysninger."}), 400
+    try:
+        if not isinstance(data.get("name"), str) or type(data.get("days")) is not int:
+            raise ValueError("Angiv navn og levetid.")
+        token = _auth.create_access_token(data["name"], current_user.id, data["days"])
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    response = jsonify({"token": token})
+    response.status_code = 201
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.route("/settings/access-tokens/<int:token_id>/revoke", methods=["POST"])
+def revoke_access_token(token_id):
+    error = _access_token_management_error()
+    if error is not None:
+        return error
+    if not _auth.revoke_access_token(token_id):
+        return jsonify({"error": "Tokenet findes ikke eller er allerede tilbagekaldt."}), 404
+    return jsonify({"ok": True})
+
+
+@app.route("/api/integrations/v1/apps", methods=["GET"])
+def api_integration_apps():
+    if not is_local_request(request.remote_addr, request.headers):
+        response = jsonify({"error": "Dette API er kun tilgængeligt på det lokale netværk."})
+        response.status_code = 403
+        response.headers["Cache-Control"] = "no-store"
+        return response
+    # Explicit output allowlist: never return registry objects or installation settings.
+    authorization = request.headers.get("Authorization", "").split()
+    if (len(authorization) != 2 or authorization[0].lower() != "bearer"
+            or not _auth.authenticate_access_token(authorization[1])):
+        response = jsonify({"error": "Ugyldigt eller udløbet adgangstoken."})
+        response.status_code = 401
+        response.headers["WWW-Authenticate"] = "Bearer"
+    else:
+        response = jsonify({"items": [
+            {"id": entry["id"], "name": entry["name"],
+             "description": entry.get("description", "")} for entry in _get_apps()
+        ]})
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.route("/settings/mail", methods=["POST"])

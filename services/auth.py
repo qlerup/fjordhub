@@ -3,7 +3,7 @@ import secrets
 import sqlite3
 import re
 from contextlib import closing
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -165,6 +165,17 @@ class AuthService:
                     must_change_password INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS access_tokens (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    token_hash TEXT UNIQUE NOT NULL,
+                    prefix TEXT NOT NULL,
+                    created_by INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    last_used_at TEXT,
+                    revoked_at TEXT
+                );
                 CREATE TABLE IF NOT EXISTS app_hub_keys (
                     app_id TEXT PRIMARY KEY,
                     api_key TEXT NOT NULL,
@@ -207,6 +218,75 @@ class AuthService:
         with closing(self._conn()) as conn:
             row = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()
             return int(row["c"] if row else 0)
+
+    def create_access_token(self, name: str, created_by: int, days: int = 90) -> str:
+        name = name.strip()
+        if not name or len(name) > 80:
+            raise ValueError("Navnet skal være mellem 1 og 80 tegn.")
+        if days not in (30, 90, 365):
+            raise ValueError("Vælg en gyldig levetid.")
+        owner = self.get_by_id(created_by)
+        if not owner or not owner.is_admin or owner.must_change_password:
+            raise ValueError("Kræver en administrator med en aktiv adgangskode.")
+        token = "fh_at_" + secrets.token_urlsafe(32)
+        now = datetime.now(timezone.utc)
+        with closing(self._conn()) as conn:
+            conn.execute(
+                """INSERT INTO access_tokens
+                   (name, token_hash, prefix, created_by, created_at, expires_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (name, _hash_api_key(token), token[:12], created_by,
+                 now.isoformat(), (now + timedelta(days=days)).isoformat()),
+            )
+            conn.commit()
+        return token
+
+    def list_access_tokens(self) -> list[dict]:
+        now = datetime.now(timezone.utc).isoformat()
+        with closing(self._conn()) as conn:
+            rows = conn.execute(
+                """SELECT t.id, t.name, t.prefix, t.created_at, t.expires_at,
+                          t.last_used_at, t.revoked_at,
+                          u.role AS owner_role, u.must_change_password
+                   FROM access_tokens t LEFT JOIN users u ON u.id=t.created_by
+                   ORDER BY t.id DESC"""
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["status"] = (
+                "Tilbagekaldt" if item["revoked_at"] else
+                "Udløbet" if item["expires_at"] <= now else
+                "Inaktiv" if item["owner_role"] != "admin" or item["must_change_password"] else
+                "Aktivt"
+            )
+            result.append(item)
+        return result
+
+    def revoke_access_token(self, token_id: int) -> bool:
+        with closing(self._conn()) as conn:
+            cursor = conn.execute(
+                "UPDATE access_tokens SET revoked_at=? WHERE id=? AND revoked_at IS NULL",
+                (datetime.now(timezone.utc).isoformat(), token_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def authenticate_access_token(self, token: str) -> bool:
+        if not re.fullmatch(r"fh_at_[A-Za-z0-9_-]{43}", token):
+            return False
+        now = datetime.now(timezone.utc).isoformat()
+        with closing(self._conn()) as conn:
+            cursor = conn.execute(
+                """UPDATE access_tokens SET last_used_at=?
+                   WHERE token_hash=? AND revoked_at IS NULL AND expires_at>?
+                   AND created_by IN (
+                       SELECT id FROM users WHERE role='admin' AND must_change_password=0
+                   )""",
+                (now, _hash_api_key(token), now),
+            )
+            conn.commit()
+            return cursor.rowcount == 1
 
     def admin_count(self) -> int:
         with closing(self._conn()) as conn:

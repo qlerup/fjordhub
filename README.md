@@ -27,6 +27,43 @@ FjordHub is a lightweight control panel for a small fleet of self-hosted apps. I
 
 It is built for the home-lab case: one Linux host (bare metal, VM or Proxmox LXC) running Docker, administered by one or a few people.
 
+## Access tokens for other apps
+
+Administrators can create named tokens under **Indstillinger → Adgangstokens**,
+with a lifetime of 30, 90 or 365 days. Copy the token when it is created: only
+its SHA-256 hash is stored, and the full token cannot be displayed again.
+The same page lists expiry, last use (UTC) and a revoke button.
+
+Use the token from the other app's backend on your local network:
+
+```sh
+curl http://192.168.1.10:8091/api/integrations/v1/apps \
+  -H "Authorization: Bearer $FJORDHUB_ACCESS_TOKEN"
+```
+
+The response contains the installable app catalog (including apps not yet installed):
+
+```json
+{"items": [{"id": "fjordlens", "name": "FjordLens", "description": "..."}]}
+```
+
+The allowed fields are explicitly defined in `api_integration_apps` in `app.py`.
+Access is LAN-only: RFC1918 IPv4 addresses, IPv6 unique-local addresses and
+loopback are accepted (including private Docker networks). Public clients get
+HTTP 403 even with a valid token. The socket peer and every address in
+`X-Forwarded-For` / `X-Real-IP` must be local; malformed addresses and the
+unsupported `Forwarded` header are rejected. Proxies must preserve the actual
+client address in `X-Forwarded-For`, as the bundled Traefik does. A tunnel or
+proxy that hides the client address must not expose this endpoint publicly.
+Replace the example address and port with your server's LAN address.
+Tokens only grant read access to this endpoint; they do not grant installation,
+user management, SSO or access to app configuration. They are distinct from the
+internal `X-Hub-Key` credentials used by managed apps. Missing, invalid, expired
+or revoked tokens receive HTTP 401. Tokens also stop working if their creator
+is deleted, loses the administrator role or must change their password.
+Tokens are stored in the existing persistent `hub.db`; the table is created
+automatically on startup.
+
 ## How it works
 
 The stack is three containers, defined in [docker-compose.yml](docker-compose.yml):
