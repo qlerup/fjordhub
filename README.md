@@ -30,39 +30,54 @@ It is built for the home-lab case: one Linux host (bare metal, VM or Proxmox LXC
 ## Access tokens for other apps
 
 Administrators can create named tokens under **Indstillinger → Adgangstokens**,
-with a lifetime of 30, 90 or 365 days. Copy the token when it is created: only
+with a lifetime of 30, 90 or 365 days, or **Udløber aldrig** (no expiry). Copy the token when it is created: only
 its SHA-256 hash is stored, and the full token cannot be displayed again.
 The same page lists expiry, last use (UTC) and a revoke button.
 
-Use the token from the other app's backend on your local network:
+Tokens grant read-only access to Docker resource metrics on the local network:
 
 ```sh
-curl http://192.168.1.10:8091/api/integrations/v1/apps \
+curl http://192.168.1.10:8091/api/integrations/v1/resources \
   -H "Authorization: Bearer $FJORDHUB_ACCESS_TOKEN"
 ```
 
-The response contains the installable app catalog (including apps not yet installed):
+The endpoint uses the same collector as the Docker tab on the resources page.
+The top-level `hub_url` provides a browser link, for example
+`http://192.168.1.10:8091/`. It uses the detected host LAN IP (or `HOST_LAN_IP`)
+and the published `APP_PORT`. If the host IP cannot be detected, it falls back
+to the request's root URL; call the API through a browser-reachable LAN address.
+Use this URL for an **Open FjordHub** link with `target="_blank"` and
+`rel="noopener noreferrer"`. Do not append the token; normal FjordHub login applies.
 
-```json
-{"items": [{"id": "fjordlens", "name": "FjordLens", "description": "..."}]}
-```
+The JSON response contains `ok`, `generated_at` (UTC), `capacity` (CPU count and
+total memory), `hub` (core plus managed apps), `core` (FjordHub containers only),
+and `apps` (app groups identified by `id` and `name`). Each group includes
+`containers`, `container_count`, `running_count`, `cpu_percent`,
+`cpu_capacity_percent`, `memory_usage`, `memory_percent`, `net_rx`, `net_tx`,
+`block_read`, and `block_write`. Containers include `id`, `name`, `status`,
+`cpu_percent`, `memory_usage`, `memory_limit`, the same network and I/O counters,
+and `error` (`null` or a generic metrics failure). Display labels are also provided.
 
-The allowed fields are explicitly defined in `api_integration_apps` in `app.py`.
-Access is LAN-only: RFC1918 IPv4 addresses, IPv6 unique-local addresses and
-loopback are accepted (including private Docker networks). Public clients get
-HTTP 403 even with a valid token. The socket peer and every address in
-`X-Forwarded-For` / `X-Real-IP` must be local; malformed addresses and the
-unsupported `Forwarded` header are rejected. Proxies must preserve the actual
-client address in `X-Forwarded-For`, as the bundled Traefik does. A tunnel or
-proxy that hides the client address must not expose this endpoint publicly.
-Replace the example address and port with your server's LAN address.
-Tokens only grant read access to this endpoint; they do not grant installation,
-user management, SSO or access to app configuration. They are distinct from the
-internal `X-Hub-Key` credentials used by managed apps. Missing, invalid, expired
-or revoked tokens receive HTTP 401. Tokens also stop working if their creator
-is deleted, loses the administrator role or must change their password.
-Tokens are stored in the existing persistent `hub.db`; the table is created
-automatically on startup.
+Memory and I/O values are bytes. Network and disk I/O are cumulative counters,
+not bytes per second; calculate rates using counter differences and elapsed time,
+discarding samples where counters reset. `cpu_percent` uses Docker's convention
+(100% per CPU core); group `cpu_capacity_percent` expresses usage relative to total
+CPU capacity on a 0–100 scale. Poll sequentially, for example every 10 seconds,
+and store samples in the consuming app for graphs; this endpoint has no history.
+
+Missing, invalid, expired or revoked tokens return 401; non-LAN requests return
+403; unavailable metrics return 503. Responses use `Cache-Control: no-store`.
+Requests must supply the token in the Authorization header, even with a logged-in
+session. The socket peer and every forwarded address must be local; unsupported
+`Forwarded` headers are rejected. Preserve client addresses through proxies.
+
+The token does not grant container control, logs, configuration, user management,
+Proxmox/LXC metrics or access to the existing session-only `/api/resources` route.
+Tokens are stored in persistent `hub.db` and stop authenticating if their creator
+is deleted, loses administrator rights or must change their password.
+
+For app names, descriptions and icons, read the public GitHub `registry.json`
+and each entry's `manifest_url` directly. No running FjordHub or token is required.
 
 ## How it works
 

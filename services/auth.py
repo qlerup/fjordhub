@@ -223,20 +223,22 @@ class AuthService:
         name = name.strip()
         if not name or len(name) > 80:
             raise ValueError("Navnet skal være mellem 1 og 80 tegn.")
-        if days not in (30, 90, 365):
+        if type(days) is not int or days not in (0, 30, 90, 365):
             raise ValueError("Vælg en gyldig levetid.")
         owner = self.get_by_id(created_by)
         if not owner or not owner.is_admin or owner.must_change_password:
             raise ValueError("Kræver en administrator med en aktiv adgangskode.")
         token = "fh_at_" + secrets.token_urlsafe(32)
         now = datetime.now(timezone.utc)
+        # An empty expiry represents no expiry in the existing NOT NULL column.
+        expires_at = (now + timedelta(days=days)).isoformat() if days else ""
         with closing(self._conn()) as conn:
             conn.execute(
                 """INSERT INTO access_tokens
                    (name, token_hash, prefix, created_by, created_at, expires_at)
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (name, _hash_api_key(token), token[:12], created_by,
-                 now.isoformat(), (now + timedelta(days=days)).isoformat()),
+                 now.isoformat(), expires_at),
             )
             conn.commit()
         return token
@@ -256,7 +258,7 @@ class AuthService:
             item = dict(row)
             item["status"] = (
                 "Tilbagekaldt" if item["revoked_at"] else
-                "Udløbet" if item["expires_at"] <= now else
+                "Udløbet" if item["expires_at"] and item["expires_at"] <= now else
                 "Inaktiv" if item["owner_role"] != "admin" or item["must_change_password"] else
                 "Aktivt"
             )
@@ -279,7 +281,8 @@ class AuthService:
         with closing(self._conn()) as conn:
             cursor = conn.execute(
                 """UPDATE access_tokens SET last_used_at=?
-                   WHERE token_hash=? AND revoked_at IS NULL AND expires_at>?
+                   WHERE token_hash=? AND revoked_at IS NULL
+                   AND (expires_at='' OR expires_at>?)
                    AND created_by IN (
                        SELECT id FROM users WHERE role='admin' AND must_change_password=0
                    )""",

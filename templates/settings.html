@@ -59,13 +59,25 @@
   <div id="pane-tokens" {% if section != 'tokens' %}hidden{% endif %}>
     <div class="settings-card">
       <div class="settings-card-head"><h2>Adgangstokens</h2></div>
-      <p>Giv en anden app læseadgang til kataloget over apps, der kan installeres gennem FjordHub: app-id, navn og beskrivelse.</p>
-      <p>Adgangen virker kun på det lokale netværk (LAN). Brug FjordHubs lokale adresse i den anden app.</p>
-      <p>Brug <code>GET {{ url_for('api_integration_apps', _external=True) }}</code> med headeren <code>Authorization: Bearer DIT_TOKEN</code>.</p>
+      <div class="token-intro">
+        <p>Følg FjordHubs Docker-ressourcer fra en anden app.</p>
+        <p class="token-intro-note">Tokenet giver læseadgang til CPU, RAM, netværk, disk-I/O og containerstatus for FjordHub og installerede apps samt FjordHubs adresse, så du kan åbne den fra den anden app. Adgangen virker kun på dit lokale netværk (LAN).</p>
+        <details class="token-guide">
+          <summary>Sådan henter du målingerne</summary>
+          <div class="token-guide-content">
+            <p>Brug FjordHubs lokale adresse, og send dit token med i headeren.</p>
+            <span class="token-guide-label">Forespørgsel</span>
+            <code>GET {{ url_for('api_integration_resources', _external=True) }}</code>
+            <span class="token-guide-label">Header</span>
+            <code>Authorization: Bearer DIT_TOKEN</code>
+            <p>Hent fx nye målinger hvert 10. sekund. Tokenet giver ikke adgang til at ændre eller styre containerne.</p>
+          </div>
+        </details>
+      </div>
       <form id="access-token-form">
         <div class="auth-field"><label for="token-name">Navn</label><input id="token-name" name="name" maxlength="80" placeholder="Fx min anden app" required></div>
         <div class="auth-field">
-          <label id="token-days-label" for="token-days-trigger">Udløber efter</label>
+          <label id="token-days-label" for="token-days-trigger">Gyldighed</label>
           <input id="token-days" name="days" type="hidden" value="90">
           <div class="settings-select" id="token-days-select">
             <button id="token-days-trigger" class="settings-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="token-days-options" aria-labelledby="token-days-label token-days-value">
@@ -73,9 +85,9 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
             </button>
             <div id="token-days-options" class="settings-select-options" role="listbox" aria-labelledby="token-days-label" hidden>
-              {% for days in [30, 90, 365] %}
+              {% for days in [30, 90, 365, 0] %}
               <div class="settings-select-option" role="option" tabindex="-1" data-value="{{ days }}" aria-selected="{{ 'true' if days == 90 else 'false' }}">
-                <span>{{ days }} dage</span><span class="settings-select-check" aria-hidden="true">✓</span>
+                <span>{{ 'Udløber aldrig' if days == 0 else days|string + ' dage' }}</span><span class="settings-select-check" aria-hidden="true">✓</span>
               </div>
               {% endfor %}
             </div>
@@ -96,7 +108,7 @@
       {% for token in access_tokens %}
       <div style="padding:12px 0;border-bottom:1px solid var(--border)">
         <strong>{{ token.name }}</strong> <span class="badge">{{ token.status }}</span>
-        <p><code>{{ token.prefix }}…</code> · Oprettet {{ token.created_at[:10] }} · Udløber {{ token.expires_at[:10] }}</p>
+        <p><code>{{ token.prefix }}…</code> · Oprettet {{ token.created_at[:10] }} · {{ 'Udløber ' + token.expires_at[:10] if token.expires_at else 'Udløber aldrig' }}</p>
         <p>Senest brugt: {{ token.last_used_at[:16]|replace('T', ' ') if token.last_used_at else 'Aldrig' }} (UTC)</p>
         {% if not token.revoked_at %}<button type="button" class="btn-open" data-revoke-token="{{ token.id }}">Tilbagekald</button>{% endif %}
       </div>
@@ -180,7 +192,7 @@
   }
   function choose(option) {
     input.value = option.dataset.value;
-    document.getElementById('token-days-value').textContent = option.dataset.value + ' dage';
+    document.getElementById('token-days-value').textContent = option.dataset.value === '0' ? 'Udløber aldrig' : option.dataset.value + ' dage';
     options.forEach(item => item.setAttribute('aria-selected', String(item === option)));
     closeSelect(true);
   }

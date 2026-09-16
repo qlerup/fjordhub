@@ -16,6 +16,7 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 
 from services.auth import AuthService
 from services.local_network import is_local_request
+from services.resource_integration import docker_resource_payload
 from services.docker_manager import DockerManager
 from services.registry import AppRegistry
 from services.remote_registry import RemoteRegistry
@@ -119,6 +120,7 @@ def _unauthorized():
 
 
 _AUTH_EXEMPT = {
+    "api_integration_resources",
     "static",
     "setup",
     "login",
@@ -134,7 +136,6 @@ _AUTH_EXEMPT = {
     "api_hub_app_users",
     "api_hub_app_user",
     "api_hub_sso_verify",
-    "api_integration_apps",
 }
 
 _sso_tokens: dict = {}
@@ -618,6 +619,31 @@ def api_resources():
     return jsonify(resource_monitor.collect(_apps_with_install_dirs()))
 
 
+@app.route("/api/integrations/v1/resources", methods=["GET"])
+def api_integration_resources():
+    if not is_local_request(request.remote_addr, request.headers):
+        response = jsonify({"ok": False, "error": "Dette API er kun tilgængeligt på det lokale netværk."})
+        response.status_code = 403
+    else:
+        authorization = request.headers.get("Authorization", "").split()
+        if (len(authorization) != 2 or authorization[0].lower() != "bearer"
+                or not _auth.authenticate_access_token(authorization[1])):
+            response = jsonify({"ok": False, "error": "Ugyldigt eller udløbet adgangstoken."})
+            response.status_code = 401
+            response.headers["WWW-Authenticate"] = "Bearer"
+        else:
+            try:
+                payload = docker_resource_payload(resource_monitor.collect(_apps_with_install_dirs()))
+            except Exception:
+                app.logger.exception("Failed to collect integration resource metrics")
+                payload = {"ok": False, "error": "Docker metrics unavailable"}
+            payload["hub_url"] = _integration_hub_url()
+            response = jsonify(payload)
+            response.status_code = 200 if payload["ok"] else 503
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 DOCKER_CLEANUP_COMMANDS = (
     ("Docker diskforbrug foer oprydning", ["docker", "system", "df"], 60),
     ("Rydder Docker build-cache", ["docker", "builder", "prune", "-af"], 600),
@@ -754,29 +780,6 @@ def revoke_access_token(token_id):
     if not _auth.revoke_access_token(token_id):
         return jsonify({"error": "Tokenet findes ikke eller er allerede tilbagekaldt."}), 404
     return jsonify({"ok": True})
-
-
-@app.route("/api/integrations/v1/apps", methods=["GET"])
-def api_integration_apps():
-    if not is_local_request(request.remote_addr, request.headers):
-        response = jsonify({"error": "Dette API er kun tilgængeligt på det lokale netværk."})
-        response.status_code = 403
-        response.headers["Cache-Control"] = "no-store"
-        return response
-    # Explicit output allowlist: never return registry objects or installation settings.
-    authorization = request.headers.get("Authorization", "").split()
-    if (len(authorization) != 2 or authorization[0].lower() != "bearer"
-            or not _auth.authenticate_access_token(authorization[1])):
-        response = jsonify({"error": "Ugyldigt eller udløbet adgangstoken."})
-        response.status_code = 401
-        response.headers["WWW-Authenticate"] = "Bearer"
-    else:
-        response = jsonify({"items": [
-            {"id": entry["id"], "name": entry["name"],
-             "description": entry.get("description", "")} for entry in _get_apps()
-        ]})
-    response.headers["Cache-Control"] = "no-store"
-    return response
 
 
 @app.route("/settings/mail", methods=["POST"])
@@ -1473,6 +1476,15 @@ def _installed_env_value(app_id: str, key: str) -> str:
     except OSError:
         pass
     return ""
+
+
+def _integration_hub_url() -> str:
+    """Browser address using the host's LAN IP and published FjordHub port."""
+    lan_ip = _host_lan_ip()
+    if lan_ip:
+        host = f"[{lan_ip}]" if ":" in lan_ip else lan_ip
+        return f"http://{host}:{APP_PORT}/"
+    return request.url_root
 
 
 def _host_lan_ip() -> str:
