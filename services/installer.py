@@ -8,7 +8,7 @@ from pathlib import Path
 
 from services.compose_env import build_compose_env
 from services.install_state import InstallState
-from services.nvidia_devices import discover_nvidia_devices, render_compose_override, docker_desktop_gpu, render_desktop_override, probe_gpu
+from services.nvidia_devices import discover_nvidia_devices, render_compose_overrides, docker_desktop_gpu, render_desktop_overrides, probe_gpu
 
 
 # Inside the container, apps live under /apps/<id>.
@@ -109,6 +109,27 @@ def _field_default(app_def: dict, field_key: str) -> str:
     return ""
 
 
+def _gpu_services(app_def: dict) -> list[str]:
+    raw_services = app_def.get("gpu_services")
+    if isinstance(raw_services, (list, tuple)):
+        services = [str(value or "").strip() for value in raw_services]
+    else:
+        services = [str(app_def.get("gpu_service") or "").strip()]
+    unique: list[str] = []
+    for service in services:
+        if service and service not in unique:
+            unique.append(service)
+    return unique
+
+
+def _gpu_video_service(app_def: dict) -> str:
+    explicit = str(app_def.get("gpu_video_service") or "").strip()
+    if explicit:
+        return explicit
+    services = _gpu_services(app_def)
+    return str(app_def.get("gpu_service") or "").strip() or (services[0] if services else "")
+
+
 class Installer:
     def __init__(self, state: InstallState):
         self.state = state
@@ -164,9 +185,9 @@ class Installer:
                 log("Klon faerdig")
 
             if _is_truthy(env_values.get("ENABLE_GPU_COMPOSE")):
-                gpu_service = str(app_def.get("gpu_service") or "").strip()
-                if not gpu_service:
-                    raise RuntimeError("App-definitionen mangler gpu_service")
+                gpu_services = _gpu_services(app_def)
+                if not gpu_services:
+                    raise RuntimeError("App-definitionen mangler gpu_service/gpu_services")
                 devices = discover_nvidia_devices()
                 desktop = docker_desktop_gpu()
                 if not devices and not desktop:
@@ -175,10 +196,15 @@ class Installer:
                     )
                 override_path = install_dir / GPU_OVERRIDE_FILE
                 override_path.write_text(
-                    render_desktop_override(gpu_service) if desktop else render_compose_override(gpu_service, devices),
+                    render_desktop_overrides(gpu_services) if desktop else render_compose_overrides(gpu_services, devices),
                     encoding="utf-8",
                 )
-                log('GPU-adgang via Docker Desktop / WSL-runtime' if desktop else f"GPU-enheder fundet automatisk: {', '.join(devices)}")
+                service_list = ", ".join(gpu_services)
+                log(
+                    f"GPU-adgang via Docker Desktop / WSL-runtime til: {service_list}"
+                    if desktop
+                    else f"GPU-enheder fundet automatisk til {service_list}: {', '.join(devices)}"
+                )
 
             log("Skriver .env ...")
             lines = ["# Genereret af FjordHub"]
@@ -239,7 +265,9 @@ class Installer:
 
             if _is_truthy(env_values.get('ENABLE_GPU_COMPOSE')) and app_def.get('gpu_video'):
                 log('Tester NVENC med FFmpeg i appens egen container...')
-                service = str(app_def.get('gpu_service') or '')
+                service = _gpu_video_service(app_def)
+                if not service:
+                    raise RuntimeError("App-definitionen mangler gpu_video_service/gpu_service")
                 check = subprocess.run(
                     ['docker', 'compose', 'exec', '-T', service, 'ffmpeg', '-hide_banner', '-loglevel', 'error',
                      '-f', 'lavfi', '-i', 'color=s=640x360:d=0.1', '-c:v', 'h264_nvenc', '-f', 'null', '-'],
