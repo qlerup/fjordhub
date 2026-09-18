@@ -165,8 +165,8 @@
   ],
   "gpu_services": [
     "fjordlens-ai",
-    "fjordlens"
+    "fjordlens-convert"
   ],
   "gpu_video": true,
-  "gpu_video_service": "fjordlens"
+  "gpu_video_service": "fjordlens-convert"
 }
