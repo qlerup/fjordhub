@@ -78,6 +78,7 @@ def render_desktop_override(service_name: str) -> str:
     # Backwards-compatible single-service wrapper.
     return render_desktop_overrides([service_name])
 
+
 def _natural_device_key(path: Path) -> tuple[int, int, str]:
     gpu_match = _NUMBERED_GPU.fullmatch(path.name)
     if gpu_match:
@@ -135,7 +136,7 @@ def render_compose_overrides(service_names: list[str], devices: list[str]) -> st
 
     validated_devices: list[str] = []
     for device in devices:
-        if not re.fullmatch(r"/dev/nvidia(?:\\d+|ctl|-uvm|-uvm-tools|-modeset|-caps/nvidia-cap\\d+)", device):
+        if not re.fullmatch(r"/dev/nvidia(?:\d+|ctl|-uvm|-uvm-tools|-modeset|-caps/nvidia-cap\d+)", device):
             raise ValueError(f"Ugyldig NVIDIA-enhed: {device}")
         if device not in validated_devices:
             validated_devices.append(device)
