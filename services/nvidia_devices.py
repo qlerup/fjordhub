@@ -53,12 +53,30 @@ def probe_gpu(require_video: bool = False) -> dict:
         return {"ok": False, "stage": "test_error", "error": str(exc) or 'GPU-test timeout'}
 
 
-def render_desktop_override(service_name: str) -> str:
-    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', service_name):
-        raise ValueError('Ugyldigt GPU-service-navn')
-    # Reset any Linux device paths in an app's own GPU compose file; retain gpus: all.
-    return f'services:\n  {service_name}:\n    devices: !reset []\n'
+def _validated_service_names(service_names: list[str]) -> list[str]:
+    services: list[str] = []
+    for raw in service_names:
+        service = str(raw or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", service):
+            raise ValueError("Ugyldigt GPU-service-navn")
+        if service not in services:
+            services.append(service)
+    if not services:
+        raise ValueError("Ingen GPU-services angivet")
+    return services
 
+
+def render_desktop_overrides(service_names: list[str]) -> str:
+    services = _validated_service_names(service_names)
+    lines = ["services:"]
+    for service in services:
+        lines.extend([f"  {service}:", "    devices: !reset []"])
+    return "\n".join(lines) + "\n"
+
+
+def render_desktop_override(service_name: str) -> str:
+    # Backwards-compatible single-service wrapper.
+    return render_desktop_overrides([service_name])
 
 def _natural_device_key(path: Path) -> tuple[int, int, str]:
     gpu_match = _NUMBERED_GPU.fullmatch(path.name)
@@ -110,16 +128,26 @@ def discover_nvidia_devices(device_root: Path | None = None) -> list[str]:
     return ["/dev/" + path.relative_to(root).as_posix() for path in unique_devices]
 
 
-def render_compose_override(service_name: str, devices: list[str]) -> str:
-    service = str(service_name or "").strip()
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", service):
-        raise ValueError("Ugyldigt GPU-service-navn")
+def render_compose_overrides(service_names: list[str], devices: list[str]) -> str:
+    services = _validated_service_names(service_names)
     if not devices:
         raise ValueError("Ingen NVIDIA-enheder fundet")
 
-    lines = ["services:", f"  {service}:", "    devices:"]
+    validated_devices: list[str] = []
     for device in devices:
-        if not re.fullmatch(r"/dev/nvidia(?:\d+|ctl|-uvm|-uvm-tools|-modeset|-caps/nvidia-cap\d+)", device):
+        if not re.fullmatch(r"/dev/nvidia(?:\\d+|ctl|-uvm|-uvm-tools|-modeset|-caps/nvidia-cap\\d+)", device):
             raise ValueError(f"Ugyldig NVIDIA-enhed: {device}")
-        lines.append(f'      - "{device}:{device}"')
+        if device not in validated_devices:
+            validated_devices.append(device)
+
+    lines = ["services:"]
+    for service in services:
+        lines.extend([f"  {service}:", "    devices:"])
+        for device in validated_devices:
+            lines.append(f'      - "{device}:{device}"')
     return "\n".join(lines) + "\n"
+
+
+def render_compose_override(service_name: str, devices: list[str]) -> str:
+    # Backwards-compatible single-service wrapper.
+    return render_compose_overrides([service_name], devices)
