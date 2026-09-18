@@ -31,6 +31,40 @@ class GpuReuseTests(unittest.TestCase):
             state.set_failed.assert_called_once()
             self.assertIn('libnvidia-encode',state.set_failed.call_args.args[1])
 
+    def test_multi_service_video_app_maps_all_services_and_tests_declared_video_service(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / '.git').mkdir()
+            state = Mock()
+            installer = Installer(state)
+            process = Mock(stdout=[], returncode=0)
+            with patch.object(installer, '_resolve_env_values', return_value={'ENABLE_GPU_COMPOSE': '1'}), \
+                 patch('services.installer.probe_gpu', return_value={'ok': True}), \
+                 patch('services.installer.discover_nvidia_devices', return_value=['/dev/nvidia0', '/dev/nvidiactl']), \
+                 patch('services.installer.docker_desktop_gpu', return_value=False), \
+                 patch('services.installer.subprocess.Popen', return_value=process), \
+                 patch('services.installer.subprocess.run', side_effect=[
+                     subprocess.CompletedProcess([], 0, 'Updated', ''),
+                     subprocess.CompletedProcess([], 0, '', ''),
+                 ]) as run:
+                installer._run({
+                    'id': 'fjordlens',
+                    'name': 'FjordLens',
+                    'gpu_video': True,
+                    'gpu_service': 'fjordlens-ai',
+                    'gpu_services': ['fjordlens-ai', 'fjordlens'],
+                    'gpu_video_service': 'fjordlens',
+                }, {}, root)
+
+            override = (root / 'docker-compose.fjordhub-gpu.yml').read_text()
+            self.assertIn('fjordlens-ai:', override)
+            self.assertIn('fjordlens:', override)
+            command = run.call_args.args[0]
+            self.assertIn('fjordlens', command)
+            self.assertIn('h264_nvenc', command)
+            state.set_installed.assert_called_once_with('fjordlens')
+            state.set_failed.assert_not_called()
+
     def test_video_app_detects_missing_libraries_after_successful_gpu_test(self):
         with patch('services.nvidia_devices.discover_nvidia_devices', return_value=['/dev/nvidia0']), \
              patch('services.nvidia_devices.docker_desktop_gpu', return_value=False), \
