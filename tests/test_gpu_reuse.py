@@ -52,15 +52,15 @@ class GpuReuseTests(unittest.TestCase):
                     'name': 'FjordLens',
                     'gpu_video': True,
                     'gpu_service': 'fjordlens-ai',
-                    'gpu_services': ['fjordlens-ai', 'fjordlens'],
-                    'gpu_video_service': 'fjordlens',
+                    'gpu_services': ['fjordlens-ai', 'fjordlens-convert'],
+                    'gpu_video_service': 'fjordlens-convert',
                 }, {}, root)
 
             override = (root / 'docker-compose.fjordhub-gpu.yml').read_text()
             self.assertIn('fjordlens-ai:', override)
-            self.assertIn('fjordlens:', override)
+            self.assertIn('fjordlens-convert:', override)
             command = run.call_args.args[0]
-            self.assertIn('fjordlens', command)
+            self.assertIn('fjordlens-convert', command)
             self.assertIn('h264_nvenc', command)
             state.set_installed.assert_called_once_with('fjordlens')
             state.set_failed.assert_not_called()
