@@ -20,6 +20,36 @@
 
 html { font-size: 15px; }
 
+/* Keep native scrolling, styled to match the dark interface. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-muted) var(--surface);
+}
+@supports selector(::-webkit-scrollbar) {
+  * { scrollbar-width: auto; scrollbar-color: auto; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track {
+    background: var(--surface);
+    border-radius: var(--radius);
+    margin-block: 12px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--text-muted);
+    border: 3px solid var(--surface);
+    border-radius: 999px;
+    min-height: 40px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent); border-width: 2px; }
+  ::-webkit-scrollbar-thumb:active { background: var(--accent); }
+  ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+  ::-webkit-scrollbar-corner { background: var(--surface); }
+}
+@media (forced-colors: active) {
+  * { scrollbar-color: auto; scrollbar-width: auto; }
+  ::-webkit-scrollbar-thumb { background: ButtonText; border-color: Canvas; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: Canvas; }
+}
+
 body {
   background: var(--bg);
   color: var(--text);
