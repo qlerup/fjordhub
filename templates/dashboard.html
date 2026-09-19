@@ -208,6 +208,23 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="storage-mount-modal" style="z-index:350;">
+  <div class="modal storage-mount-dialog" role="dialog" aria-modal="true" aria-labelledby="storage-mount-title">
+    <div class="modal-header"><h2 id="storage-mount-title">Tilslut drevet til FjordHub</h2><button type="button" class="modal-close" id="storage-mount-close" aria-label="Luk">×</button></div>
+    <p>Den valgte placering mangler et mount i LXC’en. Kør kommandoerne som root i <strong>PVE → Shell</strong>.</p>
+    <p id="storage-mount-destination" style="overflow-wrap:anywhere;"></p>
+    <div class="form-field"><label for="storage-mount-ctid">FjordHubs LXC-ID</label><input type="text" id="storage-mount-ctid" inputmode="numeric" autocomplete="off"></div>
+    <div class="form-field"><label for="storage-mount-disk">Diskens mountpunkt på PVE</label><input type="text" id="storage-mount-disk" autocomplete="off"></div>
+    <p class="field-hint">Kontrollér værdierne. Guiden bruger undermappen <code>fjordhub</code> på disken og finder et ledigt mount-nummer. Disken skal allerede være monteret på PVE.</p>
+    <p><strong>Afslut uploads først.</strong> Kommandoerne genstarter LXC’en og dens apps. FjordHub er kortvarigt utilgængelig; kontrollen fortsætter automatisk bagefter.</p>
+    <textarea id="storage-mount-commands" readonly aria-label="Kommandoer til PVE" rows="10"></textarea>
+    <button type="button" id="storage-mount-copy" class="btn btn-open">Kopiér kommandoer</button>
+    <p id="storage-mount-status" role="status" aria-live="polite"></p>
+    <p class="field-hint">Kontrollerer hvert 5. sekund. Flytning/kopiering starter kun, når du selv trykker Start.</p>
+    <button type="button" id="storage-mount-start" class="btn-install" disabled>Start flytning</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="update-log-modal">
   <div class="modal modal-terminal">
     <div class="modal-header">

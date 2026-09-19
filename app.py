@@ -31,6 +31,7 @@ from services.password_reset import PasswordResetService
 from services.nvidia_devices import probe_gpu
 from services.media_gateway import MediaGateway, domain as media_domain
 from services.app_storage import AppStorage
+from services.storage_mount import MountRequired
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
@@ -1691,6 +1692,14 @@ def api_app_storage(app_id):
     if not app_def:
         return jsonify(ok=False, error='Ukendt app.'), 404
     if request.method == 'GET':
+        if request.args.get('mount') == '1':
+            try:
+                return jsonify(ok=True, **app_storage.mount_guide(request.args.get('destination'),
+                    request.args.get('ctid'), request.args.get('disk')))
+            except ValueError as exc:
+                return jsonify(ok=False, error=str(exc)), 400
+            except Exception:
+                return jsonify(ok=False, error='Mountet kunne ikke kontrolleres. Venter på serveren…'), 503
         if request.args.get('job') == '1':
             return jsonify(ok=True, job=app_storage.job(app_id))
         if request.args.get('folders') == '1':
@@ -1708,6 +1717,8 @@ def api_app_storage(app_id):
         return jsonify(ok=False, error='Ugyldig forespørgsel.'), 400
     try:
         app_storage.start(app_def, data.get('key'), data.get('destination'), data.get('source'), data.get('mode', 'copy'))
+    except MountRequired as exc:
+        return jsonify(ok=False, error=str(exc), mount=exc.status), 409
     except ValueError as exc:
         return jsonify(ok=False, error=str(exc)), 400
     return jsonify(ok=True, job=app_storage.job(app_id)), 202

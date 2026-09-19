@@ -1,6 +1,7 @@
 """Directory-only operations inside a scoped Docker helper."""
 import json
 import os
+import re
 from pathlib import Path, PurePosixPath
 import shutil
 import sys
@@ -54,6 +55,37 @@ def probe(root, value):
             'relative': directory.relative_to(ancestor).as_posix()}
 
 
+def mount_status(root, value, mountinfo=None):
+    directory = checked(root, value)
+    parts = PurePosixPath(value).parts
+    required = len(parts) >= 3 and parts[1] in ('mnt', 'media')
+    suggested = str(PurePosixPath(*parts[:4 if parts[1:3] == ('mnt', 'pve') else 3]))
+    if not required:
+        return {'ready': True, 'required': False, 'mount_target': suggested,
+                'message': 'Placeringen bruger serverens lokale filsystem.'}
+    if mountinfo is None:
+        mountinfo = Path('/proc/self/mountinfo').read_text()
+    candidates = []
+    # /host is the LXC/Docker host root, not an extra storage mount.
+    prefix = root.as_posix().rstrip('/')
+    destination = prefix + value
+    for line in mountinfo.splitlines():
+        fields = line.split()
+        if len(fields) < 10 or '-' not in fields:
+            continue
+        point = re.sub(r'\\([0-7]{3})', lambda m: chr(int(m[1], 8)), fields[4])
+        kind = fields[fields.index('-') + 1]
+        if kind in ('tmpfs', 'proc', 'sysfs', 'overlay', 'autofs'):
+            continue
+        if point.startswith(prefix + '/') and (destination == point or destination.startswith(point.rstrip('/') + '/')):
+            candidates.append(point)
+    mounted = max(candidates, key=len) if candidates else None
+    return {'ready': bool(mounted), 'required': True,
+            'mount_target': mounted[len(prefix):] if mounted else suggested,
+            'message': 'Mountet er tilgængeligt i LXC’en.' if mounted else
+                       'Drevet er ikke monteret her. En almindelig mappe er ikke nok.'}
+
+
 def create(root, relative):
     if not isinstance(relative, str) or Path(relative).is_absolute() or '..' in Path(relative).parts:
         raise ValueError('Ugyldig mappesti.')
@@ -76,7 +108,7 @@ def create(root, relative):
 if __name__ == '__main__':
     try:
         action, value = sys.argv[1:3]
-        result = create(Path('/folder'), value) if action == 'create' else (
+        result = mount_status(Path('/host'), value) if action == 'mount' else create(Path('/folder'), value) if action == 'create' else (
             probe(Path('/host'), value) if action == 'probe' else browse(Path('/host'), value))
         print(json.dumps(result))
     except Exception as exc:

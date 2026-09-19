@@ -10,6 +10,7 @@ import threading
 
 from docker.types import Mount
 from services.compose_env import build_compose_env
+from services.storage_mount import MountRequired, pve_commands
 
 
 def host_path(value):
@@ -151,6 +152,7 @@ class AppStorage:
                     occupied = PurePosixPath(value)
                     if any(p == occupied or p in occupied.parents or occupied in p.parents for p in selected):
                         raise ValueError('En anden flytning bruger denne mappe. Vent til den er færdig.')
+            self.require_mount(destination)
             self.save(app_id, running=True, interrupted=False, message='Kontrollerer mapper og ledig plads…',
                       error='', mode=mode, key=key, source=expected, destination=destination, id=secrets.token_hex(8))
             self.active.add(app_id)
@@ -178,8 +180,22 @@ class AppStorage:
 
     def ensure_destination(self, destination):
         host_path(destination)
+        self.require_mount(destination)
         location = self.folders('probe', destination)
         self.folders('create', location['relative'], location['ancestor'])
+
+    def require_mount(self, destination):
+        status = self.folders('mount', destination)
+        if not status['ready']:
+            raise MountRequired(status)
+
+    def mount_guide(self, destination, ctid=None, disk=None):
+        destination = host_path(destination)
+        status = self.folders('mount', destination)
+        ctid = ctid or os.environ.get('PROXMOX_CT_ID', '1000')
+        disk = disk or os.environ.get('PROXMOX_STORAGE_PATH', '/mnt/pve/Storage-pool1')
+        return {**status, 'ctid': str(ctid), 'disk': disk,
+                'commands': pve_commands(ctid, disk, status['mount_target']) if status['required'] else ''}
 
     def helper(self, source, destination, mode, manifest_digest=''):
         client = self.manager.client

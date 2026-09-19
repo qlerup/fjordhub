@@ -515,6 +515,7 @@ document.getElementById('app-sections')?.addEventListener('click', e => {
 let _settingsAppId = null;
 
 function closeAppSettings() {
+  closeStorageMount();
   clearTimeout(_storagePollTimer);
   _settingsAppId = null;
   document.getElementById('app-settings-modal')?.classList.remove('is-open');
@@ -845,6 +846,7 @@ function renderStorageJob(job = {}) {
   document.getElementById('app-storage-save').textContent = job.running ? 'Flytning i gang…' : (document.getElementById('app-storage-mode').value === 'move' ? 'Flyt filer og skift placering' : 'Kopiér filer og skift placering');
 }
 async function loadAppStorage(appId) {
+  closeStorageMount();
   const generation = ++_storageGeneration;
   clearTimeout(_storagePollTimer);
   _storageFields = [];
@@ -944,28 +946,108 @@ document.getElementById('app-storage-folder-use')?.addEventListener('click', () 
   document.getElementById('app-storage-browser').hidden = true;
 });
 document.getElementById('app-storage-key')?.addEventListener('change', storageSelection);
-document.getElementById('app-storage-form')?.addEventListener('submit', async event => {
-  event.preventDefault();
-  const appId = _settingsAppId, generation = _storageGeneration;
-  if (!appId) return;
-  const field = _storageFields.find(f => f.key === document.getElementById('app-storage-key').value);
-  if (!field) return;
-  const destination = document.getElementById('app-storage-destination').value.trim();
-  const mode = document.getElementById('app-storage-mode').value;
-  ++_storageFolderRequest;
-  document.getElementById('app-storage-browser').hidden = true;
+let _mountPending = null, _mountTimer, _mountAbort, _mountRequest = 0;
+function closeStorageMount() {
+  clearTimeout(_mountTimer); _mountAbort?.abort(); ++_mountRequest; _mountPending = null;
+  document.getElementById('storage-mount-modal')?.classList.remove('is-open');
+  const settings = document.getElementById('app-settings-modal');
+  if (settings) settings.inert = false;
+}
+function openStorageMount(pending, data) {
+  closeStorageMount(); _mountPending = pending;
+  document.getElementById('storage-mount-ctid').value = data.ctid || '1000';
+  document.getElementById('storage-mount-disk').value = data.disk || '/mnt/pve/Storage-pool1';
+  document.getElementById('storage-mount-destination').textContent = `Ny filplacering: ${pending.payload.destination}`;
+  document.getElementById('storage-mount-start').textContent = pending.payload.mode === 'move' ? 'Start flytning' : 'Start kopiering';
+  document.getElementById('storage-mount-start').disabled = true;
+  document.getElementById('storage-mount-commands').value = data.commands || '';
+  document.getElementById('storage-mount-copy').textContent = 'Kopiér kommandoer';
+  document.getElementById('app-settings-modal').inert = true;
+  document.getElementById('storage-mount-modal').classList.add('is-open');
+  document.getElementById('storage-mount-close').focus();
+  pollStorageMount();
+}
+async function mountStatus(pending, parameters = {}) {
+  const params = new URLSearchParams({mount:'1',destination:pending.payload.destination,...parameters});
+  const controller = new AbortController(); _mountAbort = controller;
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(`/api/apps/${encodeURIComponent(pending.appId)}/storage?${params}`, {signal:controller.signal});
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Venter på forbindelse til FjordHub…');
+    return data;
+  } finally { clearTimeout(timeout); }
+}
+async function pollStorageMount() {
+  clearTimeout(_mountTimer); _mountAbort?.abort();
+  const pending = _mountPending, request = ++_mountRequest;
+  if (!pending || pending.appId !== _settingsAppId) return;
+  const status = document.getElementById('storage-mount-status');
+  document.getElementById('storage-mount-start').disabled = true;
+  try {
+    const data = await mountStatus(pending, {ctid:document.getElementById('storage-mount-ctid').value, disk:document.getElementById('storage-mount-disk').value});
+    if (_mountPending !== pending || request !== _mountRequest) return;
+    document.getElementById('storage-mount-commands').value = data.commands;
+    document.getElementById('storage-mount-copy').disabled = !data.commands;
+    status.textContent = data.ready ? 'Mountet er fundet. Du kan nu starte.' : data.message;
+    status.className = `app-settings-status ${data.ready ? 'ok' : 'warn'}`;
+    document.getElementById('storage-mount-start').disabled = !data.ready;
+  } catch (error) {
+    if (_mountPending !== pending || request !== _mountRequest) return;
+    status.textContent = error.name === 'AbortError' ? 'Venter på FjordHub efter genstart…' : error.message;
+    status.className = 'app-settings-status warn';
+  }
+  if (_mountPending === pending && request === _mountRequest) _mountTimer = setTimeout(pollStorageMount, 5000);
+}
+document.getElementById('storage-mount-close')?.addEventListener('click', closeStorageMount);
+for (const id of ['storage-mount-ctid','storage-mount-disk']) document.getElementById(id)?.addEventListener('input', () => {
+  document.getElementById('storage-mount-commands').value = '';
+  document.getElementById('storage-mount-copy').disabled = true;
+  pollStorageMount();
+});
+document.getElementById('storage-mount-copy')?.addEventListener('click', async () => {
+  const field = document.getElementById('storage-mount-commands');
+  try { await navigator.clipboard.writeText(field.value); document.getElementById('storage-mount-copy').textContent = 'Kopieret'; }
+  catch { field.focus(); field.select(); document.getElementById('storage-mount-copy').textContent = 'Tryk Ctrl+C for at kopiere'; }
+});
+document.getElementById('storage-mount-start')?.addEventListener('click', () => {
+  const pending = _mountPending;
+  if (!pending || document.getElementById('storage-mount-start').disabled) return;
+  closeStorageMount(); submitStorageChange(pending);
+});
+async function submitStorageChange(pending) {
+  const {appId,generation,payload} = pending;
   renderStorageJob({running:true, message:'Starter kontrol af filplaceringen…'});
   try {
     const response = await fetch(`/api/apps/${encodeURIComponent(appId)}/storage`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({key:field.key, source:field.path, destination, mode}),
+      body:JSON.stringify(payload),
     });
     const data = await response.json();
     if (_settingsAppId !== appId || generation !== _storageGeneration) return;
+    if (data.mount) { renderStorageJob({}); openStorageMount(pending, data.mount); return; }
     if (!response.ok || !data.ok) throw new Error(data.error || 'Flytningen kunne ikke startes.');
     renderStorageJob(data.job);
     pollAppStorage(appId, generation);
   } catch (error) {
     if (_settingsAppId === appId && generation === _storageGeneration) renderStorageJob({error:error.message});
+  }
+}
+document.getElementById('app-storage-form')?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const appId = _settingsAppId, generation = _storageGeneration;
+  const field = _storageFields.find(f => f.key === document.getElementById('app-storage-key').value);
+  if (!appId || !field) return;
+  const payload = {key:field.key,source:field.path,destination:document.getElementById('app-storage-destination').value.trim(),mode:document.getElementById('app-storage-mode').value};
+  const pending = {appId,generation,payload};
+  ++_storageFolderRequest; document.getElementById('app-storage-browser').hidden = true;
+  renderStorageJob({running:true,message:'Kontrollerer drevets mount…'});
+  try {
+    const status = await mountStatus(pending);
+    if (_settingsAppId !== appId || generation !== _storageGeneration) return;
+    if (!status.ready) { renderStorageJob({}); openStorageMount(pending,status); return; }
+    await submitStorageChange(pending);
+  } catch (error) {
+    if (_settingsAppId === appId && generation === _storageGeneration) renderStorageJob({error:'Mountet kunne ikke kontrolleres. ' + error.message});
   }
 });

@@ -287,6 +287,24 @@ directory, with no symlink traversal. Failed operations may leave newly created
 empty directories in place. For Proxmox, the paths refer to the filesystem
 inside the LXC that runs Docker. A NAS must be mounted there before proceeding.
 
+Destinations below `/mnt/<name>` and `/media/<name>` must have a real extra
+mount visible to Docker. An ordinary directory on the LXC root disk is rejected.
+On a missing mount, the settings dialog shows editable PVE/LXC parameters and
+copyable shell commands. Defaults are LXC `1000` and PVE disk mount
+`/mnt/pve/Storage-pool1`; override with `PROXMOX_CT_ID` and
+`PROXMOX_STORAGE_PATH`, or edit them in the dialog. These are suggestions,
+not automatically discovered PVE configuration.
+
+The commands verify the PVE disk mount, reserve a `fjordhub` subdirectory,
+select an unused `mpN`, back up the LXC configuration and reboot the LXC.
+Finish uploads before running them. The guide refuses to cover a nonempty
+unmounted LXC directory or overwrite a conflicting mount configuration.
+FjordHub itself never executes these PVE commands. The browser polls mount
+status every five seconds (after each response), survives temporary connection
+failures, and enables **Start flytning/kopiering** only when the mount appears.
+Starting always requires a click and the server rechecks before creating files.
+Local destinations under `/opt`, `/srv` and `/home` can still use the root disk.
+
 **Kopiér filer og skift placering** checks the destination and available space,
 pauses the app's Compose services, copies and verifies files with SHA-256, and
 updates only the selected `.env` entry. Existing Compose overrides and secrets

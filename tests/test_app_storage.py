@@ -8,7 +8,8 @@ from unittest.mock import MagicMock, patch
 from services.app_storage import AppStorage, host_path, patched_env
 from services.install_state import InstallState
 from services.storage_copy import transfer, cleanup, MANIFEST
-from services.storage_browser import browse, probe, checked
+from services.storage_browser import browse, probe, checked, mount_status
+from services.storage_mount import MountRequired, pve_commands
 
 
 class StorageBrowserTests(unittest.TestCase):
@@ -34,10 +35,41 @@ class StorageBrowserTests(unittest.TestCase):
 
     def test_ensure_destination_only_mounts_existing_parent_for_creation(self):
         service = AppStorage(MagicMock(), MagicMock())
+        service.require_mount = MagicMock()
         service.folders = MagicMock(side_effect=[{'ancestor':'/mnt/disk','relative':'new/films'}, {'created':True}])
         service.ensure_destination('/mnt/disk/new/films')
         self.assertEqual([c.args for c in service.folders.call_args_list], [
             ('probe','/mnt/disk/new/films'), ('create','new/films','/mnt/disk')])
+
+    def test_mount_check_requires_real_mount_not_existing_directory(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); (root / 'mnt/disk/films').mkdir(parents=True)
+            info = f'10 1 8:1 / {root.as_posix()} ro - ext4 /dev/root rw\n'
+            self.assertFalse(mount_status(root, '/mnt/disk/films', info)['ready'])
+            info += f'11 10 8:2 /fjordhub {root.as_posix()}/mnt/disk ro - ext4 /dev/sda1 rw\n'
+            result = mount_status(root, '/mnt/disk/films/new', info)
+            self.assertTrue(result['ready'])
+            self.assertEqual(result['mount_target'], '/mnt/disk')
+            self.assertFalse(mount_status(root, '/mnt/disk2', info)['ready'])
+            self.assertFalse(mount_status(root, '/mnt/disk', info.replace('ext4 /dev/sda1','tmpfs none'))['ready'])
+            self.assertTrue(mount_status(root, '/opt/apps/files', '')['ready'])
+            self.assertEqual(mount_status(root, '/mnt/pve/Storage-pool1/film', '')['mount_target'], '/mnt/pve/Storage-pool1')
+
+    def test_missing_mount_never_creates_destination(self):
+        service = AppStorage(MagicMock(), MagicMock())
+        service.folders = MagicMock(return_value={'ready':False,'message':'Mount missing'})
+        with self.assertRaises(MountRequired): service.ensure_destination('/mnt/disk/new')
+        service.folders.assert_called_once_with('mount','/mnt/disk/new')
+
+    def test_pve_commands_quote_paths_and_do_not_overwrite_fixed_slot(self):
+        commands = pve_commands('1000','/mnt/pve/Storage pool1','/mnt/lager')
+        self.assertIn("disk='/mnt/pve/Storage pool1'", commands)
+        self.assertIn('mountpoint -q "$disk"', commands)
+        self.assertIn('pct set "$ctid" "-$slot"', commands)
+        self.assertNotIn('-mp0 ', commands)
+        self.assertIn('pct reboot', commands)
+        for ctid, disk, target in [('1000;reboot','/mnt/disk','/mnt/lager'),('1000','/mnt/$(reboot)','/mnt/lager'),('1000','/mnt/disk','/etc'),('1000','/mnt/../disk','/mnt/lager')]:
+            with self.assertRaises(ValueError): pve_commands(ctid,disk,target)
 
 
 class StorageCopyTests(unittest.TestCase):
@@ -294,6 +326,20 @@ class StorageEndpointTests(unittest.TestCase):
         self.storage.folders.assert_called_once_with('browse', '/mnt')
         self.storage.folders.side_effect = ValueError('Invalid path')
         self.assertEqual(self.client.get('/api/apps/demo/storage?folders=1&path=/etc').status_code, 400)
+
+    def test_mount_check_and_backend_rejection(self):
+        self.login(self.user)
+        self.assertEqual(self.client.get('/api/apps/demo/storage?mount=1&destination=/mnt/new').status_code,403)
+        self.storage.mount_guide.assert_not_called()
+        self.login(self.admin)
+        self.storage.mount_guide.return_value = {'ready':False,'commands':'example'}
+        response = self.client.get('/api/apps/demo/storage?mount=1&destination=/mnt/new')
+        self.assertEqual(response.status_code,200)
+        self.assertFalse(response.json['ready'])
+        self.storage.start.side_effect = MountRequired({'ready':False,'message':'Mount missing'})
+        response = self.client.post('/api/apps/demo/storage',json={'destination':'/mnt/new'})
+        self.assertEqual(response.status_code,409)
+        self.assertFalse(response.json['mount']['ready'])
 
     def test_storage_and_update_jobs_cannot_overlap(self):
         self.login(self.admin)
