@@ -353,6 +353,16 @@ class StorageEndpointTests(unittest.TestCase):
             self.assertEqual(self.client.post('/apps/demo/start').status_code, 409)
             start.assert_not_called()
 
+    def test_pool_selection_derives_destination_and_blocks_missing_mount(self):
+        self.login(self.admin)
+        payload = {'storage_id':'pool','folder':'films','size_gib':'100','destination':'/fake/path','key':'DATA_DIR','source':'/old/data','mode':'move'}
+        self.storage.storage_plan.return_value = {'ready':False,'destination':'/mnt/pool/films','message':'Mount missing'}
+        self.assertEqual(self.client.post('/api/apps/demo/storage',json=payload).status_code,409)
+        self.storage.start.assert_not_called()
+        self.storage.storage_plan.return_value['ready'] = True
+        self.assertEqual(self.client.post('/api/apps/demo/storage',json=payload).status_code,202)
+        self.storage.start.assert_called_once_with({'id':'demo'},'DATA_DIR','/mnt/pool/films','/old/data','move')
+
 
 if __name__ == '__main__':
     unittest.main()

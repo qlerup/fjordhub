@@ -10,7 +10,8 @@ import threading
 
 from docker.types import Mount
 from services.compose_env import build_compose_env
-from services.storage_mount import MountRequired, pve_commands
+from services.storage_mount import MountRequired, pve_commands, volume_commands
+from services.proxmox_storage import ProxmoxStorage
 
 
 def host_path(value):
@@ -64,6 +65,17 @@ class AppStorage:
         self.manager, self.state = manager, state
         self.lock = threading.RLock()
         self.active = set()
+        self.proxmox = ProxmoxStorage()
+
+    def storage_plan(self, storage_id, folder, size):
+        plan = self.proxmox.selection(storage_id, folder, size)
+        host_path(plan['destination'])
+        status = self.folders('mount', plan['destination'])
+        plan['ready'] = plan['configured'] and status['ready'] and status.get('mount_target') == plan['target']
+        plan['commands'] = (volume_commands(plan['ctid'], plan['id'], plan['target'], plan['size_gib'] or 1)
+                            if plan['needs_size'] else pve_commands(plan['ctid'],plan['disk'],plan['target']))
+        plan['message'] = 'Lageret er tilsluttet og klar.' if plan['ready'] else 'Lageret skal tilsluttes FjordHubs LXC. Kør kommandoerne på PVE.'
+        return plan
 
     def job(self, app_id):
         value = self.state.get(app_id).get('storage_job', {})

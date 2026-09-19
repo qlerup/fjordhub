@@ -59,3 +59,29 @@ pct set "$ctid" "-$slot" "$source,mp=$target"
 # Afslut uploads først: dette genstarter LXC og dens apps.
 pct reboot "$ctid"
 FJORDHUB_MOUNT'''
+
+
+def volume_commands(ctid, storage_id, target, size_gib):
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,63}', storage_id) or not str(size_gib).isdigit() or not 1 <= int(size_gib) <= 1048576:
+        raise ValueError('Vælg et gyldigt lager og en diskstørrelse i GiB.')
+    # Share the backup, free-slot selection and nonempty-target guards.
+    script = pve_commands(ctid, '/mnt/unused', target)
+    start = script.index('disk=')
+    end = script.index('config=')
+    script = script[:start] + f'''storage_id={shlex.quote(storage_id)}
+target={shlex.quote(target)}
+source="$storage_id:{int(size_gib)}"
+# Proxmox opretter en containerdisk på det valgte lager.
+''' + script[end:]
+    start = script.index('    if [ "$line" !=')
+    end = script.index('    slot=', start)
+    script = script[:start] + '''    volume="${line#*: }"
+    volume="${volume%%,*}"
+    case "$volume" in
+      "$storage_id":*) source="$volume"; reuse=1 ;;
+      *) echo 'Mountpunktet bruges af et andet lager.'; exit 1 ;;
+    esac
+''' + script[end:]
+    script = script.replace("slot=''", "slot=''\nreuse=0")
+    script = script.replace('pct set "$ctid" "-$slot" "$source,mp=$target"', 'if [ "$reuse" = 0 ]; then pct set "$ctid" "-$slot" "$source,mp=$target"; fi')
+    return script.replace('mkdir -p -- "$source"\n','')

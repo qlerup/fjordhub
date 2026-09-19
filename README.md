@@ -277,33 +277,35 @@ The automatic media gateway recognizes the bundled `fjordhub-traefik` HTTP entry
 
 Open the app's gear menu and use **Filplaceringer**. This is available to hub
 administrators for configured bind-mount paths declared by the app's installer.
-Choose one location (for example original films or thumbnails), then use the
-server directory picker or enter the destination. The picker browses `/mnt`,
-`/media`, `/srv`, `/opt` and `/home`, shows free space, and lets you specify a new
-subdirectory. Missing destination directories are created automatically before
-the app is stopped. Existing destinations must be empty. Directory listing is
-read-only; creation uses a separate helper mounted only at the existing parent
-directory, with no symlink traversal. Failed operations may leave newly created
-empty directories in place. For Proxmox, the paths refer to the filesystem
-inside the LXC that runs Docker. A NAS must be mounted there before proceeding.
+Choose the app folder, a **Proxmox-lager**, and a **Mappenavn**. FjordHub
+reads eligible storages from the configured Proxmox node (including ones not yet
+attached to the LXC), displays capacity and flags the system storage pool.
+It computes the destination itself; users do not enter Linux paths. Missing
+folders are created automatically; existing destinations must be empty.
 
-Destinations below `/mnt/<name>` and `/media/<name>` must have a real extra
-mount visible to Docker. An ordinary directory on the LXC root disk is rejected.
-On a missing mount, the settings dialog shows editable PVE/LXC parameters and
-copyable shell commands. Defaults are LXC `1000` and PVE disk mount
-`/mnt/pve/Storage-pool1`; override with `PROXMOX_CT_ID` and
-`PROXMOX_STORAGE_PATH`, or edit them in the dialog. These are suggestions,
-not automatically discovered PVE configuration.
+Discovery uses the existing `PROXMOX_API_URL`, `PROXMOX_NODE`, `PROXMOX_VMID`,
+`PROXMOX_TOKEN_ID`, `PROXMOX_TOKEN_SECRET` and `PROXMOX_VERIFY_SSL` settings.
+The token needs LXC configuration read access and storage audit permissions.
+If Proxmox returns no visible storages, the dialog offers copyable `PVEAuditor`
+ACL commands for the token and its user, scoped to `/storage`. These only grant
+read access. FjordHub never runs PVE commands itself.
 
-The commands verify the PVE disk mount, reserve a `fjordhub` subdirectory,
-select an unused `mpN`, back up the LXC configuration and reboot the LXC.
-Finish uploads before running them. The guide refuses to cover a nonempty
-unmounted LXC directory or overwrite a conflicting mount configuration.
-FjordHub itself never executes these PVE commands. The browser polls mount
-status every five seconds (after each response), survives temporary connection
-failures, and enables **Start flytning/kopiering** only when the mount appears.
-Starting always requires a click and the server rechecks before creating files.
-Local destinations under `/opt`, `/srv` and `/home` can still use the root disk.
+Active storages allowing `rootdir` are selectable. Directory/NAS storage is
+attached through a `fjordhub` subdirectory; block storage such as `local-lvm`
+requires a new container disk size in GiB. Unprivileged containers also use
+managed container disks to avoid bind-mount UID mapping problems. An existing
+matching LXC data mount is reused. A move within the system storage pool does
+not free capacity in that pool.
+
+For missing mounts the dialog generates commands for the selected storage and
+LXC: check the source, select an unused `mpN`, back up the LXC configuration,
+attach storage and reboot the LXC. Finish uploads before running them. The
+commands refuse to hide a nonempty destination or replace a conflicting mount.
+The browser checks every five seconds after each response and survives the
+restart. **Start flytning/kopiering** becomes available once the matching mount
+is visible; starting still requires a click and a fresh server-side check.
+The access-permissions dialog similarly polls until storage becomes visible,
+without requiring a restart or starting a file operation.
 
 **Kopiér filer og skift placering** checks the destination and available space,
 pauses the app's Compose services, copies and verifies files with SHA-256, and

@@ -1692,6 +1692,15 @@ def api_app_storage(app_id):
     if not app_def:
         return jsonify(ok=False, error='Ukendt app.'), 404
     if request.method == 'GET':
+        if request.args.get('storages') == '1' or request.args.get('storage_plan') == '1':
+            try:
+                if request.args.get('storages') == '1':
+                    return jsonify(ok=True, **app_storage.proxmox.inventory())
+                return jsonify(ok=True, **app_storage.storage_plan(request.args.get('storage_id'), request.args.get('folder'), request.args.get('size_gib')))
+            except ValueError as exc:
+                return jsonify(ok=False, error=str(exc)), 400
+            except Exception:
+                return jsonify(ok=False, error='Lageroplysninger kunne ikke hentes fra Proxmox.'), 503
         if request.args.get('mount') == '1':
             try:
                 return jsonify(ok=True, **app_storage.mount_guide(request.args.get('destination'),
@@ -1716,6 +1725,11 @@ def api_app_storage(app_id):
     if not isinstance(data, dict):
         return jsonify(ok=False, error='Ugyldig forespørgsel.'), 400
     try:
+        if 'storage_id' in data:
+            plan = app_storage.storage_plan(data.get('storage_id'), data.get('folder'), data.get('size_gib'))
+            if not plan['ready']:
+                return jsonify(ok=False, error=plan['message'], mount=plan), 409
+            data['destination'] = plan['destination']
         app_storage.start(app_def, data.get('key'), data.get('destination'), data.get('source'), data.get('mode', 'copy'))
     except MountRequired as exc:
         return jsonify(ok=False, error=str(exc), mount=exc.status), 409

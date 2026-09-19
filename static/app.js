@@ -836,7 +836,7 @@ function storageSelection() {
   const item = _storageFields.find(f => f.key === document.getElementById('app-storage-key').value);
   document.getElementById('app-storage-current').value = item?.path || '';
   document.getElementById('app-storage-hint').textContent = item?.hint || '';
-  document.getElementById('app-storage-destination').value = '';
+  document.getElementById('app-storage-folder').value = `${_settingsAppId}-${(item?.key || 'data').toLowerCase().replace(/_host_dir$|_dir$/g, '').replace(/_/g, '-')}`;
 }
 function renderStorageJob(job = {}) {
   const status = document.getElementById('app-storage-status');
@@ -850,7 +850,6 @@ async function loadAppStorage(appId) {
   const generation = ++_storageGeneration;
   clearTimeout(_storagePollTimer);
   _storageFields = [];
-  document.getElementById('app-storage-browser').hidden = true;
   const form = document.getElementById('app-storage-form');
   if (!form) return;
   form.hidden = true;
@@ -870,6 +869,7 @@ async function loadAppStorage(appId) {
     form.hidden = !_storageFields.length;
     storageSelection();
     renderStorageJob(data.job);
+    if (_storageFields.length) await loadProxmoxStorages(appId, generation);
     if (!data.job?.message) document.getElementById('app-storage-status').textContent = data.error || (_storageFields.length ? '' : 'Denne app har ingen filplaceringer, der kan ændres her.');
     if (data.job?.running && !data.job.interrupted) pollAppStorage(appId, generation);
   } catch (error) {
@@ -896,54 +896,41 @@ function pollAppStorage(appId, generation) {
 document.getElementById('app-storage-mode')?.addEventListener('change', () => {
   document.getElementById('app-storage-save').textContent = document.getElementById('app-storage-mode').value === 'move' ? 'Flyt filer og skift placering' : 'Kopiér filer og skift placering';
 });
-let _storageFolderPath = '', _storageFolderParent = null, _storageFolderRequest = 0;
-async function browseStorageFolders(path = '') {
-  const appId = _settingsAppId, generation = _storageGeneration, request = ++_storageFolderRequest;
-  const panel = document.getElementById('app-storage-browser');
-  panel.hidden = false;
-  const status = document.getElementById('app-storage-folder-status');
-  status.textContent = 'Henter serverens mapper…';
-  for (const id of ['up', 'open', 'use']) document.getElementById(`app-storage-folder-${id}`).disabled = true;
+let _storagePools = [], _storageAccess = null;
+function selectStoragePool() {
+  const pool = _storagePools.find(p => p.id === document.getElementById('app-storage-pool').value);
+  document.getElementById('app-storage-size-field').hidden = !pool?.needs_size;
+  document.getElementById('app-storage-size').required = !!pool?.needs_size;
+  document.getElementById('app-storage-pool-hint').textContent = pool
+    ? `${(pool.free_bytes / 1073741824).toFixed(1)} GiB ledig. ${pool.system_pool ? 'Samme lager som systemdisken. Flytning hertil frigiver ikke plads i dette lager.' : 'FjordHub beregner filplaceringen ud fra dette lager.'}`
+    : (_storageAccess?.message || 'Vælg et tilgængeligt lager.');
+}
+async function loadProxmoxStorages(appId, generation) {
+  const select = document.getElementById('app-storage-pool');
+  select.replaceChildren(new Option('Henter lagre…', ''));
+  document.getElementById('app-storage-access').hidden = true;
   try {
-    const response = await fetch(`/api/apps/${encodeURIComponent(appId)}/storage?folders=1&path=${encodeURIComponent(path)}`);
+    const response = await fetch(`/api/apps/${encodeURIComponent(appId)}/storage?storages=1`);
     const data = await response.json();
-    if (appId !== _settingsAppId || generation !== _storageGeneration || request !== _storageFolderRequest) return;
-    if (!response.ok || !data.ok) throw new Error(data.error || 'Mapperne kunne ikke hentes.');
-    _storageFolderPath = data.path; _storageFolderParent = data.parent;
-    document.getElementById('app-storage-folder-path').textContent = data.path || 'Serverens filplaceringer';
-    const select = document.getElementById('app-storage-folders');
-    select.replaceChildren();
-    for (const dir of data.directories) {
-      const option = document.createElement('option'); option.value = dir.path; option.textContent = dir.name;
-      select.appendChild(option);
+    if (appId !== _settingsAppId || generation !== _storageGeneration) return;
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Lagerlisten kunne ikke hentes.');
+    _storagePools = data.storages || []; _storageAccess = data;
+    select.replaceChildren(new Option('Vælg lager', ''));
+    for (const pool of _storagePools) {
+      const option = new Option(`${pool.id} (${pool.type})${pool.available ? '' : ' — utilgængelig'}`, pool.id);
+      option.disabled = !pool.available; select.appendChild(option);
     }
-    if (select.options.length) select.selectedIndex = 0;
-    document.getElementById('app-storage-folder-new').value = '';
-    status.textContent = (data.free_bytes == null ? '' : `${(data.free_bytes / 1073741824).toFixed(1)} GiB ledig på drevet. `) + (data.truncated ? 'Viser op til 500 mapper; du kan også skrive stien direkte.' : '');
-    document.getElementById('app-storage-folder-up').disabled = data.parent === null;
-    document.getElementById('app-storage-folder-open').disabled = !select.options.length;
-    document.getElementById('app-storage-folder-use').disabled = !data.path;
+    document.getElementById('app-storage-access').hidden = !data.access_commands;
+    selectStoragePool();
   } catch (error) {
-    if (appId === _settingsAppId && generation === _storageGeneration && request === _storageFolderRequest) status.textContent = error.message;
+    if (appId !== _settingsAppId || generation !== _storageGeneration) return;
+    select.replaceChildren(new Option('Lagerlisten kunne ikke hentes', ''));
+    document.getElementById('app-storage-pool-hint').textContent = error.message;
   }
 }
-document.getElementById('app-storage-browse')?.addEventListener('click', () => browseStorageFolders());
-document.getElementById('app-storage-folder-up')?.addEventListener('click', () => browseStorageFolders(_storageFolderParent || ''));
-function openStorageFolder() {
-  const value = document.getElementById('app-storage-folders').value;
-  if (value) browseStorageFolders(value);
-}
-document.getElementById('app-storage-folder-open')?.addEventListener('click', openStorageFolder);
-document.getElementById('app-storage-folders')?.addEventListener('dblclick', openStorageFolder);
-document.getElementById('app-storage-folder-use')?.addEventListener('click', () => {
-  if (!_storageFolderPath) return;
-  const name = document.getElementById('app-storage-folder-new').value.trim();
-  if (name.startsWith('/') || name.split('/').includes('..')) {
-    document.getElementById('app-storage-folder-status').textContent = 'Skriv et undermappenavn uden / i starten eller ..';
-    return;
-  }
-  document.getElementById('app-storage-destination').value = _storageFolderPath + (name ? '/' + name : '');
-  document.getElementById('app-storage-browser').hidden = true;
+document.getElementById('app-storage-pool')?.addEventListener('change', selectStoragePool);
+document.getElementById('app-storage-access')?.addEventListener('click', () => {
+  openStorageMount({kind:'inventory',appId:_settingsAppId,generation:_storageGeneration}, _storageAccess || {});
 });
 document.getElementById('app-storage-key')?.addEventListener('change', storageSelection);
 let _mountPending = null, _mountTimer, _mountAbort, _mountRequest = 0;
@@ -955,20 +942,27 @@ function closeStorageMount() {
 }
 function openStorageMount(pending, data) {
   closeStorageMount(); _mountPending = pending;
-  document.getElementById('storage-mount-ctid').value = data.ctid || '1000';
-  document.getElementById('storage-mount-disk').value = data.disk || '/mnt/pve/Storage-pool1';
-  document.getElementById('storage-mount-destination').textContent = `Ny filplacering: ${pending.payload.destination}`;
-  document.getElementById('storage-mount-start').textContent = pending.payload.mode === 'move' ? 'Start flytning' : 'Start kopiering';
+  const inventory = pending.kind === 'inventory';
+  document.getElementById('storage-mount-title').textContent = inventory ? 'Giv læseadgang til lagerlisten' : 'Tilslut lageret til FjordHub';
+  document.getElementById('storage-mount-description').textContent = inventory
+    ? 'Kør kommandoerne som root i PVE → Shell. De giver FjordHubs API-adgang mulighed for at læse lagrene.'
+    : 'Kør kommandoerne som root i PVE → Shell for at tilslutte det valgte lager.';
+  document.getElementById('storage-mount-restart').hidden = inventory;
+  document.getElementById('storage-mount-destination').textContent = inventory ? '' : `Filplacering: ${data.destination || ''}`;
+  document.getElementById('storage-mount-context').textContent = inventory ? 'Ingen diske eller mounts bliver ændret. Genstart er ikke nødvendig.' : `Lager: ${pending.payload.storage_id} · LXC: ${data.ctid || ''}`;
+  document.getElementById('storage-mount-start').textContent = inventory ? 'Tilbage til lagervalg' : pending.payload.mode === 'move' ? 'Start flytning' : 'Start kopiering';
   document.getElementById('storage-mount-start').disabled = true;
-  document.getElementById('storage-mount-commands').value = data.commands || '';
+  document.getElementById('storage-mount-commands').value = data.commands || data.access_commands || '';
   document.getElementById('storage-mount-copy').textContent = 'Kopiér kommandoer';
   document.getElementById('app-settings-modal').inert = true;
   document.getElementById('storage-mount-modal').classList.add('is-open');
   document.getElementById('storage-mount-close').focus();
   pollStorageMount();
 }
-async function mountStatus(pending, parameters = {}) {
-  const params = new URLSearchParams({mount:'1',destination:pending.payload.destination,...parameters});
+async function mountStatus(pending) {
+  const params = new URLSearchParams(pending.kind === 'inventory' ? {storages:'1'} : {
+    storage_plan:'1', storage_id:pending.payload.storage_id, folder:pending.payload.folder, size_gib:pending.payload.size_gib || ''
+  });
   const controller = new AbortController(); _mountAbort = controller;
   const timeout = setTimeout(() => controller.abort(), 12000);
   try {
@@ -985,11 +979,14 @@ async function pollStorageMount() {
   const status = document.getElementById('storage-mount-status');
   document.getElementById('storage-mount-start').disabled = true;
   try {
-    const data = await mountStatus(pending, {ctid:document.getElementById('storage-mount-ctid').value, disk:document.getElementById('storage-mount-disk').value});
+    const data = await mountStatus(pending);
     if (_mountPending !== pending || request !== _mountRequest) return;
-    document.getElementById('storage-mount-commands').value = data.commands;
-    document.getElementById('storage-mount-copy').disabled = !data.commands;
-    status.textContent = data.ready ? 'Mountet er fundet. Du kan nu starte.' : data.message;
+    const inventory = pending.kind === 'inventory';
+    data.ready = inventory ? !!data.storages?.some(p => p.available) : data.ready;
+    const commands = data.commands || data.access_commands;
+    if (commands) document.getElementById('storage-mount-commands').value = commands;
+    document.getElementById('storage-mount-copy').disabled = !document.getElementById('storage-mount-commands').value;
+    status.textContent = data.ready ? (inventory ? 'Lagerlisten kan nu hentes.' : 'Mountet er fundet. Du kan nu starte.') : data.message;
     status.className = `app-settings-status ${data.ready ? 'ok' : 'warn'}`;
     document.getElementById('storage-mount-start').disabled = !data.ready;
   } catch (error) {
@@ -1000,11 +997,6 @@ async function pollStorageMount() {
   if (_mountPending === pending && request === _mountRequest) _mountTimer = setTimeout(pollStorageMount, 5000);
 }
 document.getElementById('storage-mount-close')?.addEventListener('click', closeStorageMount);
-for (const id of ['storage-mount-ctid','storage-mount-disk']) document.getElementById(id)?.addEventListener('input', () => {
-  document.getElementById('storage-mount-commands').value = '';
-  document.getElementById('storage-mount-copy').disabled = true;
-  pollStorageMount();
-});
 document.getElementById('storage-mount-copy')?.addEventListener('click', async () => {
   const field = document.getElementById('storage-mount-commands');
   try { await navigator.clipboard.writeText(field.value); document.getElementById('storage-mount-copy').textContent = 'Kopieret'; }
@@ -1013,7 +1005,9 @@ document.getElementById('storage-mount-copy')?.addEventListener('click', async (
 document.getElementById('storage-mount-start')?.addEventListener('click', () => {
   const pending = _mountPending;
   if (!pending || document.getElementById('storage-mount-start').disabled) return;
-  closeStorageMount(); submitStorageChange(pending);
+  closeStorageMount();
+  if (pending.kind === 'inventory') loadProxmoxStorages(pending.appId, pending.generation);
+  else submitStorageChange(pending);
 });
 async function submitStorageChange(pending) {
   const {appId,generation,payload} = pending;
@@ -1038,9 +1032,8 @@ document.getElementById('app-storage-form')?.addEventListener('submit', async ev
   const appId = _settingsAppId, generation = _storageGeneration;
   const field = _storageFields.find(f => f.key === document.getElementById('app-storage-key').value);
   if (!appId || !field) return;
-  const payload = {key:field.key,source:field.path,destination:document.getElementById('app-storage-destination').value.trim(),mode:document.getElementById('app-storage-mode').value};
+  const payload = {key:field.key,source:field.path,storage_id:document.getElementById('app-storage-pool').value,folder:document.getElementById('app-storage-folder').value.trim(),size_gib:document.getElementById('app-storage-size').value,mode:document.getElementById('app-storage-mode').value};
   const pending = {appId,generation,payload};
-  ++_storageFolderRequest; document.getElementById('app-storage-browser').hidden = true;
   renderStorageJob({running:true,message:'Kontrollerer drevets mount…'});
   try {
     const status = await mountStatus(pending);

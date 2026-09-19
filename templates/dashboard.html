@@ -186,18 +186,10 @@
         <div class="form-field"><label for="app-storage-key">Mappe</label><select id="app-storage-key"></select></div>
         <p id="app-storage-hint" class="field-hint"></p>
         <div class="form-field"><label for="app-storage-current">Nuværende placering</label><input id="app-storage-current" type="text" readonly></div>
-        <div class="form-field"><label for="app-storage-destination">Ny placering</label><input id="app-storage-destination" type="text" placeholder="/mnt/lager/fjordflix/film" autocomplete="off" required>
-          <p class="field-hint">En manglende mappe oprettes automatisk. En eksisterende mappe skal være tom. NAS/drev skal allerede være monteret på Docker-serveren.</p></div>
-        <button type="button" id="app-storage-browse" class="btn-secondary">Vælg mappe på serveren…</button>
-        <div id="app-storage-browser" hidden style="margin:16px 0;padding:16px;border:1px solid var(--border);border-radius:10px;">
-          <p id="app-storage-folder-path" style="overflow-wrap:anywhere;"></p>
-          <p id="app-storage-folder-status" class="field-hint" aria-live="polite"></p>
-          <div class="form-field"><label for="app-storage-folders">Mapper på serveren</label><select id="app-storage-folders" size="6" style="width:100%;height:auto;"></select></div>
-          <button type="button" id="app-storage-folder-up" class="btn-secondary">Op</button>
-          <button type="button" id="app-storage-folder-open" class="btn-secondary">Åbn mappe</button>
-          <div class="form-field" style="margin-top:14px;"><label for="app-storage-folder-new">Ny undermappe (valgfrit)</label><input id="app-storage-folder-new" placeholder="fjordflix/film" autocomplete="off"></div>
-          <button type="button" id="app-storage-folder-use" class="btn-secondary">Brug denne placering</button>
-        </div>
+        <div class="form-field"><label for="app-storage-pool">Proxmox-lager</label><select id="app-storage-pool" required><option value="">Henter lagre…</option></select><p id="app-storage-pool-hint" class="field-hint" aria-live="polite"></p></div>
+        <button type="button" id="app-storage-access" class="btn btn-open" hidden>Giv læseadgang til lagerlisten</button>
+        <div class="form-field"><label for="app-storage-folder">Mappenavn</label><input type="text" id="app-storage-folder" placeholder="fjordflix-film" maxlength="100" autocomplete="off" required><p class="field-hint">FjordHub finder stien på det valgte lager og opretter mappen. En eksisterende mappe skal være tom.</p></div>
+        <div class="form-field" id="app-storage-size-field" hidden><label for="app-storage-size">Containerdiskens størrelse (GiB)</label><input type="number" id="app-storage-size" value="100" min="1" max="1048576"><p class="field-hint">Bruges ved oprettelse af en ny containerdisk på fx local-lvm. En allerede tilsluttet disk genbruges.</p></div>
         <div class="form-field"><label for="app-storage-mode">Hvad skal der ske med filerne?</label><select id="app-storage-mode"><option value="copy">Kopiér — behold filerne på den gamle placering</option><option value="move">Flyt — slet filerne fra den gamle placering</option></select></div>
         <p class="field-hint">Afslut uploads først. Appen pauses, mens filerne kopieres og kontrolleres. Ved Flyt slettes originalerne først, når den nye placering er aktiveret og en kørende app er startet igen. En stoppet app forbliver stoppet.</p>
         <button type="submit" id="app-storage-save" class="btn-install">Kopiér filer og skift placering</button>
@@ -211,12 +203,10 @@
 <div class="modal-overlay" id="storage-mount-modal" style="z-index:350;">
   <div class="modal storage-mount-dialog" role="dialog" aria-modal="true" aria-labelledby="storage-mount-title">
     <div class="modal-header"><h2 id="storage-mount-title">Tilslut drevet til FjordHub</h2><button type="button" class="modal-close" id="storage-mount-close" aria-label="Luk">×</button></div>
-    <p>Den valgte placering mangler et mount i LXC’en. Kør kommandoerne som root i <strong>PVE → Shell</strong>.</p>
+    <p id="storage-mount-description">Lageret skal tilsluttes FjordHubs LXC. Kør kommandoerne som root i PVE → Shell.</p>
     <p id="storage-mount-destination" style="overflow-wrap:anywhere;"></p>
-    <div class="form-field"><label for="storage-mount-ctid">FjordHubs LXC-ID</label><input type="text" id="storage-mount-ctid" inputmode="numeric" autocomplete="off"></div>
-    <div class="form-field"><label for="storage-mount-disk">Diskens mountpunkt på PVE</label><input type="text" id="storage-mount-disk" autocomplete="off"></div>
-    <p class="field-hint">Kontrollér værdierne. Guiden bruger undermappen <code>fjordhub</code> på disken og finder et ledigt mount-nummer. Disken skal allerede være monteret på PVE.</p>
-    <p><strong>Afslut uploads først.</strong> Kommandoerne genstarter LXC’en og dens apps. FjordHub er kortvarigt utilgængelig; kontrollen fortsætter automatisk bagefter.</p>
+    <p id="storage-mount-context" class="field-hint"></p>
+    <p id="storage-mount-restart"><strong>Afslut uploads først.</strong> Kommandoerne genstarter LXC’en og dens apps. FjordHub er kortvarigt utilgængelig; kontrollen fortsætter automatisk bagefter.</p>
     <textarea id="storage-mount-commands" readonly aria-label="Kommandoer til PVE" rows="10"></textarea>
     <button type="button" id="storage-mount-copy" class="btn btn-open">Kopiér kommandoer</button>
     <p id="storage-mount-status" role="status" aria-live="polite"></p>
