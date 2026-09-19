@@ -16,7 +16,23 @@ class ProxmoxStorageTests(unittest.TestCase):
                      dict(storage='local-lvm', type='lvmthin', content='rootdir,images', active=1, avail=150*1024**3),
                      dict(storage='local', type='dir', content='iso', active=1)]
         self.config = {'rootfs':'local-lvm:vm-1000-disk-0,size=200G'}
-        self.service.get = Mock(side_effect=lambda path: self.rows if path.endswith('/storage') else self.config if path.endswith('/config') else {'path':'/mnt/pve/Storage-pool1'})
+        self.definitions = [{'storage':'Storage-pool1','path':'/mnt/pve/Storage-pool1'}, {'storage':'local-lvm'}]
+        def read(path):
+            if path == '/storage': return self.definitions
+            if path == '/nodes/pve/storage': return self.rows
+            if path.endswith('/config'): return self.config
+            raise ValueError('Permission check failed: Datastore.Allocate')
+        self.service.get = Mock(side_effect=read)
+
+    def test_selection_uses_audit_access_without_allocate_permission(self):
+        plan = self.service.selection('Storage-pool1','films','')
+        self.assertEqual(plan['disk'],'/mnt/pve/Storage-pool1')
+        self.service.get.assert_any_call('/storage')
+        self.assertNotIn('/storage/Storage-pool1', [call.args[0] for call in self.service.get.call_args_list])
+
+    def test_storage_removed_from_configuration_is_rejected(self):
+        self.definitions.clear()
+        with self.assertRaises(ValueError): self.service.selection('Storage-pool1','films','')
 
     def test_inventory_includes_unattached_pools_and_excludes_iso_only(self):
         data = self.service.inventory()

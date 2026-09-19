@@ -71,7 +71,11 @@ class ProxmoxStorage:
         storage = next((s for s in self.inventory()['storages'] if s['id'] == storage_id),None)
         if not storage or not storage['available']:
             raise ValueError('Det valgte Proxmox-lager er ikke tilgængeligt til containerdata.')
-        definition = self.get('/storage/' + quote(storage_id,safe=''))
+        # GET /storage/{id} requires Datastore.Allocate even for reads.
+        # The filtered collection exposes configuration with Datastore.Audit.
+        definition = next((item for item in self.get('/storage') if item.get('storage') == storage_id), None)
+        if definition is None:
+            raise ValueError('Det valgte lager kunne ikke læses fra Proxmox. Hent lagerlisten igen.')
         config = self.get(self.node_path + '/lxc/' + self.ctid + '/config')
         target = '/mnt/fjordhub/' + storage_id
         disk = definition.get('path') or ('/mnt/pve/' + storage_id if storage['type'] in ('nfs','cifs') else '')
