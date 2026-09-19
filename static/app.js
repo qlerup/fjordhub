@@ -515,6 +515,7 @@ document.getElementById('app-sections')?.addEventListener('click', e => {
 let _settingsAppId = null;
 
 function closeAppSettings() {
+  clearTimeout(_storagePollTimer);
   _settingsAppId = null;
   document.getElementById('app-settings-modal')?.classList.remove('is-open');
 }
@@ -523,6 +524,7 @@ async function openAppSettings(card) {
   const appId = card?.dataset.appId;
   if (!appId) return;
   _settingsAppId = appId;
+  loadAppStorage(appId);
   const guide = document.getElementById('media-guide');
   if (guide) guide.hidden = appId !== 'fjordflix';
   if (guide && appId === 'fjordflix') showMediaStep(1,false);
@@ -825,4 +827,89 @@ document.getElementById('media-guide-domain')?.addEventListener('change',updateM
 document.getElementById('media-guide-domain')?.addEventListener('focus',updateMediaDnsPreview);
 window.addEventListener('pageshow',()=>{
   if(document.getElementById('media-guide-domain')) updateMediaDnsPreview();
+});
+
+// File locations are separate from the public URL and never save on modal close.
+let _storagePollTimer, _storageFields = [], _storageGeneration = 0;
+function storageSelection() {
+  const item = _storageFields.find(f => f.key === document.getElementById('app-storage-key').value);
+  document.getElementById('app-storage-current').value = item?.path || '';
+  document.getElementById('app-storage-hint').textContent = item?.hint || '';
+  document.getElementById('app-storage-destination').value = '';
+}
+function renderStorageJob(job = {}) {
+  const status = document.getElementById('app-storage-status');
+  status.textContent = job.error ? `${job.message || ''} ${job.error}` : job.message || '';
+  status.className = `app-settings-status ${job.error || job.interrupted ? 'err' : job.running ? 'warn' : 'ok'}`;
+  for (const el of document.getElementById('app-storage-form').elements) el.disabled = !!job.running;
+  document.getElementById('app-storage-save').textContent = job.running ? 'Flytning i gang…' : 'Kopiér filer og skift placering';
+}
+async function loadAppStorage(appId) {
+  const generation = ++_storageGeneration;
+  clearTimeout(_storagePollTimer);
+  _storageFields = [];
+  const form = document.getElementById('app-storage-form');
+  if (!form) return;
+  form.hidden = true;
+  document.getElementById('app-storage-status').textContent = 'Henter filplaceringer…';
+  try {
+    const response = await fetch(`/api/apps/${encodeURIComponent(appId)}/storage`);
+    const data = await response.json();
+    if (_settingsAppId !== appId || generation !== _storageGeneration) return;
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Kunne ikke hente filplaceringer.');
+    _storageFields = data.fields || [];
+    const select = document.getElementById('app-storage-key');
+    select.replaceChildren();
+    for (const field of _storageFields) {
+      const option = document.createElement('option'); option.value = field.key; option.textContent = field.label;
+      select.appendChild(option);
+    }
+    form.hidden = !_storageFields.length;
+    storageSelection();
+    renderStorageJob(data.job);
+    if (!data.job?.message) document.getElementById('app-storage-status').textContent = data.error || (_storageFields.length ? '' : 'Denne app har ingen filplaceringer, der kan ændres her.');
+    if (data.job?.running && !data.job.interrupted) pollAppStorage(appId, generation);
+  } catch (error) {
+    if (_settingsAppId !== appId || generation !== _storageGeneration) return;
+    document.getElementById('app-storage-status').textContent = error.message;
+  }
+}
+function pollAppStorage(appId, generation) {
+  _storagePollTimer = setTimeout(async () => {
+    if (_settingsAppId !== appId || generation !== _storageGeneration) return;
+    try {
+      const response = await fetch(`/api/apps/${encodeURIComponent(appId)}/storage?job=1`);
+      const data = await response.json();
+      if (_settingsAppId !== appId || generation !== _storageGeneration) return;
+      if (!response.ok || !data.ok) throw new Error('Status kunne ikke hentes. Genåbn indstillingerne.');
+      renderStorageJob(data.job);
+      if (data.job?.running && !data.job.interrupted) pollAppStorage(appId, generation);
+      else if (!data.job?.running) loadAppStorage(appId);
+    } catch (error) {
+      if (_settingsAppId === appId) document.getElementById('app-storage-status').textContent = error.message;
+    }
+  }, 1500);
+}
+document.getElementById('app-storage-key')?.addEventListener('change', storageSelection);
+document.getElementById('app-storage-form')?.addEventListener('submit', async event => {
+  event.preventDefault();
+  const appId = _settingsAppId, generation = _storageGeneration;
+  if (!appId) return;
+  const field = _storageFields.find(f => f.key === document.getElementById('app-storage-key').value);
+  if (!field) return;
+  const destination = document.getElementById('app-storage-destination').value.trim();
+  renderStorageJob({running:true, message:'Starter kontrol af filplaceringen…'});
+  try {
+    const response = await fetch(`/api/apps/${encodeURIComponent(appId)}/storage`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:field.key, source:field.path, destination}),
+    });
+    const data = await response.json();
+    if (_settingsAppId !== appId || generation !== _storageGeneration) return;
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Flytningen kunne ikke startes.');
+    renderStorageJob(data.job);
+    pollAppStorage(appId, generation);
+  } catch (error) {
+    if (_settingsAppId === appId && generation === _storageGeneration) renderStorageJob({error:error.message});
+  }
 });

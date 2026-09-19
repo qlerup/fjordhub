@@ -11,7 +11,7 @@ import secrets
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 import requests
-from flask import Flask, render_template, jsonify, request, redirect, url_for, Response, send_file, session
+from flask import Flask, render_template, jsonify, request, redirect, url_for, Response, send_file, session, g
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 
 from services.auth import AuthService
@@ -30,6 +30,7 @@ from services.package_manager import PackageManager, PackageError
 from services.password_reset import PasswordResetService
 from services.nvidia_devices import probe_gpu
 from services.media_gateway import MediaGateway, domain as media_domain
+from services.app_storage import AppStorage
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
@@ -95,6 +96,8 @@ _installer       = Installer(_install_state)
 _update_manager  = UpdateManager(_install_state)
 docker_mgr       = DockerManager()
 media_gateway    = MediaGateway(docker_mgr, _install_state)
+app_storage      = AppStorage(docker_mgr, _install_state)
+_app_operation_lock = threading.RLock()
 resource_monitor = ResourceMonitor(docker_mgr)
 package_manager  = PackageManager(DATA_DIR)
 
@@ -1658,6 +1661,49 @@ def app_sso_url(app_id):
         return error_response
     app_url = _external_app_url(app_def)
     return jsonify({"ok": True, "url": f"{app_url}/hub-login?token={token}"})
+
+
+@app.before_request
+def _guard_storage_operation():
+    app_id = (request.view_args or {}).get('app_id')
+    self_update = request.endpoint == 'api_hub_self_update_start'
+    if request.method != 'POST' or not (app_id or self_update):
+        return None
+    _app_operation_lock.acquire()
+    g.app_operation_locked = True
+    if (self_update and _install_state.has_storage_jobs()) or (app_id and app_storage.busy(app_id)):
+        return jsonify(ok=False, error='En filflytning er i gang eller kræver kontrol efter en genstart.'), 409
+
+
+@app.teardown_request
+def _release_app_operation_lock(error=None):
+    if getattr(g, 'app_operation_locked', False):
+        g.app_operation_locked = False
+        _app_operation_lock.release()
+
+
+@app.route('/api/apps/<app_id>/storage', methods=['GET', 'POST'])
+@login_required
+def api_app_storage(app_id):
+    if not current_user.is_admin:
+        return jsonify(ok=False, error='Kun administratorer kan ændre filplaceringer.'), 403
+    app_def = _get_app(app_id)
+    if not app_def:
+        return jsonify(ok=False, error='Ukendt app.'), 404
+    if request.method == 'GET':
+        if request.args.get('job') == '1':
+            return jsonify(ok=True, job=app_storage.job(app_id))
+        return jsonify(ok=True, **app_storage.describe(app_def))
+    if _update_manager.is_running(app_id) or _install_state.get(app_id).get('state') == 'installing':
+        return jsonify(ok=False, error='Vent til installation eller opdatering er færdig.'), 409
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error='Ugyldig forespørgsel.'), 400
+    try:
+        app_storage.start(app_def, data.get('key'), data.get('destination'), data.get('source'))
+    except ValueError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+    return jsonify(ok=True, job=app_storage.job(app_id)), 202
 
 
 @app.route("/api/apps/<app_id>/settings", methods=["GET", "POST"])

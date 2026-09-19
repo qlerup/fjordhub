@@ -75,6 +75,10 @@ class UpdateManager:
             job = self._jobs.get(app_id)
             return list(job.get("log", [])) if job else []
 
+    def is_running(self, app_id: str) -> bool:
+        with self._lock:
+            return bool(self._jobs.get(app_id, {}).get('running'))
+
     def get_all_statuses(self, app_defs: list[dict]) -> dict[str, dict]:
         return {app_def["id"]: self.get_status(app_def, fetch=False) for app_def in app_defs}
 

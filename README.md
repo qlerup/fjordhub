@@ -271,3 +271,35 @@ Validation: `python -m unittest discover -s tests -q`. `tests/browser_media_guid
 The automatic media gateway recognizes the bundled `fjordhub-traefik` HTTP entrypoint. It registers a hostname-specific route using Docker labels on the shared `fjord-net` network, and publishes only Caddy's HTTPS port 443. Traefik is not restarted. Its HTTP route forwards certificate challenges and redirects to Caddy. Other port owners still block automatic setup. See [Traefik Docker routing](https://doc.traefik.io/traefik/v3.3/routing/providers/docker/).
 
 `tests/docker_traefik_media.py` verifies hostname routing through real Traefik, Caddy and a disposable Flix container. Set `TRAEFIK_TEST_IMAGE=traefik:v3.6` for Docker engines incompatible with the older bundled v3.3 Docker API client. The test uses isolated ports and does not issue public certificates or change the deployed proxy version.
+
+
+## Change an app's file location
+
+Open the app's gear menu and use **Filplaceringer**. This is available to hub
+administrators for configured bind-mount paths declared by the app's installer.
+Choose one location (for example original films or thumbnails), then enter an
+existing empty directory on the Docker host. For Proxmox, this is the filesystem
+inside the LXC that runs Docker. A NAS must be mounted there before proceeding.
+
+**Kopi?r filer og skift placering** checks the destination and available space,
+pauses the app's Compose services, copies and verifies files with SHA-256, and
+updates only the selected `.env` entry. Existing Compose overrides and secrets
+are retained. Only previously running services are restarted; the operation
+waits for their running/healthy state. It never pulls or builds new app images.
+Finish uploads before starting. The settings dialog can be closed and reopened
+while the copy runs.
+
+The original files are retained. After verifying the app against its new location,
+old files can be removed separately to reclaim disk space. Failed copies may leave
+partial files in the destination; no files there are overwritten or automatically
+deleted. The previous environment is backed up under
+`/data/storage-backups/<app-id>/<job-id>.env`, outside the app's Git repository.
+If activation fails, FjordHub restores the old configuration and attempts to
+restart the previously running services.
+
+A hub restart during migration is reported as interrupted and blocks further app
+changes. An administrator must inspect the helper container labelled
+`dk.fjordhub.storage-copy=1`, both directories and the environment backup before
+recovering the app. Do not clear a running storage job or restart the app until
+the copy helper and configuration have been checked. Normal app updates and
+FjordHub self-update are blocked while migration is in progress.

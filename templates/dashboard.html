@@ -179,6 +179,20 @@
         <button type="submit" class="btn-install" id="app-settings-save">Gem adresse</button>
       </div>
     </form>
+    <section id="app-storage-section" style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px;">
+      <h3>Filplaceringer</h3>
+      <p class="field-hint">Flyt appens filer til en anden lokal disk eller et monteret NAS-drev. Stien skal være synlig på den server, der kører Docker.</p>
+      <form id="app-storage-form" hidden>
+        <div class="form-field"><label for="app-storage-key">Mappe</label><select id="app-storage-key"></select></div>
+        <p id="app-storage-hint" class="field-hint"></p>
+        <div class="form-field"><label for="app-storage-current">Nuværende placering</label><input id="app-storage-current" type="text" readonly></div>
+        <div class="form-field"><label for="app-storage-destination">Ny placering</label><input id="app-storage-destination" type="text" placeholder="/mnt/lager/fjordflix/film" autocomplete="off" required>
+          <p class="field-hint">Opret først en tom mappe på det ønskede drev. FjordHub kopierer og kontrollerer alle filerne, før placeringen ændres.</p></div>
+        <p class="field-hint">Appen pauses under flytningen. Afslut uploads først. Den gamle mappe bevares; slet den først, når du har kontrolleret den nye placering.</p>
+        <button type="submit" id="app-storage-save" class="btn-install">Kopiér filer og skift placering</button>
+      </form>
+      <p id="app-storage-status" class="app-settings-status" role="status" aria-live="polite"></p>
+    </section>
     {% include 'media_gateway.html' %}
   </div>
 </div>

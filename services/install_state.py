@@ -10,6 +10,10 @@ class InstallState:
         self._lock = threading.Lock()
         self._state: dict = self._load()
 
+    @property
+    def data_dir(self) -> Path:
+        return self._file.parent
+
     def get(self, app_id: str) -> dict:
         with self._lock:
             return dict(self._state.get(app_id, {}))
@@ -24,6 +28,17 @@ class InstallState:
 
     def set_external_url(self, app_id: str, external_url: str) -> None:
         self._update(app_id, {"external_url": str(external_url or "").strip()})
+
+    def set_storage_job(self, app_id: str, job: dict) -> None:
+        self._update(app_id, {"storage_job": dict(job)})
+
+    def has_storage_jobs(self) -> bool:
+        with self._lock:
+            return any(row.get('storage_job', {}).get('running') for row in self._state.values())
+
+    def storage_jobs(self) -> dict:
+        with self._lock:
+            return {key: dict(row['storage_job']) for key, row in self._state.items() if row.get('storage_job')}
 
     def set_installing(self, app_id: str, install_dir: str):
         self._update(app_id, {
