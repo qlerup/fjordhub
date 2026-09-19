@@ -420,7 +420,7 @@ class UpdateManager:
                 if build_code != 0:
                     raise RuntimeError("docker compose build fejlede")
 
-                self._append_job_log(app_id, f"[{_now_iso()}] Nyt image bygget. FjordHub genstarter...")
+                self._append_job_log(app_id, f"[{_now_iso()}] Nyt image bygget. FjordHub recreates og genstarter...")
                 self._set_job(app_id, {
                     "state": "restarting",
                     "label": "Genstarter...",
@@ -430,7 +430,7 @@ class UpdateManager:
 
                 import subprocess as _sp
                 _sp.Popen(
-                    ["docker", "compose", "up", "-d"],
+                    ["docker", "compose", "up", "-d", "--force-recreate"],
                     cwd=str(install_dir),
                     env=build_compose_env(),
                     stdout=_sp.DEVNULL,
