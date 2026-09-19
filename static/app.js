@@ -848,6 +848,7 @@ async function loadAppStorage(appId) {
   const generation = ++_storageGeneration;
   clearTimeout(_storagePollTimer);
   _storageFields = [];
+  document.getElementById('app-storage-browser').hidden = true;
   const form = document.getElementById('app-storage-form');
   if (!form) return;
   form.hidden = true;
@@ -893,6 +894,55 @@ function pollAppStorage(appId, generation) {
 document.getElementById('app-storage-mode')?.addEventListener('change', () => {
   document.getElementById('app-storage-save').textContent = document.getElementById('app-storage-mode').value === 'move' ? 'Flyt filer og skift placering' : 'Kopiér filer og skift placering';
 });
+let _storageFolderPath = '', _storageFolderParent = null, _storageFolderRequest = 0;
+async function browseStorageFolders(path = '') {
+  const appId = _settingsAppId, generation = _storageGeneration, request = ++_storageFolderRequest;
+  const panel = document.getElementById('app-storage-browser');
+  panel.hidden = false;
+  const status = document.getElementById('app-storage-folder-status');
+  status.textContent = 'Henter serverens mapper…';
+  for (const id of ['up', 'open', 'use']) document.getElementById(`app-storage-folder-${id}`).disabled = true;
+  try {
+    const response = await fetch(`/api/apps/${encodeURIComponent(appId)}/storage?folders=1&path=${encodeURIComponent(path)}`);
+    const data = await response.json();
+    if (appId !== _settingsAppId || generation !== _storageGeneration || request !== _storageFolderRequest) return;
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Mapperne kunne ikke hentes.');
+    _storageFolderPath = data.path; _storageFolderParent = data.parent;
+    document.getElementById('app-storage-folder-path').textContent = data.path || 'Serverens filplaceringer';
+    const select = document.getElementById('app-storage-folders');
+    select.replaceChildren();
+    for (const dir of data.directories) {
+      const option = document.createElement('option'); option.value = dir.path; option.textContent = dir.name;
+      select.appendChild(option);
+    }
+    if (select.options.length) select.selectedIndex = 0;
+    document.getElementById('app-storage-folder-new').value = '';
+    status.textContent = (data.free_bytes == null ? '' : `${(data.free_bytes / 1073741824).toFixed(1)} GiB ledig på drevet. `) + (data.truncated ? 'Viser op til 500 mapper; du kan også skrive stien direkte.' : '');
+    document.getElementById('app-storage-folder-up').disabled = data.parent === null;
+    document.getElementById('app-storage-folder-open').disabled = !select.options.length;
+    document.getElementById('app-storage-folder-use').disabled = !data.path;
+  } catch (error) {
+    if (appId === _settingsAppId && generation === _storageGeneration && request === _storageFolderRequest) status.textContent = error.message;
+  }
+}
+document.getElementById('app-storage-browse')?.addEventListener('click', () => browseStorageFolders());
+document.getElementById('app-storage-folder-up')?.addEventListener('click', () => browseStorageFolders(_storageFolderParent || ''));
+function openStorageFolder() {
+  const value = document.getElementById('app-storage-folders').value;
+  if (value) browseStorageFolders(value);
+}
+document.getElementById('app-storage-folder-open')?.addEventListener('click', openStorageFolder);
+document.getElementById('app-storage-folders')?.addEventListener('dblclick', openStorageFolder);
+document.getElementById('app-storage-folder-use')?.addEventListener('click', () => {
+  if (!_storageFolderPath) return;
+  const name = document.getElementById('app-storage-folder-new').value.trim();
+  if (name.startsWith('/') || name.split('/').includes('..')) {
+    document.getElementById('app-storage-folder-status').textContent = 'Skriv et undermappenavn uden / i starten eller ..';
+    return;
+  }
+  document.getElementById('app-storage-destination').value = _storageFolderPath + (name ? '/' + name : '');
+  document.getElementById('app-storage-browser').hidden = true;
+});
 document.getElementById('app-storage-key')?.addEventListener('change', storageSelection);
 document.getElementById('app-storage-form')?.addEventListener('submit', async event => {
   event.preventDefault();
@@ -902,6 +952,8 @@ document.getElementById('app-storage-form')?.addEventListener('submit', async ev
   if (!field) return;
   const destination = document.getElementById('app-storage-destination').value.trim();
   const mode = document.getElementById('app-storage-mode').value;
+  ++_storageFolderRequest;
+  document.getElementById('app-storage-browser').hidden = true;
   renderStorageJob({running:true, message:'Starter kontrol af filplaceringen…'});
   try {
     const response = await fetch(`/api/apps/${encodeURIComponent(appId)}/storage`, {

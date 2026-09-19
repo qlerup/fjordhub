@@ -8,6 +8,36 @@ from unittest.mock import MagicMock, patch
 from services.app_storage import AppStorage, host_path, patched_env
 from services.install_state import InstallState
 from services.storage_copy import transfer, cleanup, MANIFEST
+from services.storage_browser import browse, probe, checked
+
+
+class StorageBrowserTests(unittest.TestCase):
+    def test_browse_only_directories_and_reports_free_space(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'mnt/disk/movies').mkdir(parents=True)
+            (root / 'mnt/disk/private.txt').write_text('not listed')
+            self.assertEqual(browse(root, '')['directories'], [{'name':'/mnt', 'path':'/mnt'}])
+            result = browse(root, '/mnt/disk')
+            self.assertEqual(result['directories'], [{'name':'movies','path':'/mnt/disk/movies'}])
+            self.assertEqual(result['parent'], '/mnt')
+            self.assertGreater(result['free_bytes'], 0)
+            self.assertEqual(browse(root, '/mnt')['parent'], '')
+
+    def test_new_nested_folder_is_scoped_to_existing_parent(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); (root / 'mnt/disk').mkdir(parents=True)
+            self.assertEqual(probe(root, '/mnt/disk/new/films'), {'ancestor':'/mnt/disk','relative':'new/films'})
+            self.assertFalse((root / 'mnt/disk/new').exists())
+            for path in ('/etc', '/mnt/../../etc', '/mnt2/files', '/proc', '/srv/new'):
+                with self.subTest(path=path), self.assertRaises(ValueError): probe(root, path)
+
+    def test_ensure_destination_only_mounts_existing_parent_for_creation(self):
+        service = AppStorage(MagicMock(), MagicMock())
+        service.folders = MagicMock(side_effect=[{'ancestor':'/mnt/disk','relative':'new/films'}, {'created':True}])
+        service.ensure_destination('/mnt/disk/new/films')
+        self.assertEqual([c.args for c in service.folders.call_args_list], [
+            ('probe','/mnt/disk/new/films'), ('create','new/films','/mnt/disk')])
 
 
 class StorageCopyTests(unittest.TestCase):
@@ -112,6 +142,7 @@ class StorageTransactionTests(unittest.TestCase):
         self.service.configuration = lambda directory, extra=None: {'name':'demo','services':{
             'app':{'image':'app:test','volumes':[{'type':'bind','source':(extra or {}).get('UPLOADS_HOST_DIR','/old/files'),'target':'/media'}]}}}
         self.service.helper = MagicMock(return_value={'bytes':123, 'manifest_sha256':'seal'})
+        self.service.ensure_destination = MagicMock()
         self.service.compose = MagicMock(return_value='')
 
     def tearDown(self):
@@ -135,6 +166,13 @@ class StorageTransactionTests(unittest.TestCase):
         self.assertEqual(self.env.read_text(), self.original)
         self.assertEqual([call.args[1][0] for call in self.service.compose.call_args_list], ['stop','up'])
         self.assertIn('Copy failed', self.service.job('demo')['error'])
+
+    def test_directory_creation_failure_does_not_stop_app(self):
+        self.service.ensure_destination.side_effect = ValueError('Folder unavailable')
+        self.service.run(self.app, 'UPLOADS_HOST_DIR', '/new/files', '/old/files')
+        self.service.compose.assert_not_called()
+        self.service.helper.assert_not_called()
+        self.assertEqual(self.env.read_text(), self.original)
 
     def test_move_cleanup_only_after_activation(self):
         events = []
@@ -236,6 +274,7 @@ class StorageEndpointTests(unittest.TestCase):
     def test_only_admin_can_read_or_change_paths(self):
         self.login(self.user)
         self.assertEqual(self.client.get('/api/apps/demo/storage').status_code, 403)
+        self.assertEqual(self.client.get('/api/apps/demo/storage?folders=1').status_code, 403)
         self.assertEqual(self.client.post('/api/apps/demo/storage', json={}).status_code, 403)
         self.storage.start.assert_not_called()
         self.login(self.admin)
@@ -246,6 +285,15 @@ class StorageEndpointTests(unittest.TestCase):
         response = self.client.post('/api/apps/demo/storage', json={'key':'DATA_DIR','source':'/old/data','destination':'/new/data','mode':'move'})
         self.assertEqual(response.status_code, 202)
         self.storage.start.assert_called_with({'id':'demo'}, 'DATA_DIR', '/new/data', '/old/data', 'move')
+
+    def test_admin_browses_host_folders_and_receives_validation_errors(self):
+        self.login(self.admin)
+        self.storage.folders.return_value = {'path':'/mnt','parent':'','directories':[]}
+        response = self.client.get('/api/apps/demo/storage?folders=1&path=/mnt')
+        self.assertEqual(response.status_code, 200)
+        self.storage.folders.assert_called_once_with('browse', '/mnt')
+        self.storage.folders.side_effect = ValueError('Invalid path')
+        self.assertEqual(self.client.get('/api/apps/demo/storage?folders=1&path=/etc').status_code, 400)
 
     def test_storage_and_update_jobs_cannot_overlap(self):
         self.login(self.admin)

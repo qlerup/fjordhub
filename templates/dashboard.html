@@ -187,7 +187,17 @@
         <p id="app-storage-hint" class="field-hint"></p>
         <div class="form-field"><label for="app-storage-current">Nuværende placering</label><input id="app-storage-current" type="text" readonly></div>
         <div class="form-field"><label for="app-storage-destination">Ny placering</label><input id="app-storage-destination" type="text" placeholder="/mnt/lager/fjordflix/film" autocomplete="off" required>
-          <p class="field-hint">Opret først en tom mappe på det ønskede drev. FjordHub kopierer og kontrollerer alle filerne, før placeringen ændres.</p></div>
+          <p class="field-hint">En manglende mappe oprettes automatisk. En eksisterende mappe skal være tom. NAS/drev skal allerede være monteret på Docker-serveren.</p></div>
+        <button type="button" id="app-storage-browse" class="btn-secondary">Vælg mappe på serveren…</button>
+        <div id="app-storage-browser" hidden style="margin:16px 0;padding:16px;border:1px solid var(--border);border-radius:10px;">
+          <p id="app-storage-folder-path" style="overflow-wrap:anywhere;"></p>
+          <p id="app-storage-folder-status" class="field-hint" aria-live="polite"></p>
+          <div class="form-field"><label for="app-storage-folders">Mapper på serveren</label><select id="app-storage-folders" size="6" style="width:100%;height:auto;"></select></div>
+          <button type="button" id="app-storage-folder-up" class="btn-secondary">Op</button>
+          <button type="button" id="app-storage-folder-open" class="btn-secondary">Åbn mappe</button>
+          <div class="form-field" style="margin-top:14px;"><label for="app-storage-folder-new">Ny undermappe (valgfrit)</label><input id="app-storage-folder-new" placeholder="fjordflix/film" autocomplete="off"></div>
+          <button type="button" id="app-storage-folder-use" class="btn-secondary">Brug denne placering</button>
+        </div>
         <div class="form-field"><label for="app-storage-mode">Hvad skal der ske med filerne?</label><select id="app-storage-mode"><option value="copy">Kopiér — behold filerne på den gamle placering</option><option value="move">Flyt — slet filerne fra den gamle placering</option></select></div>
         <p class="field-hint">Afslut uploads først. Appen pauses, mens filerne kopieres og kontrolleres. Ved Flyt slettes originalerne først, når den nye placering er aktiveret og en kørende app er startet igen. En stoppet app forbliver stoppet.</p>
         <button type="submit" id="app-storage-save" class="btn-install">Kopiér filer og skift placering</button>

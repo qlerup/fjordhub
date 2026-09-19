@@ -277,11 +277,17 @@ The automatic media gateway recognizes the bundled `fjordhub-traefik` HTTP entry
 
 Open the app's gear menu and use **Filplaceringer**. This is available to hub
 administrators for configured bind-mount paths declared by the app's installer.
-Choose one location (for example original films or thumbnails), then enter an
-existing empty directory on the Docker host. For Proxmox, this is the filesystem
+Choose one location (for example original films or thumbnails), then use the
+server directory picker or enter the destination. The picker browses `/mnt`,
+`/media`, `/srv`, `/opt` and `/home`, shows free space, and lets you specify a new
+subdirectory. Missing destination directories are created automatically before
+the app is stopped. Existing destinations must be empty. Directory listing is
+read-only; creation uses a separate helper mounted only at the existing parent
+directory, with no symlink traversal. Failed operations may leave newly created
+empty directories in place. For Proxmox, the paths refer to the filesystem
 inside the LXC that runs Docker. A NAS must be mounted there before proceeding.
 
-**Kopi?r filer og skift placering** checks the destination and available space,
+**Kopiér filer og skift placering** checks the destination and available space,
 pauses the app's Compose services, copies and verifies files with SHA-256, and
 updates only the selected `.env` entry. Existing Compose overrides and secrets
 are retained. Only previously running services are restarted; the operation

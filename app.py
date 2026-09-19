@@ -1693,6 +1693,13 @@ def api_app_storage(app_id):
     if request.method == 'GET':
         if request.args.get('job') == '1':
             return jsonify(ok=True, job=app_storage.job(app_id))
+        if request.args.get('folders') == '1':
+            try:
+                return jsonify(ok=True, **app_storage.folders('browse', request.args.get('path', '')))
+            except ValueError as exc:
+                return jsonify(ok=False, error=str(exc)), 400
+            except Exception:
+                return jsonify(ok=False, error='Serverens mapper kunne ikke læses. Kontrollér Docker og drevets forbindelse.'), 503
         return jsonify(ok=True, **app_storage.describe(app_def))
     if _update_manager.is_running(app_id) or _install_state.get(app_id).get('state') == 'installing':
         return jsonify(ok=False, error='Vent til installation eller opdatering er færdig.'), 409

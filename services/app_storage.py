@@ -156,6 +156,31 @@ class AppStorage:
             self.active.add(app_id)
             threading.Thread(target=self.run, args=(app_def, key, destination, expected, mode), daemon=True).start()
 
+    def folders(self, action='browse', value='', source='/'):
+        client = self.manager.client
+        if not client:
+            raise RuntimeError('Docker er ikke tilgængelig.')
+        hub = client.containers.get(os.environ.get('HOSTNAME', 'fjordhub'))
+        script = Path(__file__).with_name('storage_browser.py').read_text(encoding='utf-8')
+        worker = client.containers.create(hub.image.id, entrypoint=['python', '-c', script],
+            command=[action, value], mounts=[Mount('/folder' if action == 'create' else '/host',
+            source, type='bind', read_only=action != 'create')],
+            network_disabled=True, read_only=True)
+        try:
+            worker.start()
+            status = worker.wait(timeout=30)
+            result = json.loads(worker.logs().decode('utf-8').strip().splitlines()[-1])
+            if status.get('StatusCode') or result.get('error'):
+                raise ValueError(result.get('error') or 'Mappen kunne ikke åbnes.')
+            return result
+        finally:
+            worker.remove(force=True)
+
+    def ensure_destination(self, destination):
+        host_path(destination)
+        location = self.folders('probe', destination)
+        self.folders('create', location['relative'], location['ancestor'])
+
     def helper(self, source, destination, mode, manifest_digest=''):
         client = self.manager.client
         if not client:
@@ -242,6 +267,7 @@ class AppStorage:
                         raise ValueError('Destinationen bruges allerede af en container.')
                     if (used == a or used in a.parents or a in used.parents) and container.labels.get('com.docker.compose.project') != current['name']:
                         raise ValueError('Kildemappen deles med en anden app. Flyt den manuelt med begge apps stoppet.')
+            self.ensure_destination(destination)
             self.helper(source, destination, 'check')
             self.save(app_id, message='Pauser appen og kopierer filerne. Den gamle mappe bevares…')
             stopped = True
