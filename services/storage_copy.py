@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import stat
 import sys
+import time
 
 MANIFEST = '.fjordhub-storage-transfer.json'
 
@@ -41,18 +42,33 @@ def inventory(source, destination):
     return entries, total, free
 
 
-def digest(path):
+def digest(path, progress=None):
     with path.open('rb') as stream:
-        return hashlib.file_digest(stream, 'sha256').digest()
+        checksum = hashlib.sha256()
+        while block := stream.read(1024**2):
+            checksum.update(block)
+            if progress:
+                progress(len(block))
+        return checksum.digest()
 
 
-def transfer(source, destination, check_only=False, prepare_move=False):
+def transfer(source, destination, check_only=False, prepare_move=False, progress=None):
     entries, total, free = inventory(source, destination)
     if check_only:
         return {'bytes': total, 'free_bytes': free, 'entries': len(entries)}
     if prepare_move and any(relative.parts[0] == MANIFEST for relative, _ in entries):
         raise ValueError('En tidligere flytning skal kontrolleres først.')
     manifest = {'source': identity(source)[:2], 'destination': identity(destination)[:2], 'entries': []}
+    copied, checked = 0, 0
+    def report(phase):
+        if progress:
+            progress({'phase':phase, 'completed_bytes':copied + checked, 'total_bytes':total * 3,
+                      'copied_bytes':copied, 'data_bytes':total})
+    def verified(count):
+        nonlocal checked
+        checked += count
+        report('Kontrollerer filkopien')
+    report('Kopierer filer')
     # No merging, deleting or following symlinks during the copy.
     for relative, info in entries:
         old, new = source / relative, destination / relative
@@ -67,11 +83,14 @@ def transfer(source, destination, check_only=False, prepare_move=False):
             new.mkdir()
         else:
             with old.open('rb') as inp, new.open('xb') as out:
-                shutil.copyfileobj(inp, out, length=1024**2)
+                while block := inp.read(1024**2):
+                    out.write(block)
+                    copied += len(block)
+                    report('Kopierer filer')
                 out.flush()
                 os.fsync(out.fileno())
-            checksum = digest(old)
-            if checksum != digest(new):
+            checksum = digest(old, verified)
+            if checksum != digest(new, verified):
                 raise ValueError('Kontrol af filkopien fejlede. Den gamle placering er bevaret.')
             record['sha256'] = checksum.hex()
         if identity(old) != before:
@@ -100,7 +119,7 @@ def transfer(source, destination, check_only=False, prepare_move=False):
     return result
 
 
-def cleanup(source, destination, expected_digest):
+def cleanup(source, destination, expected_digest, progress=None):
     """Remove only the unchanged originals recorded by a verified copy.
 
     The destination may have been updated by the restarted app. The sealed
@@ -114,6 +133,13 @@ def cleanup(source, destination, expected_digest):
     if identity(source)[:2] != manifest['source'] or identity(destination)[:2] != manifest['destination']:
         raise ValueError('En mappe er blevet udskiftet. Originalerne bevares.')
     records = manifest['entries']
+    total = sum(r['identity'][3] for r in records if 'sha256' in r)
+    checked = 0
+    def verified(count):
+        nonlocal checked
+        checked += count
+        if progress:
+            progress({'phase':'Kontrollerer originaler før sletning', 'completed_bytes':checked, 'total_bytes':total})
     expected = {r['path'] for r in records}
     actual = {p.relative_to(source).as_posix() for root, dirs, files in os.walk(source, followlinks=False)
               for p in (Path(root) / name for name in dirs + files)}
@@ -136,7 +162,7 @@ def cleanup(source, destination, expected_digest):
             raise ValueError('En original er ændret. Oprydningen er afbrudt.')
         if stat.S_IFMT(new.lstat().st_mode) != stat.S_IFMT(original[2]):
             raise ValueError('En fil mangler eller har ændret type på destinationen.')
-        if check_contents and 'sha256' in record and digest(old).hex() != record['sha256']:
+        if check_contents and 'sha256' in record and digest(old, verified).hex() != record['sha256']:
             raise ValueError('En original er ændret. Oprydningen er afbrudt.')
         if 'link' in record and (os.readlink(old) != record['link'] or os.readlink(new) != record['link']):
             raise ValueError('Et link er ændret. Oprydningen er afbrudt.')
@@ -145,6 +171,8 @@ def cleanup(source, destination, expected_digest):
     # Validate the entire source before deleting anything; never use rmtree.
     for record in records:
         validate(record)
+    if progress:
+        progress({'phase':'Fjerner kontrollerede originaler'})
     for record in reversed(records):
         old, directory = validate(record, check_contents=False)
         if directory:
@@ -159,10 +187,16 @@ def cleanup(source, destination, expected_digest):
 
 if __name__ == '__main__':
     try:
+        last_report = [0, None]
+        def report(value):
+            now = time.monotonic()
+            if now - last_report[0] >= 1 or value['phase'] != last_report[1] or value.get('completed_bytes') == value.get('total_bytes'):
+                print(json.dumps({'progress':value}), flush=True)
+                last_report[:] = [now, value['phase']]
         source, destination = Path('/source'), Path('/destination')
         mode = sys.argv[1]
-        result = cleanup(source, destination, sys.argv[2]) if mode == 'cleanup' else transfer(
-            source, destination, mode == 'check', prepare_move=mode == 'prepare-move')
+        result = cleanup(source, destination, sys.argv[2], progress=report) if mode == 'cleanup' else transfer(
+            source, destination, mode == 'check', prepare_move=mode == 'prepare-move', progress=report)
         print(json.dumps(result))
     except Exception as exc:
         print(json.dumps({'error': str(exc)}))

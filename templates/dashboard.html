@@ -195,6 +195,11 @@
         <button type="submit" id="app-storage-save" class="btn-install">Kopiér filer og skift placering</button>
       </form>
       <p id="app-storage-status" class="app-settings-status" role="status" aria-live="polite"></p>
+      <div id="app-storage-progress" hidden>
+        <p id="app-storage-progress-label" class="field-hint"></p>
+        <progress id="app-storage-progress-bar" max="100" aria-label="Fremdrift for filoverførsel" style="width:100%;height:18px;accent-color:var(--accent);"></progress>
+        <p id="app-storage-progress-detail" class="field-hint"></p>
+      </div>
     </section>
     {% include 'media_gateway.html' %}
   </div>

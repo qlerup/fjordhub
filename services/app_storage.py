@@ -166,7 +166,7 @@ class AppStorage:
                         raise ValueError('En anden flytning bruger denne mappe. Vent til den er færdig.')
             self.require_mount(destination)
             self.save(app_id, running=True, interrupted=False, message='Kontrollerer mapper og ledig plads…',
-                      error='', mode=mode, key=key, source=expected, destination=destination, id=secrets.token_hex(8))
+                      error='', progress=None, mode=mode, key=key, source=expected, destination=destination, id=secrets.token_hex(8))
             self.active.add(app_id)
             threading.Thread(target=self.run, args=(app_def, key, destination, expected, mode), daemon=True).start()
 
@@ -223,12 +223,23 @@ class AppStorage:
             worker.start()
             # Poll rather than impose a short timeout on a large film library.
             import time
+            app_id = next((key for key, job in self.state.storage_jobs().items()
+                           if job.get('running') and job.get('source') == source and job.get('destination') == destination), None)
+            last_progress = None
             while True:
                 worker.reload()
+                output = worker.logs(tail=1).decode('utf-8', errors='replace').strip()
+                try:
+                    progress = json.loads(output).get('progress')
+                except ValueError:
+                    progress = None
+                if app_id and progress and progress != last_progress:
+                    self.save(app_id, progress=progress)
+                    last_progress = progress
                 if worker.status in ('exited', 'dead'):
                     break
                 time.sleep(1)
-            output = worker.logs().decode('utf-8', errors='replace')
+            output = worker.logs(tail=1).decode('utf-8', errors='replace')
             try:
                 result = json.loads(output.strip().splitlines()[-1])
             except (ValueError, IndexError):
@@ -314,7 +325,7 @@ class AppStorage:
             temporary.write_text(new_env, encoding='utf-8'); temporary.chmod(0o600)
             temporary.replace(directory / '.env')
             committed = True
-            self.save(app_id, message='Kopien er kontrolleret. Aktiverer den nye placering…')
+            self.save(app_id, progress=None, message='Kopien er kontrolleret. Aktiverer den nye placering…')
             if running:
                 self.compose(directory, ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', '120', *sorted(set(running))], timeout=180)
             if mode == 'move':

@@ -73,6 +73,44 @@ class StorageBrowserTests(unittest.TestCase):
 
 
 class StorageCopyTests(unittest.TestCase):
+    def test_progress_updates_within_large_file_and_includes_verification(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source, target = Path(folder) / 'old', Path(folder) / 'new'
+            source.mkdir(); target.mkdir()
+            content = b'film' * 800000
+            (source / 'movie').write_bytes(content)
+            updates = []
+            result = transfer(source, target, prepare_move=True, progress=updates.append)
+            copying = [p for p in updates if p['phase'] == 'Kopierer filer']
+            self.assertTrue(any(0 < p['copied_bytes'] < len(content) for p in copying))
+            self.assertEqual(updates[-1]['completed_bytes'], len(content) * 3)
+            self.assertEqual(updates[-1]['total_bytes'], len(content) * 3)
+            self.assertEqual([p['completed_bytes'] for p in updates], sorted(p['completed_bytes'] for p in updates))
+            self.assertEqual((target / 'movie').read_bytes(), content)
+            updates.clear()
+            cleanup(source, target, result['manifest_sha256'], progress=updates.append)
+            self.assertEqual(updates[-2]['completed_bytes'], len(content))
+            self.assertNotIn('total_bytes',updates[-1])
+            self.assertFalse(any(source.iterdir()))
+
+    def test_helper_persists_progress_and_reads_final_result(self):
+        with tempfile.TemporaryDirectory() as folder:
+            state = InstallState(Path(folder))
+            state.register('demo',folder)
+            state.set_storage_job('demo', {'running':True,'source':'/old','destination':'/new'})
+            manager = MagicMock()
+            worker = manager.client.containers.create.return_value
+            statuses = iter(['running','exited'])
+            worker.reload.side_effect = lambda: setattr(worker,'status',next(statuses))
+            update = {'phase':'copy','completed_bytes':10,'total_bytes':30}
+            worker.logs.side_effect = [json.dumps({'progress':update}).encode(), b'{"bytes":10}', b'{"bytes":10}']
+            worker.attrs = {'State':{'ExitCode':0}}
+            service = AppStorage(manager,state)
+            with patch('time.sleep'):
+                self.assertEqual(service.helper('/old','/new','copy'), {'bytes':10})
+            self.assertEqual(state.get('demo')['storage_job']['progress'],update)
+            worker.remove.assert_called_once_with(force=True)
+
     def test_move_removes_originals_after_verified_copy_even_if_app_updates_database(self):
         with tempfile.TemporaryDirectory() as folder:
             source, target = Path(folder) / 'old', Path(folder) / 'new'

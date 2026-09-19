@@ -839,6 +839,17 @@ function storageSelection() {
   document.getElementById('app-storage-folder').value = `${_settingsAppId}-${(item?.key || 'data').toLowerCase().replace(/_host_dir$|_dir$/g, '').replace(/_/g, '-')}`;
 }
 function renderStorageJob(job = {}) {
+  const progress = job.progress;
+  document.getElementById('app-storage-progress').hidden = !job.running;
+  const bar = document.getElementById('app-storage-progress-bar');
+  const percent = progress?.total_bytes > 0 ? Math.min(100, Math.floor(progress.completed_bytes / progress.total_bytes * 100)) : null;
+  if (percent === null) bar.removeAttribute('value'); else bar.value = percent;
+  document.getElementById('app-storage-progress-label').textContent = (progress?.phase || 'Forbereder næste trin') + (percent === null ? '' : ` · ${percent}%`);
+  const size = bytes => `${(bytes / 1073741824).toLocaleString('da-DK', {maximumFractionDigits:2})} GiB`;
+  document.getElementById('app-storage-progress-detail').textContent = progress?.data_bytes != null
+    ? `${size(progress.copied_bytes)} af ${size(progress.data_bytes)} kopieret. Fremdriften omfatter både kopiering og kontrol af filerne.`
+    : progress?.total_bytes != null ? `${size(progress.completed_bytes)} af ${size(progress.total_bytes)} kontrolleret.`
+    : 'Venter på fremdrift fra serveren…';
   const status = document.getElementById('app-storage-status');
   status.textContent = job.error ? `${job.message || ''} ${job.error}` : job.message || '';
   status.className = `app-settings-status ${job.error || job.interrupted ? 'err' : job.running ? 'warn' : 'ok'}`;
