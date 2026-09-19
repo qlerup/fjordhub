@@ -369,14 +369,14 @@ function toggleAppRole(appId, checked) {
   document.querySelectorAll('[data-edit-user-id]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var user = usersById[this.dataset.editUserId];
-      if (user) openEditModal(user);
+      if (user) openEditModal(user, currentUserId);
     });
   });
 
   {% if edit_error and edit_user_id %}
   var editUser = usersById[String({{ edit_user_id | int }})];
   if (editUser) {
-    openEditModal(editUser);
+    openEditModal(editUser, currentUserId);
   } else {
     overlay.classList.add('is-open');
   }
@@ -388,7 +388,7 @@ function toggleEditAppRole(appId, checked) {
   if (wrap) wrap.style.display = checked ? '' : 'none';
 }
 
-function openEditModal(user) {
+function openEditModal(user, currentUserId) {
   var overlay = document.getElementById('edit-modal');
   var form = document.getElementById('edit-form');
   form.action = '/users/' + user.id + '/edit';
