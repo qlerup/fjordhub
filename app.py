@@ -1700,7 +1700,7 @@ def api_app_storage(app_id):
     if not isinstance(data, dict):
         return jsonify(ok=False, error='Ugyldig forespørgsel.'), 400
     try:
-        app_storage.start(app_def, data.get('key'), data.get('destination'), data.get('source'))
+        app_storage.start(app_def, data.get('key'), data.get('destination'), data.get('source'), data.get('mode', 'copy'))
     except ValueError as exc:
         return jsonify(ok=False, error=str(exc)), 400
     return jsonify(ok=True, job=app_storage.job(app_id)), 202

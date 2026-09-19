@@ -289,8 +289,22 @@ waits for their running/healthy state. It never pulls or builds new app images.
 Finish uploads before starting. The settings dialog can be closed and reopened
 while the copy runs.
 
-The original files are retained. After verifying the app against its new location,
-old files can be removed separately to reclaim disk space. Failed copies may leave
+Choose **Kopiér** (default) to retain the original files, or **Flyt** to reclaim
+the old space automatically. Move first makes the same verified copy, switches
+the configuration and waits for previously running services to start successfully.
+Only then does it remove the unchanged originals. A stopped app stays stopped;
+its files are removed after verification and the configuration switch.
+The empty source directory itself remains in place.
+
+A sealed `.fjordhub-storage-transfer.json` manifest on the destination records
+the verified copy. Its checksum is also stored in the hub's job state. Changed
+or new source files, missing destination files and changed links stop cleanup.
+If cleanup fails after activation, the new location remains active: FjordHub
+reports incomplete cleanup and never rolls back to a partially emptied source.
+Inspect the remaining files before manual cleanup. Do not restore the old
+environment after cleanup has started. Successful cleanup removes the manifest.
+
+Failed copies may leave
 partial files in the destination; no files there are overwritten or automatically
 deleted. The previous environment is backed up under
 `/data/storage-backups/<app-id>/<job-id>.env`, outside the app's Git repository.

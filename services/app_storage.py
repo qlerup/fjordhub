@@ -1,4 +1,4 @@
-"""Change an installed app's bind-mounted storage without deleting its old data."""
+"""Change an installed app's bind-mounted storage with verified copy or move."""
 import copy
 import json
 import os
@@ -129,7 +129,9 @@ class AppStorage:
         return {'fields': [{k: v for k, v in row.items() if k != 'mounts'} for row in locations],
                 'job': self.job(app_def['id']), 'error': error}
 
-    def start(self, app_def, key, destination, expected):
+    def start(self, app_def, key, destination, expected, mode="copy"):
+        if mode not in ("copy", "move"):
+            raise ValueError("Vælg enten kopiér eller flyt.")
         destination = host_path(destination)
         app_id = app_def['id']
         with self.lock:
@@ -150,18 +152,18 @@ class AppStorage:
                     if any(p == occupied or p in occupied.parents or occupied in p.parents for p in selected):
                         raise ValueError('En anden flytning bruger denne mappe. Vent til den er færdig.')
             self.save(app_id, running=True, interrupted=False, message='Kontrollerer mapper og ledig plads…',
-                      error='', key=key, source=expected, destination=destination, id=secrets.token_hex(8))
+                      error='', mode=mode, key=key, source=expected, destination=destination, id=secrets.token_hex(8))
             self.active.add(app_id)
-            threading.Thread(target=self.run, args=(app_def, key, destination, expected), daemon=True).start()
+            threading.Thread(target=self.run, args=(app_def, key, destination, expected, mode), daemon=True).start()
 
-    def helper(self, source, destination, mode):
+    def helper(self, source, destination, mode, manifest_digest=''):
         client = self.manager.client
         if not client:
             raise RuntimeError('Docker er ikke tilgængelig.')
         hub = client.containers.get(os.environ.get('HOSTNAME', 'fjordhub'))
         script = Path(__file__).with_name('storage_copy.py').read_text(encoding='utf-8')
-        worker = client.containers.create(hub.image.id, entrypoint=['python', '-c', script], command=[mode],
-            mounts=[Mount('/source', source, type='bind', read_only=True),
+        worker = client.containers.create(hub.image.id, entrypoint=['python', '-c', script], command=[mode, manifest_digest],
+            mounts=[Mount('/source', source, type='bind', read_only=mode != 'cleanup'),
                     Mount('/destination', destination, type='bind', read_only=mode == 'check')],
             network_disabled=True, read_only=True, labels={'dk.fjordhub.storage-copy': '1'})
         try:
@@ -184,10 +186,10 @@ class AppStorage:
         finally:
             worker.remove(force=True)
 
-    def run(self, app_def, key, destination, expected):
+    def run(self, app_def, key, destination, expected, mode="copy"):
         app_id = app_def['id']
         directory, old_env, new_env, running = None, None, None, []
-        stopped, committed = False, False
+        stopped, committed, cleanup_started = False, False, False
         try:
             directory, current, locations = self.mappings(app_def)
             location = next((row for row in locations if row['key'] == key), None)
@@ -238,13 +240,15 @@ class AppStorage:
                     used = PurePosixPath(mount.get('Source', '/'))
                     if used == b or b in used.parents:
                         raise ValueError('Destinationen bruges allerede af en container.')
-                    if used == a and container.labels.get('com.docker.compose.project') != current['name']:
+                    if (used == a or used in a.parents or a in used.parents) and container.labels.get('com.docker.compose.project') != current['name']:
                         raise ValueError('Kildemappen deles med en anden app. Flyt den manuelt med begge apps stoppet.')
             self.helper(source, destination, 'check')
             self.save(app_id, message='Pauser appen og kopierer filerne. Den gamle mappe bevares…')
             stopped = True
             self.compose(directory, ['stop'], timeout=180)
-            self.helper(source, destination, 'copy')
+            copied = self.helper(source, destination, 'prepare-move' if mode == 'move' else 'copy')
+            if mode == 'move':
+                self.save(app_id, manifest_sha256=copied['manifest_sha256'])
             if (directory / '.env').read_text(encoding='utf-8') != old_env:
                 raise ValueError('Konfigurationen blev ændret under kopieringen. Placeringen er ikke skiftet.')
             backup_dir = self.state.data_dir / 'storage-backups' / app_id
@@ -259,8 +263,19 @@ class AppStorage:
             self.save(app_id, message='Kopien er kontrolleret. Aktiverer den nye placering…')
             if running:
                 self.compose(directory, ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', '120', *sorted(set(running))], timeout=180)
-            self.save(app_id, running=False, message='Placeringen er ændret. Den gamle mappe er bevaret og kan ryddes op efter kontrol.', error='')
+            if mode == 'move':
+                cleanup_started = True
+                self.save(app_id, phase='cleanup', message='Den nye placering er aktiveret. Fjerner de kontrollerede originaler…')
+                self.helper(source, destination, 'cleanup', copied['manifest_sha256'])
+            self.save(app_id, running=False, phase='complete', message=(
+                'Filerne er flyttet. Den gamle mappe er nu tom.' if mode == 'move' else
+                'Placeringen er ændret. Den gamle mappe er bevaret og kan ryddes op efter kontrol.'), error='')
         except Exception as exc:
+            if cleanup_started:
+                self.save(app_id, running=False, phase='cleanup_incomplete',
+                          message='Den nye placering bruges. Oprydningen i den gamle mappe er ikke færdig.',
+                          error='Resterende originaler er bevaret. Kontrollér mapperne før manuel oprydning.')
+                return
             recovery = ''
             if stopped and not committed and old_env is not None:
                 try:

@@ -188,7 +188,8 @@
         <div class="form-field"><label for="app-storage-current">Nuværende placering</label><input id="app-storage-current" type="text" readonly></div>
         <div class="form-field"><label for="app-storage-destination">Ny placering</label><input id="app-storage-destination" type="text" placeholder="/mnt/lager/fjordflix/film" autocomplete="off" required>
           <p class="field-hint">Opret først en tom mappe på det ønskede drev. FjordHub kopierer og kontrollerer alle filerne, før placeringen ændres.</p></div>
-        <p class="field-hint">Appen pauses under flytningen. Afslut uploads først. Den gamle mappe bevares; slet den først, når du har kontrolleret den nye placering.</p>
+        <div class="form-field"><label for="app-storage-mode">Hvad skal der ske med filerne?</label><select id="app-storage-mode"><option value="copy">Kopiér — behold filerne på den gamle placering</option><option value="move">Flyt — slet filerne fra den gamle placering</option></select></div>
+        <p class="field-hint">Afslut uploads først. Appen pauses, mens filerne kopieres og kontrolleres. Ved Flyt slettes originalerne først, når den nye placering er aktiveret og en kørende app er startet igen. En stoppet app forbliver stoppet.</p>
         <button type="submit" id="app-storage-save" class="btn-install">Kopiér filer og skift placering</button>
       </form>
       <p id="app-storage-status" class="app-settings-status" role="status" aria-live="polite"></p>

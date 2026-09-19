@@ -7,10 +7,53 @@ from unittest.mock import MagicMock, patch
 
 from services.app_storage import AppStorage, host_path, patched_env
 from services.install_state import InstallState
-from services.storage_copy import transfer
+from services.storage_copy import transfer, cleanup, MANIFEST
 
 
 class StorageCopyTests(unittest.TestCase):
+    def test_move_removes_originals_after_verified_copy_even_if_app_updates_database(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source, target = Path(folder) / 'old', Path(folder) / 'new'
+            (source / 'nested').mkdir(parents=True); target.mkdir()
+            (source / 'nested/movie').write_bytes(b'film')
+            (source / 'database').write_bytes(b'database')
+            copied = transfer(source, target, prepare_move=True)
+            (target / 'database').write_bytes(b'updated by app')
+            cleanup(source, target, copied['manifest_sha256'])
+            self.assertFalse(any(source.iterdir()))
+            self.assertEqual((target / 'nested/movie').read_bytes(), b'film')
+            self.assertEqual((target / 'database').read_bytes(), b'updated by app')
+            self.assertFalse((target / MANIFEST).exists())
+
+    def test_move_preserves_originals_when_source_or_manifest_or_destination_changes(self):
+        for change in ('modified', 'added', 'missing_target', 'manifest'):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as folder:
+                source, target = Path(folder) / 'old', Path(folder) / 'new'
+                source.mkdir(); target.mkdir()
+                (source / 'movie').write_bytes(b'film')
+                copied = transfer(source, target, prepare_move=True)
+                if change == 'modified': (source / 'movie').write_bytes(b'new film')
+                if change == 'added': (source / 'extra').write_bytes(b'extra')
+                if change == 'missing_target': (target / 'movie').unlink()
+                if change == 'manifest': (target / MANIFEST).write_text('{}')
+                with self.assertRaises((ValueError, OSError)):
+                    cleanup(source, target, copied['manifest_sha256'])
+                self.assertTrue((source / 'movie').exists())
+
+    def test_move_symlinks_preserves_external_target(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source, target = Path(folder) / 'old', Path(folder) / 'new'
+            source.mkdir(); target.mkdir()
+            outside = Path(folder) / 'keep'; outside.write_text('keep')
+            try:
+                (source / 'link').symlink_to(outside)
+            except OSError:
+                self.skipTest('Symlink creation requires Windows developer mode')
+            copied = transfer(source, target, prepare_move=True)
+            cleanup(source, target, copied['manifest_sha256'])
+            self.assertEqual(outside.read_text(), 'keep')
+            self.assertTrue((target / 'link').is_symlink())
+
     def test_copy_verifies_contents_and_keeps_source(self):
         with tempfile.TemporaryDirectory() as folder:
             source, target = Path(folder) / 'old', Path(folder) / 'new'
@@ -68,7 +111,7 @@ class StorageTransactionTests(unittest.TestCase):
         self.service.active.add('demo')
         self.service.configuration = lambda directory, extra=None: {'name':'demo','services':{
             'app':{'image':'app:test','volumes':[{'type':'bind','source':(extra or {}).get('UPLOADS_HOST_DIR','/old/files'),'target':'/media'}]}}}
-        self.service.helper = MagicMock(return_value={'bytes':123})
+        self.service.helper = MagicMock(return_value={'bytes':123, 'manifest_sha256':'seal'})
         self.service.compose = MagicMock(return_value='')
 
     def tearDown(self):
@@ -92,6 +135,35 @@ class StorageTransactionTests(unittest.TestCase):
         self.assertEqual(self.env.read_text(), self.original)
         self.assertEqual([call.args[1][0] for call in self.service.compose.call_args_list], ['stop','up'])
         self.assertIn('Copy failed', self.service.job('demo')['error'])
+
+    def test_move_cleanup_only_after_activation(self):
+        events = []
+        def helper(a, b, mode, *args):
+            events.append(mode)
+            return {'manifest_sha256': 'seal'}
+        self.service.helper.side_effect = helper
+        self.service.compose.side_effect = lambda directory,args,**kw: events.append(args[0])
+        self.service.run(self.app, 'UPLOADS_HOST_DIR', '/new/files', '/old/files', 'move')
+        self.assertEqual(events, ['check', 'stop', 'prepare-move', 'up', 'cleanup'])
+        self.assertEqual(self.service.job('demo')['phase'], 'complete')
+
+    def test_failed_activation_never_deletes_originals(self):
+        self.service.compose.side_effect = ['', RuntimeError('Start failed'), '']
+        self.service.run(self.app, 'UPLOADS_HOST_DIR', '/new/files', '/old/files', 'move')
+        self.assertEqual(self.env.read_text(), self.original)
+        self.assertEqual([c.args[2] for c in self.service.helper.call_args_list], ['check', 'prepare-move'])
+
+    def test_cleanup_failure_keeps_new_configuration_without_rollback(self):
+        self.service.helper.side_effect = [{}, {'manifest_sha256': 'seal'}, RuntimeError('Cleanup failed')]
+        self.service.run(self.app, 'UPLOADS_HOST_DIR', '/new/files', '/old/files', 'move')
+        self.assertIn("UPLOADS_HOST_DIR='/new/files'", self.env.read_text())
+        self.assertEqual(self.service.compose.call_count, 2)
+        self.assertEqual(self.service.job('demo')['phase'], 'cleanup_incomplete')
+        self.assertFalse(self.service.job('demo')['running'])
+
+    def test_invalid_mode_rejected(self):
+        with self.assertRaises(ValueError):
+            self.service.start(self.app, 'UPLOADS_HOST_DIR', '/new/files', '/old/files', 'delete')
 
     def test_start_failure_rolls_back_configuration(self):
         self.service.compose.side_effect = ['', RuntimeError('Start failed'), '']
@@ -170,7 +242,10 @@ class StorageEndpointTests(unittest.TestCase):
         self.assertEqual(self.client.get('/api/apps/demo/storage').status_code, 200)
         response = self.client.post('/api/apps/demo/storage', json={'key':'DATA_DIR','source':'/old/data','destination':'/new/data'})
         self.assertEqual(response.status_code, 202)
-        self.storage.start.assert_called_once_with({'id':'demo'}, 'DATA_DIR', '/new/data', '/old/data')
+        self.storage.start.assert_called_once_with({'id':'demo'}, 'DATA_DIR', '/new/data', '/old/data', 'copy')
+        response = self.client.post('/api/apps/demo/storage', json={'key':'DATA_DIR','source':'/old/data','destination':'/new/data','mode':'move'})
+        self.assertEqual(response.status_code, 202)
+        self.storage.start.assert_called_with({'id':'demo'}, 'DATA_DIR', '/new/data', '/old/data', 'move')
 
     def test_storage_and_update_jobs_cannot_overlap(self):
         self.login(self.admin)

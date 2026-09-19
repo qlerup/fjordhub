@@ -842,7 +842,7 @@ function renderStorageJob(job = {}) {
   status.textContent = job.error ? `${job.message || ''} ${job.error}` : job.message || '';
   status.className = `app-settings-status ${job.error || job.interrupted ? 'err' : job.running ? 'warn' : 'ok'}`;
   for (const el of document.getElementById('app-storage-form').elements) el.disabled = !!job.running;
-  document.getElementById('app-storage-save').textContent = job.running ? 'Flytning i gang…' : 'Kopiér filer og skift placering';
+  document.getElementById('app-storage-save').textContent = job.running ? 'Flytning i gang…' : (document.getElementById('app-storage-mode').value === 'move' ? 'Flyt filer og skift placering' : 'Kopiér filer og skift placering');
 }
 async function loadAppStorage(appId) {
   const generation = ++_storageGeneration;
@@ -890,6 +890,9 @@ function pollAppStorage(appId, generation) {
     }
   }, 1500);
 }
+document.getElementById('app-storage-mode')?.addEventListener('change', () => {
+  document.getElementById('app-storage-save').textContent = document.getElementById('app-storage-mode').value === 'move' ? 'Flyt filer og skift placering' : 'Kopiér filer og skift placering';
+});
 document.getElementById('app-storage-key')?.addEventListener('change', storageSelection);
 document.getElementById('app-storage-form')?.addEventListener('submit', async event => {
   event.preventDefault();
@@ -898,11 +901,12 @@ document.getElementById('app-storage-form')?.addEventListener('submit', async ev
   const field = _storageFields.find(f => f.key === document.getElementById('app-storage-key').value);
   if (!field) return;
   const destination = document.getElementById('app-storage-destination').value.trim();
+  const mode = document.getElementById('app-storage-mode').value;
   renderStorageJob({running:true, message:'Starter kontrol af filplaceringen…'});
   try {
     const response = await fetch(`/api/apps/${encodeURIComponent(appId)}/storage`, {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({key:field.key, source:field.path, destination}),
+      body:JSON.stringify({key:field.key, source:field.path, destination, mode}),
     });
     const data = await response.json();
     if (_settingsAppId !== appId || generation !== _storageGeneration) return;
