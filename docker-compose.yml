@@ -39,6 +39,7 @@ services:
       NVIDIA_DEVICE_ROOT: /host/dev
       HOST_CGROUP_ROOT: /host/sys/fs/cgroup
       HOST_PROC_ROOT: /host/proc
+      FJORDHUB_MEMORY_RECONCILE: "1"
       PROXMOX_API_URL: ${PROXMOX_API_URL:-}
       PROXMOX_NODE: ${PROXMOX_NODE:-pve}
       PROXMOX_VMID: ${PROXMOX_VMID:-1000}

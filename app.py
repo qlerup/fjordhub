@@ -124,6 +124,7 @@ def _unauthorized():
 
 
 _AUTH_EXEMPT = {
+    'api_fjordlens_memory_budget',
     "api_integration_resources",
     "static",
     "setup",
@@ -621,6 +622,29 @@ def api_resources():
     if not current_user.is_admin:
         return jsonify({"ok": False, "error": "Kræver admin."}), 403
     return jsonify(resource_monitor.collect(_apps_with_install_dirs()))
+
+
+@app.get('/api/hub/fjordlens/memory-budget')
+def api_fjordlens_memory_budget():
+    if not _auth.verify_hub_key('fjordlens', request.headers.get('X-Hub-Key', '')):
+        return jsonify(ok=False, error='Invalid FjordLens key'), 403
+    if not _install_state.get_install_dir('fjordlens'):
+        return jsonify(ok=False, error='FjordLens is not installed through FjordHub'), 404
+    from services.fjordlens_memory import budget_from_resources
+    try:
+        snapshot = resource_monitor.collect(_apps_with_install_dirs())
+        # Container stats can take seconds. Recheck the host afterwards rather
+        # than subtracting new Lens usage from an older, smaller host reading.
+        latest = resource_monitor._system_summary(snapshot.get('capacity', {}))
+        if not latest.get('available'):
+            raise RuntimeError(latest.get('message') or 'Host memory measurement unavailable')
+        before = snapshot.get('system', {})
+        latest['memory_usage'] = max(int(before.get('memory_usage', 0)), int(latest['memory_usage']))
+        latest['memory_limit'] = min(int(before.get('memory_limit') or latest['memory_limit']), int(latest['memory_limit']))
+        snapshot['system'] = latest
+        return jsonify(budget_from_resources(snapshot))
+    except Exception as exc:
+        return jsonify(ok=False, enabled=True, error=str(exc)), 503
 
 
 @app.route("/api/integrations/v1/resources", methods=["GET"])
@@ -2803,6 +2827,28 @@ def api_registry_status():
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok", "docker": docker_mgr.client is not None})
+
+
+def _reconcile_fjordlens_memory_loop():
+    import time
+    while True:
+        try:
+            with _app_operation_lock:
+                directory = _install_state.get_install_dir('fjordlens')
+                if (directory and not app_storage.busy('fjordlens')
+                        and _install_state.get('fjordlens').get('state') != 'installing'
+                        and not _update_manager.is_running('fjordlens')
+                        and _update_manager.fjordlens_memory_needs_activation(Path(directory))):
+                    app_def = _get_app('fjordlens')
+                    if app_def:
+                        _update_manager.start_update(app_def)
+        except Exception as exc:
+            app.logger.error('FjordLens RAM activation: %s', exc)
+        time.sleep(60)
+
+
+if os.environ.get('FJORDHUB_MEMORY_RECONCILE') == '1':
+    threading.Thread(target=_reconcile_fjordlens_memory_loop, daemon=True, name='fjordlens-memory-activation').start()
 
 
 if __name__ == "__main__":

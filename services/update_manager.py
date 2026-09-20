@@ -79,6 +79,33 @@ class UpdateManager:
         with self._lock:
             return bool(self._jobs.get(app_id, {}).get('running'))
 
+    def fjordlens_memory_needs_activation(self, install_dir: Path) -> bool:
+        # Do not activate a protocol that the checked-out Lens version lacks.
+        source = install_dir / 'updater_service' / 'memory_governor.py'
+        if not source.exists() or 'HUB_MEMORY_PROTOCOL' not in source.read_text(encoding='utf-8'):
+            return False
+        result = self._run(['docker', 'inspect', 'fjordlens', 'fjordlens-ai',
+                            'fjordlens-convert', 'fjordlens-updater'], cwd=install_dir, timeout=30)
+        if result.returncode:
+            return True
+        containers = json.loads(result.stdout)
+        for container in containers:
+            labels = container.get('Config', {}).get('Labels', {}) or {}
+            config = container.get('HostConfig', {})
+            if (labels.get('io.fjordlens.memory-managed') != '1' or not config.get('Memory')
+                    or config.get('MemorySwap') != config.get('Memory')):
+                return True
+            if container.get('Name', '').lstrip('/') == 'fjordlens-updater' and labels.get('io.fjordlens.memory-protocol') != '2':
+                return True
+        return len(containers) != 4
+
+    def _activate_fjordlens_memory(self, install_dir: Path) -> None:
+        enable_fjordlens_memory_guard(install_dir)
+        code = self._run_logged('fjordlens', ['docker', 'compose', 'up', '-d', '--build', '--force-recreate'],
+                                cwd=install_dir, timeout=3600)
+        if code or self.fjordlens_memory_needs_activation(install_dir):
+            raise RuntimeError('FjordLens RAM protection could not be activated')
+
     def get_all_statuses(self, app_defs: list[dict]) -> dict[str, dict]:
         return {app_def["id"]: self.get_status(app_def, fetch=False) for app_def in app_defs}
 
@@ -382,6 +409,9 @@ class UpdateManager:
 
             branch = str(info.get("branch") or "main")
             if not info.get("update_available"):
+                if app_id == 'fjordlens' and self.fjordlens_memory_needs_activation(install_dir):
+                    self._append_job_log(app_id, 'Aktiverer FjordHub RAM-budget på eksisterende installation.')
+                    self._activate_fjordlens_memory(install_dir)
                 self._append_job_log(app_id, "Ingen opdatering fundet.")
                 status = {**info, "state": "up_to_date", "label": "Ingen opdatering"}
                 self._set_cache(app_id, status)

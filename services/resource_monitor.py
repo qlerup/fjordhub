@@ -368,8 +368,12 @@ class ResourceMonitor:
             return None
 
         data = payload.get("data") or {}
+        # A RAM budget must never substitute the physical host's capacity for
+        # a missing LXC limit, or interpret a missing usage value as zero.
+        if 'mem' not in data or _safe_int(data.get('maxmem')) <= 0:
+            return None
         memory_usage = _safe_int(data.get("mem"))
-        memory_limit = _safe_int(data.get("maxmem")) or _safe_int(capacity.get("memory_total"))
+        memory_limit = _safe_int(data.get("maxmem"))
         maxcpu = _safe_int(data.get("maxcpu"), _safe_int(capacity.get("cpus"), 1)) or 1
         cpu_ratio = max(0.0, _safe_float(data.get("cpu")))
         cpu_capacity_percent = min(100.0, cpu_ratio * 100.0)

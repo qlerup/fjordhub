@@ -15,10 +15,23 @@ def enable_fjordlens_memory_guard(install_dir: Path) -> None:
     """Migrate existing Hub installations; standalone Compose stays opt-out."""
     path = Path(install_dir) / ".env"
     original = path.read_text(encoding="utf-8") if path.exists() else ""
-    keys = {line.split("=", 1)[0].strip() for line in original.splitlines() if "=" in line}
+    # This helper is called only for a registered Hub installation. Repair the
+    # old disabled/unlimited values as well as missing keys.
+    lines = []
+    for line in original.splitlines():
+        key, sep, value = line.partition('=')
+        key = key.strip()
+        if sep and key in FJORDLENS_MEMORY_DEFAULTS and (key == 'FJORDLENS_MEMORY_GUARD' or value.strip().strip('\"\'') in {'', '0'}):
+            line = f'{key}={FJORDLENS_MEMORY_DEFAULTS[key]}'
+        lines.append(line)
+    updated = '\n'.join(lines)
+    keys = {line.split("=", 1)[0].strip() for line in lines if "=" in line}
     missing = [f"{key}={value}" for key, value in FJORDLENS_MEMORY_DEFAULTS.items() if key not in keys]
-    if missing:
-        path.write_text(original.rstrip("\n") + "\n" + "\n".join(missing) + "\n", encoding="utf-8")
+    updated = '\n'.join([updated.rstrip('\n'), *missing]).lstrip('\n') + '\n'
+    if updated != original:
+        temporary = path.with_name('.env.memory.tmp')
+        temporary.write_text(updated, encoding='utf-8')
+        temporary.replace(path)
 
 
 COMPOSE_ENV_PASSTHROUGH = (

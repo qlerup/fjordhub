@@ -14,7 +14,7 @@ class FjordLensMemoryTests(unittest.TestCase):
             path.write_text(original, encoding='utf-8')
             enable_fjordlens_memory_guard(root)
             first = path.read_text(encoding='utf-8')
-            self.assertTrue(first.startswith(original))
+            self.assertTrue(first.startswith('APP_PORT=9081\nFJORDLENS_MEMORY_GUARD=1\n'))
             enable_fjordlens_memory_guard(root)
             self.assertEqual(path.read_text(encoding='utf-8'), first)
             self.assertEqual(first.count('FJORDLENS_MEMORY_GUARD='), 1)
