@@ -22,7 +22,7 @@ from services.registry import AppRegistry
 from services.remote_registry import RemoteRegistry
 from services.install_state import InstallState
 from services.installer import Installer, generate_secret, APPS_BASE
-from services.compose_env import build_compose_env
+from services.compose_env import build_compose_env, FJORDLENS_MEMORY_DEFAULTS
 from services.update_manager import UpdateManager
 from services.resource_monitor import ResourceMonitor
 from services.package_catalog import PackageCatalog
@@ -2749,6 +2749,9 @@ def install_app(app_id):
     _auth.save_hub_key(app_id, hub_key)
     env_values["FJORDHUB_API_KEY"] = hub_key
     env_values["FJORDHUB_APP_ID"] = app_id
+    if app_id == "fjordlens":
+        for key, value in FJORDLENS_MEMORY_DEFAULTS.items():
+            env_values.setdefault(key, value)
     env_values["FJORDHUB_URL"] = f"http://host.docker.internal:{APP_PORT}"
 
     installer_user_id = int(current_user.id)

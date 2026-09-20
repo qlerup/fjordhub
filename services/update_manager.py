@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from services.compose_env import build_compose_env
+from services.compose_env import build_compose_env, enable_fjordlens_memory_guard
 from services.install_state import InstallState
 
 
@@ -411,6 +411,9 @@ class UpdateManager:
             )
             if merge_code != 0:
                 raise RuntimeError("git merge --ff-only fejlede")
+
+            if app_id == "fjordlens":
+                enable_fjordlens_memory_guard(install_dir)
 
             if app_id == "fjordhub":
                 # Self-update: build the new image first (safe — doesn't touch running containers),
