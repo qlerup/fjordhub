@@ -36,6 +36,15 @@ class MemoryBudgetTests(unittest.TestCase):
             monitor._system_summary.return_value = self.sample(3)['system']
             response = env[node.name]()
             self.assertEqual(response.get_json()['budget_bytes'], 5*GIB)
+            # After AI startup, Docker working sets can exceed Proxmox's
+            # cache-adjusted total. This must still return a fresh HTTP 200.
+            snapshot = self.sample(0, own=3)
+            snapshot['system']['memory_usage'] = 2*GIB
+            monitor.collect.return_value = snapshot
+            monitor._system_summary.return_value = dict(snapshot['system'])
+            response = env[node.name]()
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json()['used_bytes'], 2*GIB)
 
     def sample(self, other, own=3):
         return dict(ok=True, system=dict(available=True, memory_limit=10*GIB, memory_usage=(other+own)*GIB),
@@ -48,16 +57,30 @@ class MemoryBudgetTests(unittest.TestCase):
         self.assertEqual(budget_from_resources(self.sample(2, own=5))['budget_bytes'], 6*GIB)
 
     def test_incomplete_or_inconsistent_measurements_fail_closed(self):
-        for kind in ('unavailable', 'container_error', 'inconsistent'):
+        for kind in ('unavailable', 'container_error', 'over_limit', 'negative', 'invalid_own'):
             sample = self.sample(2)
             if kind == 'unavailable':
                 sample['system']['available'] = False
             elif kind == 'container_error':
                 sample['apps'][0]['containers'][0]['error'] = 'Docker unavailable'
+            elif kind == 'over_limit':
+                sample['system']['memory_usage'] = 11*GIB
+            elif kind == 'negative':
+                sample['system']['memory_usage'] = -1
             else:
-                sample['system']['memory_usage'] = GIB
+                sample['apps'][0]['memory_usage'] = -1
             with self.assertRaises(RuntimeError):
                 budget_from_resources(sample)
+
+    def test_docker_working_set_can_exceed_proxmox_usage(self):
+        sample = self.sample(0, own=3)
+        sample['system']['memory_usage'] = 2*GIB
+        result = budget_from_resources(sample)
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['used_bytes'], 2*GIB)
+        self.assertEqual(result['total_bytes'], 10*GIB)
+        self.assertEqual(result['other_bytes'], 0)
+        self.assertEqual(result['budget_bytes'], 8*GIB)
 
     def test_up_to_date_installation_still_gets_activation(self):
         with tempfile.TemporaryDirectory() as directory:

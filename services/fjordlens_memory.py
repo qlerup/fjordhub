@@ -16,9 +16,15 @@ def budget_from_resources(snapshot):
     total = int(system['memory_limit'])
     used = int(system['memory_usage'])
     own = int(group['memory_usage'])
-    if not 0 <= own <= used <= total or total <= RESERVE:
+    if not 0 <= used <= total or not 0 <= own <= total or total <= RESERVE:
         raise RuntimeError('Inconsistent host/FjordLens RAM measurement')
-    other = used - own
+    # Proxmox's LXC usage and Docker's per-container working sets subtract
+    # different cache categories and are sampled independently. Docker's sum
+    # can legitimately exceed the Proxmox reading, especially after startup.
+    # Never reject or inflate the authoritative host reading for that reason.
+    # Keep the legacy per-service fields nonnegative; protocol 3 consumers use
+    # total_bytes/used_bytes directly and ignore other_bytes/budget_bytes.
+    other = max(0, used - own)
     return dict(ok=True, enabled=True, source='fjordhub', measured_at=time.time(),
                 total_bytes=total, used_bytes=used, other_bytes=other,
                 reserve_bytes=RESERVE, budget_bytes=max(0, total-other-RESERVE),
