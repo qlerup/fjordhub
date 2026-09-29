@@ -1,15 +1,36 @@
 /* ── Whiteboard v2 ───────────────────────────────────────────────────────── */
 
-.builtin-app[data-package="notepad"] { max-width: 1320px; }
+.page-content:has(.builtin-app[data-package="notepad"]) {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  height: calc(100vh - 64px);
+  height: calc(100dvh - 64px);
+  min-height: 480px;
+  padding: 16px;
+}
 
-.wb { --wb-accent: #10b981; }
+.builtin-app[data-package="notepad"] {
+  display: flex;
+  flex-direction: column;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+}
+.builtin-app[data-package="notepad"] > .builtin-toolbar {
+  flex-shrink: 0;
+  margin-bottom: 14px;
+}
+
+.wb { --wb-accent: #10b981; flex: 1; min-height: 0; }
 
 /* ── Layout: sidebar + board ── */
-.wb-layout { display: flex; gap: 14px; align-items: stretch; }
+.wb-layout { display: flex; gap: 14px; align-items: stretch; height: 100%; min-height: 0; }
 
 .wb-side {
   flex: 0 0 auto;
   width: 216px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -145,8 +166,11 @@
 
 /* ── Skal & værktøjslinje ── */
 .wb-shell {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-width: 0;
+  min-height: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -156,6 +180,7 @@
 
 .wb-toolbar {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
@@ -273,7 +298,8 @@
 /* ── Scenen ── */
 .wb-stage {
   position: relative;
-  height: clamp(440px, 66vh, 820px);
+  flex: 1;
+  min-height: 160px;
   background: var(--bg);
   overflow: hidden;
   touch-action: none;
@@ -451,7 +477,8 @@
 }
 
 @media (max-width: 720px) {
-  .wb-stage { height: clamp(380px, 62vh, 640px); }
+  .page-content:has(.builtin-app[data-package="notepad"]) { padding: 8px; }
+  .wb-layout { gap: 8px; }
   .wb-hint { display: none; }
   .wb-note-label { display: none; }
   .wb-toolbar { gap: 6px; padding: 8px; }
