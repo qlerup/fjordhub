@@ -60,6 +60,36 @@
   var penSize = PEN_SIZES[1].w;
   var spaceHeld = false, stageHover = false;
   var zTop = 10;
+  var cursorPoint = null;
+  var eraserCursor = document.createElement("div");
+  eraserCursor.className = "wb-eraser-cursor";
+  eraserCursor.setAttribute("aria-hidden", "true");
+  eraserCursor.hidden = true;
+  stage.appendChild(eraserCursor);
+
+  function updateEraserCursor() {
+    var r = stage.getBoundingClientRect();
+    var p = cursorPoint;
+    var target = p && document.elementFromPoint(p.x, p.y);
+    var visible = !!(p && tool === "eraser" && !spaceHeld &&
+      mode !== "pan" && mode !== "pinch" &&
+      p.x >= r.left && p.x < r.right && p.y >= r.top && p.y < r.bottom &&
+      target && stage.contains(target) && !target.closest(".wb-note"));
+    eraserCursor.hidden = !visible;
+    stage.classList.toggle("has-eraser-cursor", visible);
+    if (!visible) return;
+    // Match the actual stroke width in screen pixels, including board zoom.
+    var diameter = (cur && cur.erase ? cur.size : eraserWidth()) * board().view.s;
+    eraserCursor.style.width = diameter + "px";
+    eraserCursor.style.height = diameter + "px";
+    eraserCursor.style.left = (p.x - r.left) + "px";
+    eraserCursor.style.top = (p.y - r.top) + "px";
+  }
+
+  function trackEraserCursor(e) {
+    cursorPoint = e.pointerType === "touch" ? null : { x: e.clientX, y: e.clientY };
+    updateEraserCursor();
+  }
 
   // ── Gem ────────────────────────────────────────────────────────────────────
   var flashTimer = null, saveTimer = null;
@@ -100,6 +130,7 @@
     stage.style.backgroundPosition = bv.tx + "px " + bv.ty + "px";
     $("wbZoomReset").textContent = Math.round(bv.s * 100) + "%";
     redraw();
+    updateEraserCursor();
   }
 
   function zoomAt(px, py, factor) {
@@ -167,6 +198,7 @@
     canvas.width = Math.round(r.width * dpr);
     canvas.height = Math.round(r.height * dpr);
     redraw();
+    updateEraserCursor();
   }
   new ResizeObserver(resize).observe(stage);
 
@@ -325,6 +357,14 @@
 
   stage.addEventListener("pointerup", function (e) { endPointer(e, false); });
   stage.addEventListener("pointercancel", function (e) { endPointer(e, true); });
+  ["pointerenter", "pointermove", "pointerdown", "pointerup"].forEach(function (event) {
+    stage.addEventListener(event, trackEraserCursor);
+  });
+  function hideEraserCursor() { cursorPoint = null; updateEraserCursor(); }
+  stage.addEventListener("pointerleave", hideEraserCursor);
+  stage.addEventListener("pointercancel", hideEraserCursor);
+  window.addEventListener("blur", hideEraserCursor);
+  window.addEventListener("scroll", hideEraserCursor, true);
 
   stage.addEventListener("wheel", function (e) {
     e.preventDefault();
@@ -342,6 +382,7 @@
       btn.classList.toggle("is-active", btn.dataset.tool === next);
     });
     stage.classList.toggle("is-hand", next === "hand");
+    updateEraserCursor();
   }
 
   $("wbTools").addEventListener("click", function (e) {
@@ -376,6 +417,7 @@
     b.appendChild(dot);
     b.addEventListener("click", function () {
       penSize = size.w;
+      updateEraserCursor();
       sizesEl.querySelectorAll(".wb-size").forEach(function (s) { s.classList.toggle("is-active", s === b); });
     });
     sizesEl.appendChild(b);
@@ -433,6 +475,7 @@
     if (e.code === "Space" && !editing) {
       if (stageHover) e.preventDefault();
       if (!spaceHeld) { spaceHeld = true; stage.classList.add("is-hand"); }
+      updateEraserCursor();
       return;
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !editing) {
@@ -445,6 +488,7 @@
     if (e.code === "Space") {
       spaceHeld = false;
       if (tool !== "hand") stage.classList.remove("is-hand");
+      updateEraserCursor();
     }
   });
 
