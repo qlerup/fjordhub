@@ -19,9 +19,9 @@
       "description": "Uendeligt whiteboard med frihåndstegning, sticky notes og flere navngivne boards.",
       "accent": "#10b981",
       "icon": "whiteboard",
-      "version": "2.1.0",
-      "download_url": "https://github.com/qlerup/fjordhub/releases/download/packages-v2.1.0/notepad.zip",
-      "sha256": "f30e89e301baedbd2431170aec3a5d533dc5a383356625f23a1abb9b70bc2a4a"
+      "version": "2.1.1",
+      "download_url": "https://github.com/qlerup/fjordhub/releases/download/packages-v2.1.1/notepad.zip",
+      "sha256": "5f1fac7d40959120dbd9df1aaa515069f73cc04716a3edd4b847499d140e6a25"
     }
   ]
 }
