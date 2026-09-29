@@ -207,6 +207,7 @@
   transition: background .15s ease, color .15s ease, border-color .15s ease, transform .1s ease;
 }
 .wb-tool svg { width: 17px; height: 17px; }
+.wb-tool.wb-text-tool { width: auto; padding: 0 10px; font-size: .75rem; font-weight: 600; white-space: nowrap; }
 .wb-tool:hover { background: var(--surface-raised); color: var(--text); }
 .wb-tool:active { transform: scale(.94); }
 

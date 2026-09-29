@@ -449,6 +449,30 @@
     }
   }
 
+  var clearDrawingBtn = $("wbClearDrawing"), clearDrawingTimer = null, clearDrawingBoard = null;
+  function resetClearDrawing() {
+    clearTimeout(clearDrawingTimer);
+    clearDrawingBoard = null;
+    clearDrawingBtn.classList.remove("is-arm");
+    clearDrawingBtn.textContent = "Slet tegning";
+  }
+  clearDrawingBtn.addEventListener("click", function () {
+    if (clearDrawingBoard !== board().id) {
+      resetClearDrawing();
+      if (!board().strokes.length) return;
+      clearDrawingBoard = board().id;
+      clearDrawingBtn.classList.add("is-arm");
+      clearDrawingBtn.textContent = "Slet tegning?";
+      clearDrawingTimer = setTimeout(resetClearDrawing, 2500);
+      return;
+    }
+    resetClearDrawing();
+    abortStroke();
+    board().strokes = [];
+    redraw();
+    save();
+  });
+
   var clearBtn = $("wbClear"), clearTimer = null;
   clearBtn.addEventListener("click", function () {
     if (!clearBtn.classList.contains("is-arm")) {
@@ -456,13 +480,13 @@
       clearBtn.title = "Sikker? Klik igen for at rydde";
       clearTimer = setTimeout(function () {
         clearBtn.classList.remove("is-arm");
-        clearBtn.title = "Ryd board";
+        clearBtn.title = "Ryd hele boardet, inklusive noter";
       }, 2500);
       return;
     }
     clearTimeout(clearTimer);
     clearBtn.classList.remove("is-arm");
-    clearBtn.title = "Ryd board";
+    clearBtn.title = "Ryd hele boardet, inklusive noter";
     board().strokes = [];
     board().notes = [];
     redraw();
