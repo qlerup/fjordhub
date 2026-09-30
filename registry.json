@@ -24,6 +24,10 @@
     {
       "id": "urban-explorer",
       "manifest_url": "https://raw.githubusercontent.com/qlerup/urban-explorer/main/fjordhub.json"
+    },
+    {
+      "id": "fjordbudget",
+      "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordbudget/main/fjordhub.json"
     }
   ]
 }

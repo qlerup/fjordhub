@@ -1,0 +1,44 @@
+{
+  "id": "fjordbudget",
+  "name": "FjordBudget",
+  "tagline": "Dit private økonomiske overblik",
+  "description": "Konti, saldi, posteringer og budget. Kun læseadgang til danske banker gennem Enable Banking. Beskyttet med FjordHub-login; én ejer pr. installation.",
+  "icon": "wallet",
+  "accent": "#28533f",
+  "container_name": "fjordbudget",
+  "default_port": 8060,
+  "health_path": "/api/health",
+  "compose_file": "docker-compose.fjordhub.yml",
+  "compose_dir_env": "FJORDBUDGET_DIR",
+  "source_url": "https://github.com/qlerup/fjordbudget",
+  "icon_url": "https://raw.githubusercontent.com/qlerup/fjordbudget/main/static/logos/icon-512.png",
+  "sort_order": 7,
+  "setup_steps": [
+    {
+      "id": "basic",
+      "title": "Installation",
+      "fields": [
+        {
+          "key": "APP_PORT",
+          "label": "Web-port",
+          "type": "number",
+          "default": "8060",
+          "hint": "Domæne vælges efter installationen i FjordHubs app-indstillinger."
+        },
+        {
+          "key": "DATA_DIR",
+          "label": "Data-mappe",
+          "type": "path",
+          "default": "/opt/fjordbudget-data",
+          "hint": "Database, krypteringsnøgler og gemte API-oplysninger. Medtag hele mappen i backup."
+        },
+        {
+          "key": "TZ",
+          "label": "Tidszone",
+          "type": "text",
+          "default": "Europe/Copenhagen"
+        }
+      ]
+    }
+  ]
+}
