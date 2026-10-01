@@ -1,0 +1,36 @@
+{% extends 'base_auth.html' %}
+{% block title %}Lageradgang — FjordHub{% endblock %}
+{% block center_class %}onboarding-center{% endblock %}
+{% block content %}
+<main class="auth-card onboarding-card">
+  <img class="auth-logo" src="{{ url_for('static', filename='logos/logos/fjordhub-logo-horizontal-transparent.png') }}" alt="FjordHub">
+  {% if onboarding %}<ol class="onboarding-steps" aria-label="Opsætning">
+    <li><span>✓</span> Konto oprettet</li><li><span>✓</span> Email</li><li aria-current="step"><span>3</span> Lageradgang</li>
+  </ol>{% endif %}
+  <h1>Lageradgang til dine apps</h1>
+  <p class="auth-subtitle">FjordHub forbinder til Proxmox. Du vælger senere mediemapperne inde i FjordFlix.</p>
+  {% if storage_error %}<div class="auth-error" role="alert">{{ storage_error }}</div>{% endif %}
+  <section class="onboarding-email">
+    {% if storage.available %}
+    <h2>Forbindelsen er klar</h2>
+    <p>FjordHub har begrænset lageradgang til LXC {{ storage.ctid }}. {{ storage.pools|length }} monterede lagre er fundet.</p>
+    <ul>{% for pool in storage.pools %}<li>{{ pool.source }} · {{ pool.type }}</li>{% endfor %}</ul>
+    {% if not storage.pools %}<p>Ingen understøttede lagre er monteret under /mnt, /media eller /srv på Proxmox endnu. Du kan fortsætte og tilføje lager senere.</p>{% endif %}
+    {% else %}
+    <h2>Lagerforbindelsen er ikke sat op</h2>
+    <p>FjordHubs Proxmox-installer opretter den begrænsede forbindelse automatisk. På en eksisterende installation skal værtsadministratoren først køre engangsopsætningen på Proxmox.</p>
+    <p><a href="https://github.com/qlerup/fjordhub/blob/main/docs/proxmox-storage.md" target="_blank" rel="noopener noreferrer">Åbn installations- og opsætningsguiden ↗</a></p>
+    {% endif %}
+    <p>Dette trin kontrollerer forbindelsen. Ingen mediemapper tilsluttes eller kopieres her. I FjordFlix vælger du <strong>Indstillinger → Bibliotek → Proxmox-diske og storage</strong> og tilslutter de ønskede lagre skrivebeskyttet.</p>
+    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="btn" name="action" value="check">Kontrollér forbindelsen igen</button></form>
+  </section>
+  <footer class="onboarding-footer">
+    <p>Du finder dette trin igen under <strong>Indstillinger → Lageradgang</strong>.</p>
+    {% if onboarding %}<form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% if storage.available %}<button class="btn btn-open" name="action" value="finish_storage">Fortsæt til FjordHub →</button>{% endif %}
+      <button class="btn" name="action" value="skip_storage">Spring over</button>
+    </form>{% else %}<a class="btn" href="{{ url_for('settings') }}">Tilbage til indstillinger</a>{% endif %}
+  </footer>
+</main>
+{% endblock %}

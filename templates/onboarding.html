@@ -6,10 +6,11 @@
   <img class="auth-logo" src="{{ url_for('static', filename='logos/logos/fjordhub-logo-horizontal-transparent.png') }}" alt="FjordHub">
   <ol class="onboarding-steps" aria-label="Opsætning">
     <li><span aria-hidden="true">✓</span> Konto oprettet</li>
-    <li aria-current="step"><span aria-hidden="true">2</span> Tilpas FjordHub</li>
+    <li aria-current="step"><span aria-hidden="true">2</span> Email</li>
+    <li><span aria-hidden="true">3</span> Lageradgang</li>
   </ol>
   <h1>Gør FjordHub klar</h1>
-  <p class="auth-subtitle">Din administrator er oprettet. Vælg, om du vil sætte email op nu eller fortsætte direkte til dine apps.</p>
+  <p class="auth-subtitle">Din administrator er oprettet. Vælg, om du vil sætte email op nu eller fortsætte til lageropsætningen.</p>
   <section class="onboarding-email" aria-labelledby="email-heading">
     <div class="onboarding-heading"><h2 id="email-heading">Email til glemt adgangskode</h2><span>Valgfrit</span></div>
     <p>Giv dig selv og dine brugere mulighed for at nulstille en glemt adgangskode via email. FjordHub deler mailopsætningen med hub-styrede apps.</p>
@@ -26,7 +27,7 @@
     <p>Du kan altid sætte email op under <strong>Indstillinger → Generelt</strong>.</p>
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button class="btn btn-open" type="submit" name="action" value="skip">Gør det senere →</button>
+      <button class="btn btn-open" type="submit" name="action" value="skip">Spring over →</button>
     </form>
   </footer>
 </main>

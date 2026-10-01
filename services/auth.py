@@ -450,6 +450,16 @@ class AuthService:
             row = conn.execute("SELECT onboarding_pending FROM users WHERE id=? AND role='admin'", (user_id,)).fetchone()
         return bool(row and row[0])
 
+    def onboarding_step(self, user_id: int) -> int:
+        with closing(self._conn()) as conn:
+            row = conn.execute("SELECT onboarding_pending FROM users WHERE id=? AND role='admin'", (user_id,)).fetchone()
+        return int(row[0]) if row else 0
+
+    def advance_onboarding(self, user_id: int) -> None:
+        with closing(self._conn()) as conn:
+            conn.execute("UPDATE users SET onboarding_pending=2 WHERE id=? AND onboarding_pending=1", (user_id,))
+            conn.commit()
+
     def finish_onboarding(self, user_id: int) -> None:
         with closing(self._conn()) as conn:
             conn.execute("UPDATE users SET onboarding_pending=0 WHERE id=?", (user_id,))

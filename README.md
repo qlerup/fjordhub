@@ -360,6 +360,10 @@ FjordHub self-update are blocked while migration is in progress.
 After creating the first administrator, FjordHub signs them in and offers optional
 email setup for password resets. They can test and save SMTP settings or choose
 **Gør det senere** and configure email later under **Indstillinger → Generelt**.
+An optional **Lageradgang** step follows email setup. It checks the restricted
+Proxmox connection and can be skipped. Actual media mounts are selected later
+inside FjordFlix. Both connection setup and checking are available from
+**Indstillinger → Lageradgang**. See [Proxmox installation and storage access](docs/proxmox-storage.md).
 Unfinished setup resumes on the administrator’s next login. Existing installations
 and additional user accounts are not enrolled in this guide.
 

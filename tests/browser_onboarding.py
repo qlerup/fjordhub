@@ -14,6 +14,7 @@ os.environ['DATA_DIR'] = workspace.name
 os.environ['SECRET_KEY'] = 'isolated-browser-test-secret'
 
 import app as hub
+hub.HostStorage.inventory = lambda self: {"available": False, "pools": []}
 
 server = make_server('127.0.0.1', 0, hub.app, threaded=True)
 thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -61,7 +62,13 @@ try:
         page.locator('#mail-test-send').click()
         expect(page.locator('#mail-test-confirm')).to_be_visible()
         page.keyboard.press('Escape')
-        page.get_by_role('button', name='Gør det senere').click()
+        page.get_by_role('button', name='Spring over').click()
+        expect(page.get_by_role('heading', name='Lageradgang til dine apps')).to_be_visible()
+        page.screenshot(path=str(out / 'storage-onboarding-mobile.png'), full_page=True)
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+        page.reload()
+        expect(page.get_by_role('heading', name='Lageradgang til dine apps')).to_be_visible()
+        page.get_by_role('button', name='Spring over', exact=True).click()
         expect(page).not_to_have_url(base + '/setup/preferences')
         page.goto(base + '/setup/preferences')
         expect(page).not_to_have_url(base + '/setup/preferences')

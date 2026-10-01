@@ -34,6 +34,7 @@ from services.media_gateway import MediaGateway, domain as media_domain, media_a
 from services.app_storage import AppStorage
 from services.storage_mount import MountRequired
 from services.media_library import MediaLibrary
+from services.host_storage import HostStorage
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
@@ -137,6 +138,7 @@ _AUTH_EXEMPT = {
     "api_hub_app_authenticate",
     "api_hub_app_config",
     "api_fjordflix_library",
+    "api_fjordflix_library_connect",
     "api_hub_app_change_password",
     "api_hub_password_reset_request",
     "api_hub_password_reset_verify",
@@ -763,6 +765,9 @@ def onboarding():
     if not _auth.onboarding_pending(current_user.id):
         return redirect(url_for("dashboard"))
     session.setdefault("onboarding_csrf", secrets.token_urlsafe(32))
+    step = _auth.onboarding_step(current_user.id)
+    if step == 2:
+        return storage_preferences()
     error = ""
     if request.method == "POST":
         token = request.form.get("csrf_token", "")
@@ -770,8 +775,8 @@ def onboarding():
             return "Genindlæs siden og prøv igen.", 403
         action = request.form.get("action")
         if action == "skip":
-            _auth.finish_onboarding(current_user.id)
-            return redirect(url_for("dashboard"))
+            _auth.advance_onboarding(current_user.id)
+            return redirect(url_for("onboarding"))
         if action != "save":
             return "Ugyldigt valg.", 400
         try:
@@ -781,8 +786,8 @@ def onboarding():
                 request.form.get("smtp_from", ""),
             )
             _password_reset.set_enabled(request.form.get("enabled") == "1")
-            _auth.finish_onboarding(current_user.id)
-            return redirect(url_for("dashboard"))
+            _auth.advance_onboarding(current_user.id)
+            return redirect(url_for("onboarding"))
         except Exception:
             error = "Emailopsætningen kunne ikke gemmes. Kontrollér oplysningerne og forbindelsen, eller vælg Gør det senere."
     mail = _password_reset.mail_settings() or {}
@@ -795,6 +800,43 @@ def onboarding():
         smtp_port=request.form.get("smtp_port", mail.get("port", 465)),
         smtp_from=request.form.get("smtp_from", mail.get("from_address", "")),
     ), 400 if error else 200
+
+
+def storage_preferences():
+    """Also available later from Settings; checking access never mounts storage."""
+    setup = request.endpoint == 'onboarding'
+    session.setdefault('onboarding_csrf', secrets.token_urlsafe(32))
+    status = {'available': False, 'pools': []}
+    error = ''
+    if request.method == 'POST':
+        if not secrets.compare_digest(request.form.get('csrf_token', ''), session['onboarding_csrf']):
+            return 'Genindlæs siden og prøv igen.', 403
+        action = request.form.get('action')
+        if setup and action == 'skip_storage':
+            _auth.finish_onboarding(current_user.id)
+            return redirect(url_for('dashboard'))
+        if action not in ('check', 'finish_storage'):
+            return 'Ugyldigt valg.', 400
+    try:
+        status = HostStorage().inventory()
+    except ValueError as exc:
+        error = str(exc)
+    if request.method == 'POST' and request.form.get('action') == 'finish_storage':
+        if not status['available']:
+            error = error or 'Lagerforbindelsen er ikke klar. Kontrollér opsætningen eller vælg Spring over.'
+        elif setup:
+            _auth.finish_onboarding(current_user.id)
+            return redirect(url_for('dashboard'))
+    return render_template('storage_preferences.html', storage=status, storage_error=error,
+                           onboarding=setup, csrf_token=session['onboarding_csrf'])
+
+
+@app.route('/settings/storage-access', methods=['GET', 'POST'])
+@login_required
+def storage_access_settings():
+    if not current_user.is_admin:
+        return 'Kræver administratoradgang.', 403
+    return storage_preferences()
 
 
 @app.route("/settings")
@@ -1376,11 +1418,36 @@ def api_fjordflix_library():
     try:
         library = MediaLibrary(app_storage.proxmox)
         inventory = library.inventory()
+        try:
+            inventory['host_storage'] = HostStorage().inventory()
+        except ValueError as exc:
+            inventory['host_storage'] = {'available': False, 'pools': [], 'error': str(exc)}
         if request.args.get('pool_path'):
             inventory['custom_pool'] = library.mergerfs_connection(request.args['pool_path'], inventory)
         return jsonify(ok=True, **inventory)
     except ValueError as exc:
         return jsonify(ok=False, error=str(exc)), 400
+
+
+@app.route('/api/hub/apps/fjordflix/library/connect', methods=['POST'])
+def api_fjordflix_library_connect():
+    data = request.get_json(silent=True) or {}
+    app_id, error = _require_app_key(data)
+    if error:
+        return error
+    if app_id != 'fjordflix' or not any(str(u['id']) == str(data.get('user_id', ''))
+            and u.get('role') == 'admin' and not u.get('must_change_password')
+            for u in _auth.list_app_users(app_id)):
+        return jsonify(ok=False, error='Kræver administratoradgang til FjordFlix.'), 403
+    if data.get('confirm_restart') is not True:
+        return jsonify(ok=False, error='Bekræft genstart af FjordHubs container.'), 400
+    try:
+        result = HostStorage().connect(data.get('pool_id'))
+        return jsonify(ok=True, accepted=True, job=result)
+    except ValueError as exc:
+        # A handled host refusal is passed through to the app, not hidden by its
+        # generic transport error handler. No mutation is retried automatically.
+        return jsonify(ok=True, accepted=False, error=str(exc))
 
 
 @app.route("/api/hub/apps/authenticate", methods=["POST"])

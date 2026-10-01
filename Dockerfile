@@ -9,6 +9,7 @@ RUN apk add --no-cache \
     docker-cli-compose \
     curl \
     git \
+    openssh-client \
     util-linux \
     nfs-utils
 

@@ -12,6 +12,7 @@ from services.password_reset import PasswordResetService
 def client(tmp_path, monkeypatch):
     auth = AuthService(tmp_path / 'hub.db')
     mail = PasswordResetService(tmp_path / 'hub.db', 'isolated-test-secret', auth)
+    monkeypatch.setattr(hub.HostStorage, 'inventory', lambda self: {'available': False, 'pools': []})
     monkeypatch.setattr(hub, '_auth', auth)
     monkeypatch.setattr(hub, '_password_reset', mail)
     monkeypatch.setattr(hub, '_install_state', InstallState(tmp_path))
@@ -34,7 +35,10 @@ def test_create_then_skip_persists_without_mail_changes(client):
     token = create(client)
     assert client.get('/').location.endswith('/setup/preferences')
     response = client.post('/setup/preferences', data={'action': 'skip', 'csrf_token': token})
-    assert response.status_code == 302 and not response.location.endswith('/setup/preferences')
+    assert response.status_code == 302 and response.location.endswith('/setup/preferences')
+    assert hub._auth.onboarding_step(1) == 2
+    assert 'Lageradgang til dine apps' in client.get(response.location).get_data(as_text=True)
+    assert client.post('/setup/preferences', data={'action':'skip_storage','csrf_token':token}).status_code == 302
     assert not hub._auth.onboarding_pending(1)
     assert hub._password_reset.mail_settings() is None
     hub._password_reset._smtp.assert_not_called()
@@ -53,6 +57,8 @@ def test_test_and_save_uses_shared_mail_settings(client):
     assert response.status_code == 302
     assert hub._password_reset.mail_settings()['user'] == 'resend'
     assert hub._password_reset.is_enabled()
+    assert hub._auth.onboarding_step(1) == 2
+    client.post('/setup/preferences', data={'action':'skip_storage','csrf_token':token})
     assert not hub._auth.onboarding_pending(1)
     page = client.get('/settings').get_data(as_text=True)
     assert 'resend' in page and 'private-test-key' not in page
@@ -96,3 +102,20 @@ def test_csrf_and_repeated_first_setup(client):
     with pytest.raises(ValueError, match='allerede opsat'):
         hub._auth.create_user('attacker', 'temporary-pass', role='admin', first_setup=True)
     assert hub._auth.users_count() == 1
+
+
+def test_storage_check_finish_and_resume(client, monkeypatch):
+    token = create(client)
+    client.post('/setup/preferences', data={'action':'skip','csrf_token':token})
+    assert AuthService(hub._auth._db_path).onboarding_step(1) == 2
+    assert client.post('/setup/preferences', data={'action':'finish_storage','csrf_token':token}).status_code == 200
+    assert hub._auth.onboarding_pending(1)
+    assert client.post('/setup/preferences', data={'action':'skip_storage'}).status_code == 403
+    connect = MagicMock()
+    monkeypatch.setattr(hub.HostStorage, 'connect', connect)
+    monkeypatch.setattr(hub.HostStorage, 'inventory', lambda self: {'available': True, 'ctid':'1000','pools':[{'source':'/mnt/media','type':'mergerfs'}]})
+    assert '/mnt/media' in client.get('/setup/preferences').get_data(as_text=True)
+    client.post('/setup/preferences', data={'action':'finish_storage','csrf_token':token})
+    assert not hub._auth.onboarding_pending(1)
+    assert client.get('/settings/storage-access').status_code == 200
+    connect.assert_not_called()

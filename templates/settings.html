@@ -14,6 +14,7 @@
   </div>
 
   <nav class="settings-tabs">
+    <a class="settings-tab" href="{{ url_for('storage_access_settings') }}">Lageradgang</a>
     <a class="settings-tab {% if section == 'general' %}active{% endif %}" href="{{ url_for('settings', section='general') }}" data-tab="general">Generelt</a>
     <a class="settings-tab {% if section == 'update' %}active{% endif %}" href="{{ url_for('settings', section='update') }}" data-tab="update">Opdatering</a>
     <a class="settings-tab {% if section == 'tokens' %}active{% endif %}" href="{{ url_for('settings', section='tokens') }}" data-tab="tokens">Adgangstokens</a>
