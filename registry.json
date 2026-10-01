@@ -28,6 +28,10 @@
     {
       "id": "fjordbudget",
       "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordbudget/main/fjordhub.json"
+    },
+    {
+      "id": "fjordvpn",
+      "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordvpn/main/fjordhub.json"
     }
   ]
 }

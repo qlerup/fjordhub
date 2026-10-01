@@ -193,6 +193,17 @@ FjordFlix is available in the catalog with central accounts, app-specific `admin
 
 The FjordFlix wizard offers CPU or NVIDIA transcoding, separate movie and database/cache directories, a remote-control URL and a simultaneous conversion limit. FjordLens and FjordFlix can share the same GPU; they share its VRAM and processing capacity without automatic workload prioritization. On Docker Desktop/WSL, GPU access uses the NVIDIA runtime without Linux `/dev/nvidia*` bind mounts; Linux/LXC continues to use device discovery.
 
+### FjordVPN
+
+FjordVPN can be installed from the catalog with a web port, allowed private LAN
+subnets and a persistent data directory. It accepts Proton WireGuard uploads and
+creates independent VPN/relay containers only when a profile is started. The Docker
+host needs `/dev/net/tun`; Proxmox TUN passthrough is a host prerequisite and is not
+changed by the app. Managed login uses FjordHub SSO and requires administrator
+access. Existing VPN installations are not imported or modified. App stop shuts
+down its own tunnels; uninstall removes its labelled runtime while preserving
+configuration files and VPN keys in the data directory.
+
 ## Updates
 
 - **Apps** — the dashboard checks each installed app's repository for new commits. Updating pulls the latest code and re-runs compose for that app only.

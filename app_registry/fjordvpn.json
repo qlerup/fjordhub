@@ -1,0 +1,27 @@
+{
+  "id": "fjordvpn",
+  "name": "FjordVPN",
+  "tagline": "Alle dine VPN-forbindelser i ét overblik",
+  "description": "Opret flere uafhængige Proton VPN-forbindelser med upload af WireGuard-konfigurationer. Se offentlig IP og port, og videresend TCP-trafik til lokale tjenester. Kræver administratoradgang og /dev/net/tun på Docker-værten. Eksisterende VPN-installationer flyttes ikke.",
+  "icon": "shield",
+  "accent": "#67dec2",
+  "container_name": "fjordvpn",
+  "default_port": 8098,
+  "health_path": "/healthz",
+  "compose_dir_env": "FJORDVPN_DIR",
+  "compose_file": "docker-compose.yml",
+  "source_url": "https://github.com/qlerup/fjordvpn",
+  "icon_url": "https://raw.githubusercontent.com/qlerup/fjordvpn/main/static/brand/fjordvpn-icon-512.png",
+  "sort_order": 8,
+  "setup_steps": [
+    {"id":"basic","title":"Web og lokalnet","fields":[
+      {"key":"APP_PORT","label":"Web-port","type":"number","default":"8098","hint":"Porten til FjordVPNs administration. VPN-portene tildeles separat af Proton."},
+      {"key":"LAN_SUBNETS","label":"Tilladte lokalnet","type":"text","default":"192.168.1.0/24","hint":"IPv4-netværk med CIDR, adskilt af komma. Fx 192.168.1.0/24. Lokalnettet må ikke overlappe Protons tunnelnet 10.2.0.0/24."},
+      {"key":"UI_ALLOWED_HOSTS","label":"Tilladte webadresser (valgfri)","type":"text","default":"","hint":"Tomt felt accepterer lokalnet-IP’er. Ved eget domæne: angiv domæne og serverens lokale IP, adskilt af komma."},
+      {"key":"TZ","label":"Tidszone","type":"text","default":"Europe/Copenhagen"}
+    ]},
+    {"id":"storage","title":"Konfiguration og krav","fields":[
+      {"key":"DATA_DIR","label":"VPN-konfigurationer og indstillinger","type":"path","default":"/opt/fjordvpn-data","hint":"Indeholder private VPN-nøgler. Brug lokal disk og en beskyttet backup. Docker-værten skal have /dev/net/tun; i Proxmox LXC skal TUN være givet videre. Ingen VPN starter før du opretter en profil."}
+    ]}
+  ]
+}
