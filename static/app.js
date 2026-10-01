@@ -718,7 +718,7 @@ function validateMediaGuide() {
   const data=mediaGuideData();
   if(data.mode==='proton' && !validMediaPort()) return false;
   if (!data.web_url || !data.domain || !document.getElementById('media-guide-ready').checked) {
-    alert('Udfyld web- og videodomæne og bekræft DNS/portvideresendelse i trinnet Adgang og Cloudflare.');
+    alert(data.mode==='proton' ? 'Udfyld adresserne og bekræft, at DNS, HTTPS-certifikat og videresendelse fra VPN-porten til FjordFlix er sat op.' : 'Udfyld web- og videodomæne og bekræft DNS/portvideresendelse i trinnet Adgang og Cloudflare.');
     return false;
   }
   return true;
@@ -822,7 +822,6 @@ document.getElementById('media-guide')?.addEventListener('click',event=>{
   }
   if(next && step===4 && mediaGuideData().mode==='proton' && !validMediaPort()) return;
   if(step < 5) document.getElementById('media-guide-ready').checked=false;
-  if(next && step === 5) document.getElementById('media-guide-ready').checked=true;
   showMediaStep(step);
 });
 if(document.getElementById('media-guide')) showMediaStep(1,false);
@@ -834,6 +833,7 @@ function validMediaPort() {
 }
 function updateMediaRoute() {
   const data=mediaGuideData(), proton=data.mode==='proton';
+  document.getElementById('media-ready-label').textContent=proton?'Jeg har sat DNS, gyldigt HTTPS-certifikat og videresendelse fra VPN-porten til FjordFlix op':'Jeg har gemt DNS og portvideresendelser';
   for(const id of ['media-proton-settings','media-proton-instructions']) document.getElementById(id).hidden=!proton;
   for(const id of ['media-router-instructions','media-router-mode']) document.getElementById(id).hidden=proton;
   document.getElementById('media-dns-ip-help').textContent=proton?'Proton VPN-forbindelsens aktuelle offentlige IPv4-adresse':'Din offentlige WAN-IP';

@@ -64,7 +64,8 @@
         <p id="media-mode-help" class="field-hint">FjordHub installerer Caddy eller genbruger sin gateway på port 80/443.</p>
         <p>Videoens adresse: <code id="media-url-preview">—</code></p>
         <details class="media-extra"><summary>Har du allerede en HTTPS-indgang?</summary><p>Vælg eksisterende reverse proxy, og tilføj videodomænet med et gyldigt HTTPS-certifikat. Send kun <code>/media/*</code> til FjordFlix-serverens lokale IP og web-port (standard 8097). Bevar Host-headeren, returnér 404 for andre stier, og deaktivér adgangslogs med fulde video-URL'er.</p><p>Hvis en anden tjeneste bruger port 80 eller 443, stopper FjordHub opsætningen af sin gateway og viser besked.</p></details>
-        <label class="media-ready"><input id="media-guide-ready" type="checkbox"><span>DNS og portvideresendelser er gemt</span></label>
+        <label class="media-ready"><input id="media-guide-ready" type="checkbox"><span id="media-ready-label">Jeg har gemt DNS og portvideresendelser</span></label>
+        <p class="field-hint">Sæt først fluebenet, når opsætningen er udført. Fluebenet ændrer ingen netværksindstillinger; knappen nedenfor tester forbindelsen.</p>
         <button type="button" id="media-guide-start" class="btn-install">Opsæt og test direkte video</button>
         <p class="field-hint">Video aktiveres først, når HTTPS-testen består. Prøv også en film fra mobilnettet bagefter.</p>
         <div class="media-step-actions"><button type="button" class="btn btn-open" data-media-back="4">← Tilbage til adresserne</button></div>

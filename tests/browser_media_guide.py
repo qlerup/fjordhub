@@ -77,7 +77,10 @@ with tempfile.TemporaryDirectory() as tmp:
         page.screenshot(path=str(out/'media-guide-dns.png'))
         page.locator('[data-media-next="4"]').click()
         page.locator('[data-media-next="5"]').click()
-        expect(page.locator('#media-guide-ready')).to_be_checked()
+        expect(page.locator('#media-guide-ready')).not_to_be_checked()
+        page.once('dialog',lambda dialog:dialog.accept())
+        page.locator('#media-guide-start').click()
+        gateway.start.assert_not_called()
         page.locator('#media-guide-ready').check()
         page.locator('#media-guide-start').click()
         page.wait_for_timeout(300)
@@ -113,6 +116,13 @@ with tempfile.TemporaryDirectory() as tmp:
         page.locator('[data-media-next="5"]').click()
         expect(page.locator('#media-router-mode')).to_be_hidden()
         expect(page.locator('#media-url-preview')).to_have_text('https://media.example.com:57369')
+        expect(page.locator('#media-guide-ready')).not_to_be_checked()
+        expect(page.locator('#media-ready-label')).to_contain_text('HTTPS-certifikat')
+        previous_calls=gateway.start.call_count
+        page.once('dialog',lambda dialog:dialog.accept())
+        page.locator('#media-guide-start').click()
+        assert gateway.start.call_count==previous_calls
+        page.locator('#media-guide-ready').check()
         page.locator('#media-guide-start').click()
         page.wait_for_function('!document.getElementById("media-guide-start").disabled')
         assert gateway.start.call_args.args[-1]=='proton'
