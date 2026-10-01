@@ -527,8 +527,12 @@ function buildSummary() {
   list.innerHTML = rows.join('');
 }
 
+let installSubmitted = false;
 async function startInstall() {
+  if (installSubmitted) return;
   if (APP_ID === 'fjordflix' && !validateMediaGuide()) return;
+  installSubmitted = true;
+  document.getElementById('btn-install').disabled = true;
   // Collect all values including secrets
   {% for step in steps %}
   {% for field in step.fields %}

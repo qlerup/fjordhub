@@ -133,17 +133,42 @@ def _gpu_video_service(app_def: dict) -> str:
 class Installer:
     def __init__(self, state: InstallState):
         self.state = state
+        self._start_lock = threading.Lock()
+        self._active_installs: set[str] = set()
 
-    def start_install(self, app_def: dict, env_values: dict, on_success=None):
+    def start_install(self, app_def: dict, env_values: dict, on_success=None, before_start=None):
         app_id = app_def["id"]
         install_dir = APPS_BASE / app_id
-        self.state.set_installing(app_id, str(install_dir))
-        t = threading.Thread(
-            target=self._run,
-            args=(app_def, env_values, install_dir, on_success),
-            daemon=True,
-        )
-        t.start()
+        # Reserve before generating/saving credentials or resetting the log.
+        # The reservation covers the worker and its success callback, not just
+        # the brief HTTP request that launches it.
+        with self._start_lock:
+            if app_id in self._active_installs:
+                return False
+            self._active_installs.add(app_id)
+        try:
+            self.state.set_installing(app_id, str(install_dir))
+            if before_start:
+                before_start()
+            t = threading.Thread(
+                target=self._run_reserved,
+                args=(app_def, dict(env_values), install_dir, on_success),
+                daemon=True,
+            )
+            t.start()
+        except Exception:
+            self.state.set_failed(app_id, "Installationen kunne ikke startes.")
+            with self._start_lock:
+                self._active_installs.discard(app_id)
+            raise
+        return True
+
+    def _run_reserved(self, app_def, env_values, install_dir, on_success):
+        try:
+            self._run(app_def, env_values, install_dir, on_success)
+        finally:
+            with self._start_lock:
+                self._active_installs.discard(app_def["id"])
 
     def _run(self, app_def: dict, env_values: dict, install_dir: Path, on_success=None):
         app_id = app_def["id"]

@@ -58,6 +58,7 @@ class InstallState:
     def set_installed(self, app_id: str):
         self._update(app_id, {
             "state": "installed",
+            "error": None,
             "finished_at": datetime.now(timezone.utc).isoformat(),
         })
 

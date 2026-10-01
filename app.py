@@ -2788,10 +2788,6 @@ def install_app(app_id):
                 raise ValueError('Vælg forskellige web- og videodomæner og en gyldig HTTPS-indgang.')
         except ValueError as exc:
             return jsonify(ok=False, error=str(exc)), 400
-    # Generate hub key and inject so the app can authenticate back to FjordHub
-    hub_key = generate_secret(32)
-    _auth.save_hub_key(app_id, hub_key)
-    env_values["FJORDHUB_API_KEY"] = hub_key
     env_values["FJORDHUB_APP_ID"] = app_id
     if app_id == "fjordlens":
         for key, value in FJORDLENS_MEMORY_DEFAULTS.items():
@@ -2808,9 +2804,17 @@ def install_app(app_id):
             except Exception as exc:
                 media_gateway.save(waiting_install=False, phase='Videoopsætning kunne ikke starte. Åbn app-indstillinger og prøv igen.', error=str(exc))
 
-    if media_choice:
-        media_gateway.save(waiting_install=True, phase='Afventer installationen af FjordFlix…', error='', domain=media_choice['domain'], mode=media_choice['mode'])
-    _installer.start_install(a, env_values, on_success=on_success)
+    def before_start():
+        # Only the request which reserved the install may rotate the app key.
+        hub_key = generate_secret(32)
+        _auth.save_hub_key(app_id, hub_key)
+        env_values["FJORDHUB_API_KEY"] = hub_key
+        if media_choice:
+            media_gateway.save(waiting_install=True, phase='Afventer installationen af FjordFlix…', error='', domain=media_choice['domain'], mode=media_choice['mode'])
+
+    started = _installer.start_install(a, env_values, on_success=on_success, before_start=before_start)
+    if started is False:
+        return jsonify(ok=True, already_running=True, message="Installationen kører allerede. Viser den igangværende installation.")
     return jsonify({"ok": True, "message": "Installation startet"})
 
 
