@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=static_version) }}">
 </head>
 <body class="auth-body">
-  <div class="auth-center">
+  <div class="auth-center {% block center_class %}{% endblock %}">
     {% block content %}{% endblock %}
   </div>
   {% block scripts %}{% endblock %}

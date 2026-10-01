@@ -1,0 +1,17 @@
+      <form method="post" action="{{ mail_form_action or url_for('save_mail_settings') }}" id="mail-settings-form">
+        {% if onboarding %}
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="action" value="save">
+        <label class="onboarding-checkbox"><input type="checkbox" name="enabled" value="1" {% if mail_enabled %}checked{% endif %}> Tillad “Glemt adgangskode?” på login-siden</label>
+        {% endif %}
+        <div class="auth-field"><label for="smtp_from">Afsender-email</label><input id="smtp_from" name="smtp_from" type="email" value="{{ smtp_from }}" placeholder="noreply@dit-domæne.dk" required></div>
+        <div class="settings-mail-grid">
+          <div class="auth-field"><label for="smtp_user">SMTP-brugernavn</label><input id="smtp_user" name="smtp_user" value="{{ smtp_user }}" placeholder="fx din Gmail-adresse, eller “resend”" required></div>
+          <div class="auth-field"><label for="smtp_password">Adgangskode / API-nøgle</label><input id="smtp_password" name="smtp_password" type="password" {% if not mail_configured %}required{% endif %} placeholder="{% if mail_configured %}Lad stå tom for at beholde den nuværende{% endif %}"></div>
+        </div>
+        <div class="settings-mail-grid">
+          <div class="auth-field"><label for="smtp_host">SMTP-server</label><input id="smtp_host" name="smtp_host" value="{{ smtp_host }}" placeholder="fx smtp.resend.com" required></div>
+          <div class="auth-field"><label for="smtp_port">Port</label><input id="smtp_port" name="smtp_port" type="number" value="{{ smtp_port }}" required></div>
+        </div>
+        <button type="submit" class="btn-install">Test og gem</button>
+      </form>

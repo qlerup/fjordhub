@@ -204,6 +204,8 @@ def _auth_gate():
         if request.path.startswith("/api/"):
             return jsonify({"ok": False, "error": "Kræver login."}), 401
         return redirect(url_for("login", next=request.path))
+    if request.endpoint == "dashboard" and _auth.onboarding_pending(current_user.id):
+        return redirect(url_for("onboarding"))
     if current_user.must_change_password and request.endpoint not in {"static", "logout", "profile"}:
         if request.path.startswith("/api/"):
             return jsonify({"ok": False, "error": "Adgangskoden skal ændres først.", "password_change_required": True}), 403
@@ -326,17 +328,20 @@ def setup():
             error = "Adgangskoderne matcher ikke."
         else:
             try:
-                _auth.create_user(
+                user_id = _auth.create_user(
                     username,
                     password,
                     role="admin",
+                    first_setup=True,
                     first_name=first_name,
                     last_name=last_name,
                     email=email,
                     language=language,
                 )
                 _mark_install_initialized("first-admin-created")
-                return redirect(url_for("login", created="1"))
+                session.clear()
+                login_user(_auth.get_by_id(user_id), remember=True)
+                return redirect(url_for("onboarding"))
             except ValueError as exc:
                 error = str(exc)
     return render_template(
@@ -372,6 +377,8 @@ def login():
             login_user(user, remember=True)
             if user.must_change_password:
                 return redirect(url_for("profile", force_password_change="1"))
+            if _auth.onboarding_pending(user.id):
+                return redirect(url_for("onboarding"))
             next_url = str(request.args.get("next") or "") or url_for("dashboard")
             if not next_url.startswith("/"):
                 next_url = url_for("dashboard")
@@ -747,6 +754,48 @@ def api_docker_cleanup():
 
 
 # ── Settings ─────────────────────────────────────────────────────────────────
+
+@app.route("/setup/preferences", methods=["GET", "POST"])
+@login_required
+def onboarding():
+    if not current_user.is_admin:
+        return "Kræver administratoradgang.", 403
+    if not _auth.onboarding_pending(current_user.id):
+        return redirect(url_for("dashboard"))
+    session.setdefault("onboarding_csrf", secrets.token_urlsafe(32))
+    error = ""
+    if request.method == "POST":
+        token = request.form.get("csrf_token", "")
+        if not token or not secrets.compare_digest(token, session["onboarding_csrf"]):
+            return "Genindlæs siden og prøv igen.", 403
+        action = request.form.get("action")
+        if action == "skip":
+            _auth.finish_onboarding(current_user.id)
+            return redirect(url_for("dashboard"))
+        if action != "save":
+            return "Ugyldigt valg.", 400
+        try:
+            _password_reset.save_mail_settings(
+                request.form.get("smtp_user", ""), request.form.get("smtp_password", ""),
+                request.form.get("smtp_host", ""), int(request.form.get("smtp_port") or 465),
+                request.form.get("smtp_from", ""),
+            )
+            _password_reset.set_enabled(request.form.get("enabled") == "1")
+            _auth.finish_onboarding(current_user.id)
+            return redirect(url_for("dashboard"))
+        except Exception:
+            error = "Emailopsætningen kunne ikke gemmes. Kontrollér oplysningerne og forbindelsen, eller vælg Gør det senere."
+    mail = _password_reset.mail_settings() or {}
+    return render_template("onboarding.html", mail_error=error,
+        onboarding=True, csrf_token=session["onboarding_csrf"],
+        mail_enabled=(request.form.get("enabled") == "1") if request.method == "POST" else _password_reset.is_enabled(),
+        mail_form_action=url_for("onboarding"), mail_configured=bool(mail),
+        smtp_user=request.form.get("smtp_user", mail.get("user", "")),
+        smtp_host=request.form.get("smtp_host", mail.get("host", "smtp.gmail.com")),
+        smtp_port=request.form.get("smtp_port", mail.get("port", 465)),
+        smtp_from=request.form.get("smtp_from", mail.get("from_address", "")),
+    ), 400 if error else 200
+
 
 @app.route("/settings")
 def settings():

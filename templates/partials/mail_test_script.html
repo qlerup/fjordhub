@@ -1,0 +1,75 @@
+(function () {
+  var form = document.getElementById('mail-settings-form');
+  if (!form) return;
+  var modal = document.getElementById('mail-test-modal');
+  var askStep = document.getElementById('mail-test-ask');
+  var sentStep = document.getElementById('mail-test-sent');
+  var errorBox = document.getElementById('mail-test-error');
+  var testToInput = document.getElementById('mail-test-to');
+  var sendBtn = document.getElementById('mail-test-send');
+  var confirmBtn = document.getElementById('mail-test-confirm');
+  var bypassIntercept = false;
+
+  function openModal() {
+    askStep.style.display = '';
+    sentStep.style.display = 'none';
+    errorBox.style.display = 'none';
+    testToInput.value = '';
+    if (!modal.open) modal.showModal();
+    testToInput.focus();
+  }
+  function closeModal() { modal.close(); }
+
+  form.addEventListener('submit', function (e) {
+    if (bypassIntercept) return;
+    e.preventDefault();
+    openModal();
+  });
+
+  document.getElementById('mail-test-cancel').addEventListener('click', closeModal);
+  document.getElementById('mail-test-retry').addEventListener('click', openModal);
+
+  sendBtn.addEventListener('click', function () {
+    var testTo = testToInput.value.trim();
+    if (!testTo) { testToInput.focus(); return; }
+    errorBox.style.display = 'none';
+    sendBtn.disabled = true;
+    sendBtn.textContent = 'Sender…';
+    fetch('{{ url_for("test_mail_settings") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        smtp_user: document.getElementById('smtp_user').value,
+        smtp_password: document.getElementById('smtp_password').value,
+        smtp_host: document.getElementById('smtp_host').value,
+        smtp_port: document.getElementById('smtp_port').value,
+        smtp_from: document.getElementById('smtp_from').value,
+        test_to: testTo,
+      }),
+    })
+      .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+      .then(function (res) {
+        if (res.ok && res.data.ok) {
+          askStep.style.display = 'none';
+          sentStep.style.display = '';
+        } else {
+          errorBox.textContent = (res.data && res.data.error) || 'Kunne ikke sende testmailen.';
+          errorBox.style.display = '';
+        }
+      })
+      .catch(function () {
+        errorBox.textContent = 'Kunne ikke kontakte serveren.';
+        errorBox.style.display = '';
+      })
+      .finally(function () {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send testmail';
+      });
+  });
+
+  confirmBtn.addEventListener('click', function () {
+    bypassIntercept = true;
+    closeModal();
+    form.requestSubmit();
+  });
+})();

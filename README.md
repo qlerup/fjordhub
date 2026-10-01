@@ -354,3 +354,11 @@ changes. An administrator must inspect the helper container labelled
 recovering the app. Do not clear a running storage job or restart the app until
 the copy helper and configuration have been checked. Normal app updates and
 FjordHub self-update are blocked while migration is in progress.
+
+### First-run preferences
+
+After creating the first administrator, FjordHub signs them in and offers optional
+email setup for password resets. They can test and save SMTP settings or choose
+**Gør det senere** and configure email later under **Indstillinger → Generelt**.
+Unfinished setup resumes on the administrator’s next login. Existing installations
+and additional user accounts are not enrolled in this guide.

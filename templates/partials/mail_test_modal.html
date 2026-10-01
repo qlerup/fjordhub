@@ -1,0 +1,24 @@
+  <dialog id="mail-test-modal" class="mail-test-dialog" aria-labelledby="mail-test-heading">
+    <div style="width:420px;max-width:92vw;background:var(--surface-1,#1c1e2a);border:1px solid var(--border,#2a2f3a);border-radius:12px;padding:20px;">
+      <h3 id="mail-test-heading" style="margin:0 0 6px;">Send en testmail først</h3>
+      <p id="mail-test-intro" style="color:var(--text-muted);font-size:.86rem;margin:0 0 14px;">Vi sender en rigtig mail med de nye indstillinger, så du kan bekræfte at den faktisk kommer frem, før den gemmes.</p>
+
+      <div id="mail-test-ask">
+        <div class="auth-field"><label for="mail-test-to">Send testmail til</label><input id="mail-test-to" type="email" placeholder="din@email.dk" required></div>
+        <div id="mail-test-error" class="auth-error" style="display:none;margin-top:8px;"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+          <button type="button" class="btn btn-open" id="mail-test-cancel">Annuller</button>
+          <button type="button" class="btn-install" id="mail-test-send">Send testmail</button>
+        </div>
+      </div>
+
+      <div id="mail-test-sent" style="display:none;">
+        <div class="auth-ok">Testmailen er sendt. Tjek indbakken (og Spam) for at bekræfte at den kom frem.</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+          <button type="button" class="btn btn-open" id="mail-test-retry">Prøv en anden adresse</button>
+          <button type="button" class="btn-install" id="mail-test-confirm">Jeg modtog mailen</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+

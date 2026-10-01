@@ -205,6 +205,8 @@ class AuthService:
                 conn.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
             if "must_change_password" not in user_cols:
                 conn.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
+            if "onboarding_pending" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN onboarding_pending INTEGER NOT NULL DEFAULT 0")
             conn.execute("UPDATE users SET first_name=COALESCE(first_name, '')")
             conn.execute("UPDATE users SET last_name=COALESCE(last_name, '')")
             conn.execute("UPDATE users SET email=LOWER(TRIM(COALESCE(email, '')))")
@@ -354,6 +356,7 @@ class AuthService:
         email: str = "",
         language: str = "da",
         require_password_change: bool = False,
+        first_setup: bool = False,
     ) -> int:
         username = username.strip()
         first_name = str(first_name or "").strip()
@@ -377,6 +380,7 @@ class AuthService:
             email,
             language,
             require_password_change,
+            first_setup,
         )
 
     def create_user_with_password_hash(
@@ -420,21 +424,36 @@ class AuthService:
         email: str,
         language: str,
         require_password_change: bool = False,
+        first_setup: bool = False,
     ) -> int:
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
         with closing(self._conn()) as conn:
             try:
+                if first_setup:
+                    conn.execute("BEGIN IMMEDIATE")
+                    if role != "admin" or conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]:
+                        raise ValueError("FjordHub er allerede opsat.")
                 cur = conn.execute(
                     """
-                    INSERT INTO users (username, password_hash, first_name, last_name, email, language, role, must_change_password, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO users (username, password_hash, first_name, last_name, email, language, role, must_change_password, created_at, onboarding_pending)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (username, password_hash, first_name, last_name, email, language, role, int(bool(require_password_change)), now),
+                    (username, password_hash, first_name, last_name, email, language, role, int(bool(require_password_change)), now, int(first_setup)),
                 )
                 conn.commit()
                 return int(cur.lastrowid)
             except sqlite3.IntegrityError:
                 raise ValueError("Brugernavnet eller email-adressen er allerede i brug.")
+
+    def onboarding_pending(self, user_id: int) -> bool:
+        with closing(self._conn()) as conn:
+            row = conn.execute("SELECT onboarding_pending FROM users WHERE id=? AND role='admin'", (user_id,)).fetchone()
+        return bool(row and row[0])
+
+    def finish_onboarding(self, user_id: int) -> None:
+        with closing(self._conn()) as conn:
+            conn.execute("UPDATE users SET onboarding_pending=0 WHERE id=?", (user_id,))
+            conn.commit()
 
     def update_user(
         self,

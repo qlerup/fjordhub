@@ -1,0 +1,35 @@
+{% extends "base_auth.html" %}
+{% block title %}Gør FjordHub klar — FjordHub{% endblock %}
+{% block center_class %}onboarding-center{% endblock %}
+{% block content %}
+<main class="auth-card onboarding-card">
+  <img class="auth-logo" src="{{ url_for('static', filename='logos/logos/fjordhub-logo-horizontal-transparent.png') }}" alt="FjordHub">
+  <ol class="onboarding-steps" aria-label="Opsætning">
+    <li><span aria-hidden="true">✓</span> Konto oprettet</li>
+    <li aria-current="step"><span aria-hidden="true">2</span> Tilpas FjordHub</li>
+  </ol>
+  <h1>Gør FjordHub klar</h1>
+  <p class="auth-subtitle">Din administrator er oprettet. Vælg, om du vil sætte email op nu eller fortsætte direkte til dine apps.</p>
+  <section class="onboarding-email" aria-labelledby="email-heading">
+    <div class="onboarding-heading"><h2 id="email-heading">Email til glemt adgangskode</h2><span>Valgfrit</span></div>
+    <p>Giv dig selv og dine brugere mulighed for at nulstille en glemt adgangskode via email. FjordHub deler mailopsætningen med hub-styrede apps.</p>
+    <p class="onboarding-note">Brug fx Gmail med en app-adgangskode eller Resend med en API-nøgle.</p>
+    <details class="onboarding-details" {% if mail_error %}open{% endif %}>
+      <summary>Opsæt email</summary>
+      <div class="onboarding-form">
+        {% if mail_error %}<div class="auth-error" role="alert">{{ mail_error }}</div>{% endif %}
+        {% include 'partials/mail_form.html' %}
+      </div>
+    </details>
+  </section>
+  <footer class="onboarding-footer">
+    <p>Du kan altid sætte email op under <strong>Indstillinger → Generelt</strong>.</p>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn btn-open" type="submit" name="action" value="skip">Gør det senere →</button>
+    </form>
+  </footer>
+</main>
+{% include 'partials/mail_test_modal.html' %}
+{% endblock %}
+{% block scripts %}<script>{% include 'partials/mail_test_script.html' %}</script>{% endblock %}
