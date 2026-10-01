@@ -1,25 +1,37 @@
 <section id="media-guide" class="media-guide">
-  <header class="media-guide-heading"><span class="media-guide-kicker">DIREKTE VIDEO</span><h3>Adgang og Cloudflare</h3><p>Fire trin fra domæne til sikker afspilning.</p></header>
+  <header class="media-guide-heading"><span class="media-guide-kicker">DIREKTE VIDEO</span><h3>Adgang og Cloudflare</h3><p>Fem trin fra valg af forbindelse til sikker afspilning.</p></header>
   <div class="form-field"><label for="media-use-tunnel">Vil du bruge Cloudflare Tunnel?</label>
     <select id="media-use-tunnel"><option value="no">Nej – almindelig adgang</option><option value="yes">Ja – web via Tunnel, video direkte</option></select>
     <p class="field-hint">Du kan også sætte det op senere.</p>
   </div>
   <div id="media-guide-details" hidden>
-    <div class="media-progress" aria-live="polite"><span id="media-step-label">Trin 1 af 4</span><div class="media-progress-track"><span id="media-step-progress"></span></div></div>
+    <div class="media-progress" aria-live="polite"><span id="media-step-label">Trin 1 af 5</span><div class="media-progress-track"><span id="media-step-progress"></span></div></div>
     <section class="media-step" data-media-step="1">
-      <div class="media-step-heading"><span class="media-step-number">1</span><span><strong>Opret DNS i Cloudflare</strong><small>Forbind videodomænet med din server.</small></span></div>
+      <div class="media-step-heading"><span class="media-step-number">1</span><span><strong>Vælg forbindelsen til video</strong><small>De næste trin tilpasses dit valg.</small></span></div>
+      <div class="media-step-body">
+        <div class="form-field"><label for="media-guide-route">Forbindelse</label><select id="media-guide-route"><option value="router">Portforward via router</option><option value="proton">Proton VPN</option></select></div>
+        <p>Websiden kan fortsat bruge Cloudflare Tunnel. Selve videoen bruger den direkte forbindelse, du vælger her.</p>
+        <div class="media-step-actions"><button type="button" class="btn-install" data-media-next="2">Fortsæt →</button></div>
+      </div>
+    </section>
+    <section class="media-step" data-media-step="2" hidden>
+      <div class="media-step-heading"><span class="media-step-number">2</span><span><strong>Opret DNS i Cloudflare</strong><small>Forbind videodomænet med din server.</small></span></div>
       <div class="media-step-body">
         <p>Vælg dit domæne i Cloudflare, og åbn:</p>
         <div class="form-field"><label for="media-guide-domain">Videodomænet du vil oprette</label><input id="media-guide-domain" type="text" placeholder="media.ditdomæne.dk" autocomplete="off" autocapitalize="none" spellcheck="false"><p class="field-hint">Vælg adressen her og opret den med guiden nedenfor. Den behøver ikke findes endnu.</p></div>
         <div class="media-path">DNS <span>→</span> Records <span>→</span> Add record</div>
-        <dl class="media-values"><div><dt>Type</dt><dd><code>A</code></dd></div><div><dt>Name</dt><dd><code id="media-dns-name">—</code><small id="media-dns-target">Indtast videodomænet ovenfor</small></dd></div><div><dt>IPv4 address</dt><dd>Din offentlige WAN-IP</dd></div><div><dt>Proxy status</dt><dd><span class="media-dns-badge">DNS only</span><small>Grå sky – slå proxy fra</small></dd></div><div><dt>TTL</dt><dd>Auto</dd></div></dl>
+        <dl class="media-values"><div><dt>Type</dt><dd><code>A</code></dd></div><div><dt>Name</dt><dd><code id="media-dns-name">—</code><small id="media-dns-target">Indtast videodomænet ovenfor</small></dd></div><div><dt>IPv4 address</dt><dd id="media-dns-ip-help">Din offentlige WAN-IP</dd></div><div><dt>Proxy status</dt><dd><span class="media-dns-badge">DNS only</span><small>Grå sky – slå proxy fra</small></dd></div><div><dt>TTL</dt><dd>Auto</dd></div></dl>
         <p class="media-note">Tryk <strong>Save</strong>. Behold webdomænets eksisterende Tunnel.</p>
-        <details class="media-extra"><summary>Hvilken IP skal jeg bruge?</summary><p>Brug WAN-IP'en fra routerens internetindstillinger. Den skal være offentlig og svare til den IP, du ser fra dit hjemmenetværk. Er den ikke offentlig, skal du have en offentlig forbindelse fra udbyderen eller en anden direkte indgang.</p><p>Ændrer din IP sig, skal DNS-posten opdateres. Dynamisk DNS kan automatisere det.</p></details>
-        <div class="media-step-actions"><button type="button" class="btn-install" data-media-next="2">Ja, det er færdigt – fortsæt →</button></div>
+        <details class="media-extra"><summary>Hvilken IP skal jeg bruge?</summary><p>Ved router bruges din offentlige WAN-IP. Ved Proton bruges den offentlige VPN-IP, ikke VPN-containerens lokale IP. Porten skal ikke ind i DNS-recorden.</p><p>Ændrer din IP sig, skal DNS-posten opdateres. Dynamisk DNS kan automatisere det.</p></details>
+        <div class="media-step-actions"><button type="button" class="btn btn-open" data-media-back="1">← Tilbage</button><button type="button" class="btn-install" data-media-next="3">Ja, det er færdigt – fortsæt →</button></div>
       </div>
     </section>
-    <section class="media-step" data-media-step="2" hidden>
-      <div class="media-step-heading"><span class="media-step-number">2</span><span><strong>Åbn forbindelsen i routeren</strong><small>Opret to regler under Port Forwarding.</small></span></div>
+    <section class="media-step" data-media-step="3" hidden>
+          <div id="media-proton-settings" hidden class="form-field"><label for="media-guide-port">Aktuel offentlig port fra Proton VPN</label><input id="media-guide-port" type="number" min="1" max="65535" step="1" placeholder="Fx 57369"><p class="field-hint">Porten bruges i videoens HTTPS-adresse, ikke i Cloudflares DNS-record. Ved genforbindelse kan både VPN-IP og port ændre sig. Opdatér DNS og porten, og test igen.</p></div>
+
+      <div id="media-proton-instructions" hidden><div class="media-step-heading"><span class="media-step-number">3</span><span><strong>Forbind VPN-gatewayen</strong><small>Brug Protons aktuelle indgående TCP-port.</small></span></div><div class="media-step-body"><p>HTTPS-gatewayen skal køre gennem VPN-forbindelsen og lytte på den tildelte port. Send kun <code>/media/*</code> videre til FjordFlix-serverens lokale IP og web-port (normalt 8097), og bevar Host-headeren inklusive port.</p><p>Gatewayen skal allerede have et gyldigt offentligt HTTPS-certifikat til videodomænet. FjordHub installerer ikke et certifikat på den separate VPN-container fra denne guide.</p><p>Der skal ikke oprettes port 80/443-regler i hjemmerouteren for denne VPN-forbindelse.</p></div></div>
+      <div id="media-router-instructions">
+      <div class="media-step-heading"><span class="media-step-number">3</span><span><strong>Åbn forbindelsen i routeren</strong><small>Opret to regler under Port Forwarding.</small></span></div>
       <div class="media-step-body">
         <p>I UniFi kan menuen hedde:</p><div class="media-path">Settings <span>→</span> Policy Table <span>→</span> Create New Policy <span>→</span> Port Forwarding</div>
         <p class="field-hint">Placeringen afhænger af din UniFi-version.</p>
@@ -33,26 +45,29 @@
         <dl class="media-values"><div><dt>WAN Interface</dt><dd>Din internetforbindelse<small>Typisk WAN1</small></dd></div><div><dt>From</dt><dd>Any</dd></div><div><dt>Forward IP Address</dt><dd>FjordHub-serverens lokale IP<small>Fx 10.10.0.238</small></dd></div></dl>
         <p class="media-note">Gem begge regler. Ved Proxmox bruges normalt FjordHub-containerens IP.</p>
         <details class="media-extra"><summary>Om serverens adresse og porte</summary><p>Reservér serverens lokale IP i routeren. Port 80 og 443 skal pege på HTTPS-gatewayen. FjordFlix' egen web-port skal ikke eksponeres direkte.</p></details>
-        <div class="media-step-actions"><button type="button" class="btn btn-open" data-media-back="1">← Tilbage</button><button type="button" class="btn-install" data-media-next="3">Ja, det er færdigt – fortsæt →</button></div>
       </div>
-    </section>
-    <section class="media-step" data-media-step="3" hidden>
-      <div class="media-step-heading"><span class="media-step-number">3</span><div><h4>Bekræft dine adresser</h4><p>Én til biblioteket. Én til videoen.</p></div></div>
-      <div class="media-step-body">
-        <div class="form-field"><label for="media-guide-web">Webdomæne gennem Tunnel</label><input id="media-guide-web" type="text" placeholder="film.ditdomæne.dk" autocomplete="off" autocapitalize="none" spellcheck="false"><p class="field-hint">Her logger du ind og vælger film.</p></div>
-        <div class="form-field"><label for="media-guide-confirm">Videodomæne fra DNS-trinnet</label><input id="media-guide-confirm" type="text" readonly><p class="field-hint">Vil du ændre adressen? Gå tilbage til trin 1 og ret DNS-posten.</p></div>
-        <div class="media-step-actions"><button type="button" class="btn btn-open" data-media-back="2">← Tilbage</button><button type="button" class="btn-install" data-media-next="4">Adresserne er korrekte – fortsæt →</button></div>
       </div>
+      <div class="media-step-actions"><button type="button" class="btn btn-open" data-media-back="2">← Tilbage</button><button type="button" class="btn-install" data-media-next="4">Ja, det er færdigt – fortsæt →</button></div>
     </section>
     <section class="media-step" data-media-step="4" hidden>
-      <div class="media-step-heading"><span class="media-step-number">4</span><div><h4>Forbind og test</h4><p>FjordHub klarer HTTPS og kontrollerer forbindelsen.</p></div></div>
+      <div class="media-step-heading"><span class="media-step-number">4</span><div><h4>Bekræft dine adresser</h4><p>Én til biblioteket. Én til videoen.</p></div></div>
       <div class="media-step-body">
-        <div class="form-field"><label for="media-guide-mode">HTTPS-indgang</label><select id="media-guide-mode"><option value="managed">Automatisk med FjordHub</option><option value="existing">Brug eksisterende reverse proxy</option></select><p class="field-hint">FjordHub installerer Caddy eller genbruger sin gateway. FjordHubs egen Traefik på port 80 forbindes automatisk med Caddy på port 443. Certifikatet fornyes automatisk.</p></div>
+        <div class="form-field"><label for="media-guide-web">Webdomæne gennem Tunnel</label><input id="media-guide-web" type="text" placeholder="film.ditdomæne.dk" autocomplete="off" autocapitalize="none" spellcheck="false"><p class="field-hint">Her logger du ind og vælger film.</p></div>
+        <div class="form-field"><label for="media-guide-confirm">Videoens HTTPS-adresse</label><input id="media-guide-confirm" type="text" readonly><p class="field-hint">Ret domænet i trin 2 eller VPN-porten i trin 3.</p></div>
+        <div class="media-step-actions"><button type="button" class="btn btn-open" data-media-back="3">← Tilbage</button><button type="button" class="btn-install" data-media-next="5">Adresserne er korrekte – fortsæt →</button></div>
+      </div>
+    </section>
+    <section class="media-step" data-media-step="5" hidden>
+      <div class="media-step-heading"><span class="media-step-number">5</span><div><h4>Forbind og test</h4><p>FjordHub kontrollerer forbindelsen med HTTPS.</p></div></div>
+      <div class="media-step-body">
+        <div id="media-router-mode" class="form-field"><label for="media-guide-mode">HTTPS-indgang</label><select id="media-guide-mode"><option value="managed">Automatisk med FjordHub</option><option value="existing">Eksisterende reverse proxy</option></select></div>
+        <p id="media-mode-help" class="field-hint">FjordHub installerer Caddy eller genbruger sin gateway på port 80/443.</p>
+        <p>Videoens adresse: <code id="media-url-preview">—</code></p>
         <details class="media-extra"><summary>Har du allerede en HTTPS-indgang?</summary><p>Vælg eksisterende reverse proxy, og tilføj videodomænet med et gyldigt HTTPS-certifikat. Send kun <code>/media/*</code> til FjordFlix-serverens lokale IP og web-port (standard 8097). Bevar Host-headeren, returnér 404 for andre stier, og deaktivér adgangslogs med fulde video-URL'er.</p><p>Hvis en anden tjeneste bruger port 80 eller 443, stopper FjordHub opsætningen af sin gateway og viser besked.</p></details>
         <label class="media-ready"><input id="media-guide-ready" type="checkbox"><span>DNS og portvideresendelser er gemt</span></label>
         <button type="button" id="media-guide-start" class="btn-install">Opsæt og test direkte video</button>
         <p class="field-hint">Video aktiveres først, når HTTPS-testen består. Prøv også en film fra mobilnettet bagefter.</p>
-        <div class="media-step-actions"><button type="button" class="btn btn-open" data-media-back="3">← Tilbage til adresserne</button></div>
+        <div class="media-step-actions"><button type="button" class="btn btn-open" data-media-back="4">← Tilbage til adresserne</button></div>
       </div>
     </section>
   </div>

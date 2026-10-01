@@ -30,7 +30,7 @@ from services.package_catalog import PackageCatalog
 from services.package_manager import PackageManager, PackageError
 from services.password_reset import PasswordResetService
 from services.nvidia_devices import probe_gpu
-from services.media_gateway import MediaGateway, domain as media_domain
+from services.media_gateway import MediaGateway, domain as media_domain, media_address
 from services.app_storage import AppStorage
 from services.storage_mount import MountRequired
 from services.media_library import MediaLibrary
@@ -1830,7 +1830,8 @@ def api_media_gateway():
         if not app_def:
             raise ValueError('FjordFlix findes ikke i kataloget.')
         web = 'https://' + media_domain(data.get('web_url', ''))
-        media_gateway.start(app_def, data.get('domain', ''), web, data.get('mode', 'managed'))
+        options = {'port': data.get('port')} if data.get('mode') == 'proton' else {}
+        media_gateway.start(app_def, data.get('domain', ''), web, data.get('mode', 'managed'), **options)
         _install_state.set_external_url('fjordflix', web)
     except ValueError as exc:
         return jsonify(ok=False, error=str(exc)), 400
@@ -2768,7 +2769,8 @@ def install_app(app_id):
             if not isinstance(media_choice, dict):
                 raise ValueError('Ugyldig videoopsætning.')
             media_choice = {**media_choice, 'domain':media_domain(media_choice.get('domain')), 'web_url':'https://' + media_domain(media_choice.get('web_url'))}
-            if media_choice['domain'] == media_domain(media_choice['web_url']) or media_choice.get('mode') not in ('managed','existing'):
+            media_address(media_choice['domain'], media_choice.get('mode'), media_choice.get('port'))
+            if media_choice['domain'] == media_domain(media_choice['web_url']):
                 raise ValueError('Vælg forskellige web- og videodomæner og en gyldig HTTPS-indgang.')
         except ValueError as exc:
             return jsonify(ok=False, error=str(exc)), 400
@@ -2783,7 +2785,8 @@ def install_app(app_id):
         _auth.set_user_app_access(installer_user_id, app_id, "admin")
         if media_choice:
             try:
-                media_gateway.start(a, media_choice['domain'], media_choice['web_url'], media_choice['mode'])
+                options = {'port': media_choice.get('port')} if media_choice['mode'] == 'proton' else {}
+                media_gateway.start(a, media_choice['domain'], media_choice['web_url'], media_choice['mode'], **options)
                 _install_state.set_external_url(app_id, media_choice['web_url'])
             except Exception as exc:
                 media_gateway.save(waiting_install=False, phase='Videoopsætning kunne ikke starte. Åbn app-indstillinger og prøv igen.', error=str(exc))

@@ -710,11 +710,13 @@ setInterval(checkDockerHealth, 30000);
 // Shared installation/settings guide for direct media.
 let mediaGuideTimer;
 function mediaGuideData() {
-  return {web_url:document.getElementById('media-guide-web').value.trim(), domain:document.getElementById('media-guide-domain').value.trim(), mode:document.getElementById('media-guide-mode').value};
+  const proton=document.getElementById('media-guide-route').value==='proton';
+  return {web_url:document.getElementById('media-guide-web').value.trim(), domain:document.getElementById('media-guide-domain').value.trim(), mode:proton?'proton':document.getElementById('media-guide-mode').value, port:proton?document.getElementById('media-guide-port').value:undefined};
 }
 function validateMediaGuide() {
   if (document.getElementById('media-use-tunnel')?.value !== 'yes') return true;
   const data=mediaGuideData();
+  if(data.mode==='proton' && !validMediaPort()) return false;
   if (!data.web_url || !data.domain || !document.getElementById('media-guide-ready').checked) {
     alert('Udfyld web- og videodomæne og bekræft DNS/portvideresendelse i trinnet Adgang og Cloudflare.');
     return false;
@@ -732,11 +734,15 @@ async function loadMediaGuide() {
   const complete=!!data.active && !data.running && !data.waiting_install && !data.error;
   showMediaCompletion(complete);
   document.getElementById('media-guide-start').disabled=!!data.running || complete;
-  if(data.running || data.active || data.error) showMediaStep(4,false);
+  if(data.running || data.active || data.error) showMediaStep(5,false);
   if (data.domain) {
     document.getElementById('media-guide-domain').value=data.domain;
     updateMediaDnsPreview();
-    document.getElementById('media-guide-mode').value=data.mode || 'managed';
+    document.getElementById('media-guide-route').value=data.mode==='proton'?'proton':'router';
+    document.getElementById('media-guide-mode').value=data.mode==='existing'?'existing':'managed';
+    document.getElementById('media-guide-port').value=data.port || '';
+    if(data.web_url) document.getElementById('media-guide-web').value=data.web_url;
+    updateMediaRoute();
     document.getElementById('media-use-tunnel').value='yes';
     document.getElementById('media-guide-details').hidden=false;
   }
@@ -773,8 +779,16 @@ document.getElementById('media-guide-done')?.addEventListener('click',()=>{
   if(location.pathname.endsWith('/wizard')) location.assign('/');
   else closeAppSettings();
 });
-for(const id of ['media-guide-web','media-guide-domain','media-guide-mode']) {
-  document.getElementById(id)?.addEventListener('change',()=>showMediaCompletion(false));
+for(const id of ['media-guide-web','media-guide-domain','media-guide-mode','media-guide-route','media-guide-port']) {
+  document.getElementById(id)?.addEventListener('input',()=>{
+    clearTimeout(mediaGuideTimer);
+    showMediaCompletion(false);
+    document.getElementById('media-guide-ready').checked=false;
+    const status=document.getElementById('media-guide-status');
+    status.textContent='Ændringerne er ikke testet eller aktiveret endnu.';
+    status.className='app-settings-status';
+    updateMediaRoute();
+  });
 }
 if(location.pathname.endsWith('/wizard')) {
   const button=document.getElementById('media-guide-start');
@@ -783,12 +797,12 @@ if(location.pathname.endsWith('/wizard')) {
 
 function showMediaStep(step, focus = true) {
   updateMediaDnsPreview();
-  document.getElementById('media-guide-confirm').value = document.getElementById('media-guide-domain').value.trim();
+  updateMediaRoute();
   document.querySelectorAll('[data-media-step]').forEach(panel => panel.hidden = Number(panel.dataset.mediaStep) !== step);
-  document.getElementById('media-step-label').textContent = `Trin ${step} af 4`;
-  document.getElementById('media-step-progress').style.width = `${step * 25}%`;
+  document.getElementById('media-step-label').textContent = `Trin ${step} af 5`;
+  document.getElementById('media-step-progress').style.width = `${step * 20}%`;
   if (focus) {
-    const heading=document.querySelector(`[data-media-step="${step}"] .media-step-heading`);
+    const heading=[...document.querySelectorAll(`[data-media-step="${step}"] .media-step-heading`)].find(el=>el.getClientRects().length);
     heading.setAttribute('tabindex','-1');
     heading.focus({preventScroll:true});
     heading.scrollIntoView({block:'nearest',behavior:'smooth'});
@@ -799,18 +813,36 @@ document.getElementById('media-guide')?.addEventListener('click',event=>{
   const back=event.target.closest('[data-media-back]');
   if(!next && !back) return;
   const step=Number(next?.dataset.mediaNext || back.dataset.mediaBack);
-  if(next && (step === 2 || step === 4)) {
-    for(const id of step === 2 ? ['media-guide-domain'] : ['media-guide-web']) {
+  if(next && (step === 3 || step === 5)) {
+    for(const id of step === 3 ? ['media-guide-domain'] : ['media-guide-web']) {
       const input=document.getElementById(id);
       input.setCustomValidity(input.value.trim() ? '' : 'Indtast domænet for at fortsætte.');
       if(!input.reportValidity()) return;
     }
   }
-  if(step < 4) document.getElementById('media-guide-ready').checked=false;
-  if(next && step === 4) document.getElementById('media-guide-ready').checked=true;
+  if(next && step===4 && mediaGuideData().mode==='proton' && !validMediaPort()) return;
+  if(step < 5) document.getElementById('media-guide-ready').checked=false;
+  if(next && step === 5) document.getElementById('media-guide-ready').checked=true;
   showMediaStep(step);
 });
 if(document.getElementById('media-guide')) showMediaStep(1,false);
+
+function validMediaPort() {
+  const input=document.getElementById('media-guide-port');
+  input.setCustomValidity(/^[0-9]{1,5}$/.test(input.value) && Number(input.value)>=1 && Number(input.value)<=65535 ? '' : 'Indtast Protons aktuelle port (1–65535).');
+  return input.reportValidity();
+}
+function updateMediaRoute() {
+  const data=mediaGuideData(), proton=data.mode==='proton';
+  for(const id of ['media-proton-settings','media-proton-instructions']) document.getElementById(id).hidden=!proton;
+  for(const id of ['media-router-instructions','media-router-mode']) document.getElementById(id).hidden=proton;
+  document.getElementById('media-dns-ip-help').textContent=proton?'Proton VPN-forbindelsens aktuelle offentlige IPv4-adresse':'Din offentlige WAN-IP';
+  document.getElementById('media-mode-help').textContent=proton?'FjordHub tester din eksisterende HTTPS-gateway gennem Proton på den angivne port. Gateway og certifikat skal være sat op i VPN-containeren.':'FjordHub kan installere Caddy på port 80/443, eller teste din eksisterende HTTPS-indgang.';
+  const host=document.getElementById('media-dns-name').textContent;
+  const url=host && host!=='—' ? `https://${host}${proton && data.port && data.port!=='443'?':'+data.port:''}` : '—';
+  document.getElementById('media-url-preview').textContent=url;
+  document.getElementById('media-guide-confirm').value=url;
+}
 
 function updateMediaDnsPreview() {
   const value=document.getElementById('media-guide-domain').value.trim();

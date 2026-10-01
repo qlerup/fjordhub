@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 import docker
 from services.install_state import InstallState
-from services.media_gateway import MediaGateway, NAME, LABEL, domain
+from services.media_gateway import MediaGateway, NAME, LABEL, domain, media_address
 
 
 class MediaGatewayTests(unittest.TestCase):
@@ -22,6 +22,37 @@ class MediaGatewayTests(unittest.TestCase):
         self.assertEqual(domain('https://Media.example.com/'),'media.example.com')
         for value in ('localhost','https://example.com/x','http://example.com','example.com:443','x.example.com\n{','https://u:p@example.com','127.0.0.1'):
             with self.assertRaises(ValueError): domain(value)
+
+    def test_proton_port_validation(self):
+        self.assertEqual(media_address('media.example.com', 'proton', '57369'), 'media.example.com:57369')
+        self.assertEqual(media_address('media.example.com', 'proton', 443), 'media.example.com')
+        for port in (None, '', 0, 65536, True, '80/path', '443\n', '-1', '1.5'):
+            with self.assertRaises(ValueError):
+                media_address('media.example.com', 'proton', port)
+        with self.assertRaises(ValueError):
+            media_address('media.example.com', 'managed', 57369)
+
+    def test_proton_port_is_used_for_proof_and_activation(self):
+        with patch('services.media_gateway.threading.Thread'):
+            self.gateway.start({'container_name':'fjordflix'}, 'media.example.com', 'film.example.com', 'proton', port=57369)
+        self.assertEqual(self.gateway.status()['port'], 57369)
+        self.assertFalse(self.gateway.status()['active'])
+        with patch('services.media_gateway.flix', return_value={'media_url':'https://media.example.com:50000'}) as flix, patch.object(self.gateway, 'verify') as verify:
+            self.gateway.run({'container_name':'fjordflix'}, 'media.example.com:57369', 'https://film.example.com', 'proton')
+        verify.assert_called_once()
+        self.assertEqual(verify.call_args.args[0], 'media.example.com:57369')
+        self.assertEqual(flix.call_args_list[1].args[2][0], 'media.example.com:57369')
+        self.assertEqual(flix.call_args_list[-1].args[2], ('https://media.example.com:57369', 'https://film.example.com'))
+        self.manager.client.containers.create.assert_not_called()
+        self.assertTrue(self.gateway.status()['active'])
+
+    def test_failed_port_change_keeps_old_config_and_clears_success_status(self):
+        self.gateway.save(active=True)
+        self.gateway.lock.acquire()
+        with patch('services.media_gateway.flix', return_value={'media_url':'https://media.example.com:50000'}) as flix, patch.object(self.gateway, 'verify', side_effect=RuntimeError('TLS failed')):
+            self.gateway.run({'container_name':'fjordflix'}, 'media.example.com:57369', 'https://film.example.com', 'proton')
+        self.assertNotIn('activate', [c.args[1] for c in flix.call_args_list])
+        self.assertFalse(self.gateway.status()['active'])
 
     def test_reuse_owned_gateway(self):
         client=self.manager.client

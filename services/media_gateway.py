@@ -60,6 +60,19 @@ def caddyfile(host, upstream):
 '''
 
 
+def media_address(host, mode, port=None):
+    host = domain(host)
+    if mode not in ('managed', 'existing', 'proton'):
+        raise ValueError('Ukendt gatewayvalg.')
+    if mode == 'proton':
+        if isinstance(port, bool) or not re.fullmatch(r'[0-9]{1,5}', str(port or '')) or not 1 <= int(port) <= 65535:
+            raise ValueError('Indtast den aktuelle port fra Proton VPN (1–65535).')
+        return host if int(port) == 443 else f'{host}:{int(port)}'
+    if port not in (None, '', 443, '443'):
+        raise ValueError('En særlig videoport kræver valget Proton VPN.')
+    return host
+
+
 def configure_file(container, contents):
     data = contents.encode()
     archive = io.BytesIO()
@@ -109,18 +122,17 @@ class MediaGateway:
     def save(self, **values):
         self.state._update(STATE, values)
 
-    def start(self, app_def, host, web, mode):
+    def start(self, app_def, host, web, mode, port=None):
         host = domain(host)
         web = 'https://' + domain(web)
         if host == domain(web):
             raise ValueError('Web og video skal bruge forskellige domæner.')
-        if mode not in ('managed', 'existing'):
-            raise ValueError('Ukendt gatewayvalg.')
+        address = media_address(host, mode, port)
         if not self.lock.acquire(blocking=False):
             raise ValueError('Opsætningen kører allerede.')
         self.running = True
-        self.save(running=True, waiting_install=False, phase='Kontrollerer FjordFlix…', error='', domain=host, mode=mode)
-        threading.Thread(target=self.run, args=(app_def, host, web, mode), daemon=True).start()
+        self.save(running=True, waiting_install=False, active=False, phase='Kontrollerer FjordFlix…', error='', domain=host, port=int(port) if mode == 'proton' else 443, web_url=web, mode=mode)
+        threading.Thread(target=self.run, args=(app_def, address, web, mode), daemon=True).start()
 
     def run(self, app_def, host, web, mode):
         try:
@@ -128,9 +140,9 @@ class MediaGateway:
             if not client:
                 raise RuntimeError('Ingen forbindelse til Docker.')
             app_container = client.containers.get(app_def['container_name'])
-            current = flix(app_container, 'status')
-            if current['media_url'] and current['media_url'] != 'https://' + host:
-                raise RuntimeError('En anden videoadresse er aktiv. Deaktivér den i FjordFlix før du skifter domæne.')
+            flix(app_container, 'status')
+            # Keep the current media URL until the new endpoint passes proof.
+            # Proton can allocate a different port after reconnecting.
             nonce = secrets.token_urlsafe(32)
             flix(app_container, 'probe', (host, nonce))
             if mode == 'managed':
@@ -141,7 +153,7 @@ class MediaGateway:
             flix(app_container, 'activate', ('https://' + host, web))
             self.save(phase='Direkte video er aktiveret. Genindlæs FjordFlix før afspilning.', active=True, error='')
         except Exception as exc:
-            self.save(phase='Opsætningen blev ikke gennemført.', error=str(exc)[:600])
+            self.save(phase='Opsætningen blev ikke gennemført. Den tidligere videoadresse er ikke ændret.', active=False, error=str(exc)[:600])
         finally:
             self.save(running=False)
             self.running = False
@@ -233,4 +245,4 @@ class MediaGateway:
                 except (requests.RequestException, ValueError):
                     pass
                 time.sleep(3)
-        raise RuntimeError('HTTPS-testen kunne ikke nå FjordFlix. Kontrollér DNS only, offentlig IP, port 80/443 og routerens NAT loopback. Prøv derefter igen.')
+        raise RuntimeError(f'HTTPS-testen kunne ikke nå FjordFlix på https://{host}. Kontrollér DNS only, offentlig IP, gyldigt certifikat og videresendelse på den valgte port. Ved Proton skal gatewayen lytte på VPN-porten og sende /media/* til FjordFlix.')
