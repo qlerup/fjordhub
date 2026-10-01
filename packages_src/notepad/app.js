@@ -201,6 +201,16 @@
     updateEraserCursor();
   }
   new ResizeObserver(resize).observe(stage);
+  // Moving between monitors can change DPR without changing the CSS size.
+  function watchPixelRatio() {
+    var query = window.matchMedia("(resolution: " + (window.devicePixelRatio || 1) + "dppx)");
+    query.addEventListener("change", function changed() {
+      query.removeEventListener("change", changed);
+      resize();
+      watchPixelRatio();
+    });
+  }
+  watchPixelRatio();
 
   // ── Pointer-håndtering (tegn / pan / pinch) ────────────────────────────────
   var pointers = new Map();
