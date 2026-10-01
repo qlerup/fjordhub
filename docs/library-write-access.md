@@ -18,4 +18,6 @@ Til sidst testes faktisk oprettelse, skrivning, læsning og sletning af en ny mi
 
 Dette er en adgangsguide, ikke en ændring af FjordFlix' filfunktioner. Upload bruger fortsat appens uploadmappe, og sletning af originaler fra eksterne biblioteksmapper er fortsat blokeret i filmvisningen.
 
+Afinstallation af FjordFlix i FjordHub bevarer alle filer på disse mounts, også efter skriveadgang er aktiveret. FjordHubs egen `scripts/uninstall.py` bevarer ligeledes mounts, Docker-volumes og filindhold. Ingen af disse afinstallationer sletter LXC-containeren eller lageret i Proxmox.
+
 Grundlag: [Compose sammenfletter volumes efter destination](https://docs.docker.com/reference/compose-file/merge/), og [setfacl dokumenterer fysisk traversal og rettighedsmasken](https://man7.org/linux/man-pages/man1/setfacl.1.html).

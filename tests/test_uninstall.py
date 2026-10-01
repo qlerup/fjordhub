@@ -29,6 +29,63 @@ def test_runtime_removal_preserves_all_files_and_never_removes_volumes(tmp_path)
     assert env.read_text() == 'DATA_DIR=./data\n'
 
 
+@pytest.mark.parametrize('name', ['fjordflix', 'fjordhub'])
+def test_uninstall_keeps_writable_mounts_and_permission_overrides(tmp_path, name):
+    directory = tmp_path / 'installation'
+    directory.mkdir()
+    external = tmp_path / 'media-pool'
+    external.mkdir()
+    movie = external / 'original.mp4'
+    movie.write_bytes(b'original mounted media')
+    override = directory / 'docker-compose.fjordhub-library.yml'
+    override.write_text(json.dumps({'services': {'app': {'volumes': [{
+        'type': 'bind', 'source': str(external), 'target': '/library/server/Film', 'read_only': False}]}}}))
+    env = directory / '.env'
+    env.write_text('COMPOSE_FILE=docker-compose.yml:docker-compose.fjordhub-library.yml\n')
+    original = {p: p.read_bytes() for p in (movie, override, env)}
+    config = {'name': name, 'services': {'app': {'volumes': [
+        {'type': 'bind', 'source': str(external), 'target': '/library/server/Film', 'read_only': False},
+        {'type': 'volume', 'source': 'persistent', 'target': '/data'}]}}}
+    with patch('services.uninstaller.subprocess.run', side_effect=[
+        response(json.dumps(config)), response('id ' + name), response(), response(),
+    ]) as run:
+        remove_runtime({'container_name': name}, directory)
+    for path, contents in original.items():
+        assert path.read_bytes() == contents
+    # The same storage-preserving runtime path serves both the app and hub CLI.
+    assert [call.args[0] for call in run.call_args_list][2] == [
+        'docker', 'compose', 'down', '--remove-orphans', '--timeout', '20']
+    assert all(call.kwargs['cwd'] == str(directory) for call in run.call_args_list)
+
+
+def test_hub_uninstall_cli_uses_runtime_only(tmp_path, monkeypatch, capsys):
+    from scripts import uninstall
+    monkeypatch.setattr('sys.argv', ['uninstall.py', '--directory', str(tmp_path)])
+    with patch.object(uninstall, 'remove_runtime') as remove:
+        uninstall.main()
+    remove.assert_called_once_with({'container_name': 'fjordhub'}, tmp_path, required_service='fjordhub')
+    assert 'LXC-containeren er ikke slettet' in capsys.readouterr().out
+
+
+def test_hub_uninstall_cli_does_not_claim_success_on_failure(tmp_path, monkeypatch, capsys):
+    from scripts import uninstall
+    monkeypatch.setattr('sys.argv', ['uninstall.py', '--directory', str(tmp_path)])
+    with patch.object(uninstall, 'remove_runtime', side_effect=RuntimeError('Docker failed')):
+        with pytest.raises(SystemExit) as error:
+            uninstall.main()
+    assert error.value.code == 1
+    output = capsys.readouterr()
+    assert not output.out and 'Docker failed' in output.err
+
+
+def test_hub_uninstall_rejects_another_apps_compose_directory(tmp_path):
+    with patch('services.uninstaller.subprocess.run', return_value=response(json.dumps({
+        'name': 'fjordflix-hub', 'services': {'app': {'container_name': 'fjordflix'}}}))) as run:
+        with pytest.raises(RuntimeError, match='ikke den forventede'):
+            remove_runtime({'container_name': 'fjordhub'}, tmp_path, required_service='fjordhub')
+    assert run.call_count == 1
+
+
 @pytest.mark.parametrize('existing', ['container-id other-project', 'container-id'])
 def test_foreign_or_unlabelled_container_is_not_removed(tmp_path, existing):
     with patch('services.uninstaller.subprocess.run', side_effect=[

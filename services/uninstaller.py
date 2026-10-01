@@ -7,7 +7,7 @@ from pathlib import Path
 from services.compose_env import build_compose_env
 
 
-def remove_runtime(app_def, directory):
+def remove_runtime(app_def, directory, *, required_service=None):
     if not directory or not Path(directory).is_dir():
         raise RuntimeError('Appens Compose-mappe mangler. Registreringen bevares til reparation.')
 
@@ -24,6 +24,8 @@ def remove_runtime(app_def, directory):
     if not isinstance(project, str) or not re.fullmatch(r'[a-z0-9][a-z0-9_-]*', project):
         raise RuntimeError('Appens Docker Compose-projekt kunne ikke identificeres.')
     container = app_def.get('container_name')
+    if required_service and config.get('services', {}).get(required_service, {}).get('container_name') != container:
+        raise RuntimeError('Compose-mappen tilhører ikke den forventede installation. Intet er fjernet.')
     if container:
         if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]*', container):
             raise RuntimeError('Ugyldigt containernavn i app-definitionen.')

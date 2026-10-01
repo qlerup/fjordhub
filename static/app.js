@@ -627,7 +627,7 @@ async function linkHubIntegration(card) {
 async function confirmUninstall(card) {
   const id   = card.dataset.appId;
   const name = card.querySelector('.card-name')?.textContent || id;
-  if (!confirm(`Afinstallér ${name}?\n\nDette stopper og fjerner appens containere og egne Docker-netværk.\nMediefiler, databaser, Docker-volumes og installationsmappen med indstillinger bevares.`)) return;
+  if (!confirm(`Afinstallér ${name}?\n\nDette stopper og fjerner appens containere og egne Docker-netværk.\nMediefiler, databaser, Docker-volumes og installationsmappen med indstillinger bevares.\nFiler på tilsluttede mounts bevares også — selv hvis du har givet fuld skriveadgang.`)) return;
 
   const delBtn = card.querySelector('.btn-delete');
   const btn    = card.querySelector('.btn-toggle');

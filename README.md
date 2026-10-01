@@ -362,3 +362,27 @@ email setup for password resets. They can test and save SMTP settings or choose
 **Gør det senere** and configure email later under **Indstillinger → Generelt**.
 Unfinished setup resumes on the administrator’s next login. Existing installations
 and additional user accounts are not enrolled in this guide.
+
+### Uninstall while preserving storage
+
+Uninstalling an app such as FjordFlix from the dashboard removes its Compose
+containers and project networks. It preserves bind-mounted files, Docker volumes,
+media, databases, the checkout and settings. This also applies to mounts where
+**Få fuld adgang** has enabled writing. Uninstallation never walks into those
+folders or revokes their file permissions.
+
+To remove FjordHub itself, run this from the Docker host (inside its LXC, if used),
+using the path of the existing FjordHub checkout:
+
+```bash
+python3 /opt/fjordhub/scripts/uninstall.py
+```
+
+This removes only FjordHub's Compose runtime, including its Traefik and updater
+services. Other app projects, mounted files, volumes, settings and the LXC remain.
+Apps that use FjordHub login or its proxy will need a working hub/proxy again.
+The command verifies the Compose service identity before removing anything.
+
+This is not an LXC-destruction command. Deleting a whole LXC or storage volume in
+Proxmox is a separate operation and is not covered by this storage-preserving
+uninstaller.
