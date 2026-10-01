@@ -32,6 +32,7 @@ from services.nvidia_devices import probe_gpu
 from services.media_gateway import MediaGateway, domain as media_domain
 from services.app_storage import AppStorage
 from services.storage_mount import MountRequired
+from services.media_library import MediaLibrary
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
@@ -134,6 +135,7 @@ _AUTH_EXEMPT = {
     "hub_user_sync",
     "api_hub_app_authenticate",
     "api_hub_app_config",
+    "api_fjordflix_library",
     "api_hub_app_change_password",
     "api_hub_password_reset_request",
     "api_hub_password_reset_verify",
@@ -1307,6 +1309,24 @@ def api_hub_app_config():
     if error_response:
         return error_response
     return jsonify({'ok': True, 'external_url': _install_state.get_external_url(app_id) or ''})
+
+
+@app.route('/api/hub/apps/fjordflix/library', methods=['GET'])
+def api_fjordflix_library():
+    app_id, error_response = _require_app_key({'app_id': request.args.get('app_id', '')})
+    if error_response:
+        return error_response
+    if app_id != 'fjordflix':
+        return jsonify(ok=False, error='Kun FjordFlix har adgang til denne oversigt.'), 403
+    uid = request.args.get('user_id', '')
+    allowed = any(str(u['id']) == uid and u.get('role') == 'admin' and not u.get('must_change_password')
+                  for u in _auth.list_app_users(app_id))
+    if not allowed:
+        return jsonify(ok=False, error='Kræver administratoradgang til FjordFlix.'), 403
+    try:
+        return jsonify(ok=True, **MediaLibrary(app_storage.proxmox).inventory())
+    except ValueError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
 
 
 @app.route("/api/hub/apps/authenticate", methods=["POST"])
