@@ -21,6 +21,7 @@ from services.docker_manager import DockerManager
 from services.registry import AppRegistry
 from services.remote_registry import RemoteRegistry
 from services.install_state import InstallState
+from services.uninstaller import remove_runtime
 from services.installer import Installer, generate_secret, APPS_BASE
 from services.compose_env import build_compose_env, FJORDLENS_MEMORY_DEFAULTS
 from services.update_manager import UpdateManager
@@ -2710,38 +2711,21 @@ def uninstall_app(app_id):
     if not a:
         return jsonify({"error": "Unknown app"}), 404
     install_dir = _install_state.get_install_dir(app_id)
-    errors = []
-
-    # 1. docker compose down (stop + remove containers and app images)
     compose_dir = install_dir or str(_with_compose_dir(a, app_id).get("compose_dir", ""))
-    if compose_dir and Path(compose_dir).exists():
-        try:
-            result = subprocess.run(
-                ["docker", "compose", "down", "--remove-orphans", "--rmi", "all"],
-                cwd=compose_dir,
-                env=build_compose_env(),
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            if result.returncode != 0:
-                msg = result.stderr.strip() or result.stdout.strip() or "docker compose down failed"
-                errors.append(f"compose down: {msg[:400]}")
-        except Exception as e:
-            errors.append(f"compose down: {e}")
+    try:
+        with _installer.reserve_operation(app_id):
+            if _install_state.get(app_id).get("storage_job", {}).get("running"):
+                raise RuntimeError("En dataflytning kører. Vent til den er færdig.")
+            remove_runtime(a, compose_dir)
+            # Only forget the app once Docker has confirmed that its containers
+            # are gone. Keep the checkout/.env: either can contain user data.
+            _auth.delete_hub_key(app_id)
+            _install_state.clear(app_id)
+    except (RuntimeError, OSError, ValueError, subprocess.SubprocessError) as exc:
+        message = str(exc) if isinstance(exc, RuntimeError) else "Oprydningen kunne ikke gennemføres. Data og registrering er bevaret; prøv igen."
+        return jsonify(ok=False, errors=[message]), 409
+    return jsonify(ok=True, errors=[], data_preserved=True)
 
-    # 2. Remove app directory
-    if install_dir and Path(install_dir).exists():
-        try:
-            shutil.rmtree(install_dir)
-        except Exception as e:
-            errors.append(f"rm dir: {e}")
-
-    # 3. Clear install state and hub key
-    _install_state.clear(app_id)
-    _auth.delete_hub_key(app_id)
-
-    return jsonify({"ok": not errors, "errors": errors})
 
 
 # ── Install wizard ───────────────────────────────────────────────────────────

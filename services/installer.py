@@ -4,6 +4,7 @@ import re
 import secrets
 import subprocess
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 from services.compose_env import build_compose_env
@@ -135,6 +136,18 @@ class Installer:
         self.state = state
         self._start_lock = threading.Lock()
         self._active_installs: set[str] = set()
+
+    @contextmanager
+    def reserve_operation(self, app_id):
+        with self._start_lock:
+            if app_id in self._active_installs:
+                raise RuntimeError('En installation eller afinstallation kører allerede. Vent til den er færdig.')
+            self._active_installs.add(app_id)
+        try:
+            yield
+        finally:
+            with self._start_lock:
+                self._active_installs.discard(app_id)
 
     def start_install(self, app_def: dict, env_values: dict, on_success=None, before_start=None):
         app_id = app_def["id"]
