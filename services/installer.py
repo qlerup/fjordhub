@@ -376,4 +376,11 @@ class Installer:
             if str(resolved.get("AI_DEVICE", "")).strip().lower() == "cpu":
                 resolved["AI_DEVICE"] = "auto"
 
+        # Preserve explicit, administrator-created per-folder write grants on
+        # reinstall as well as normal updates. Never broaden the parent mount.
+        if app_def['id'] == 'fjordflix':
+            from services.library_permissions import OVERRIDE, compose_files
+            if (install_dir / OVERRIDE).is_file():
+                resolved['COMPOSE_FILE'] = ':'.join(compose_files(resolved.get('COMPOSE_FILE', compose_file)))
+
         return resolved

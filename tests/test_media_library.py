@@ -75,6 +75,24 @@ class MediaLibraryTests(unittest.TestCase):
         result = MediaLibrary(self.pve).inventory()
         self.assertEqual(result['storages'][0]['paths'], ['/mnt/shared/Storage-pool1'])
 
+    def test_write_guides_only_for_existing_directory_mounts(self):
+        result = MediaLibrary(self.pve).inventory()
+        self.assertEqual(result['mounts'][0]['write_guide']['source'], '/mnt/pve/Storage-pool1/Film')
+        self.assertIn('mp0', result['mounts'][0]['write_guide']['commands'].splitlines()[0])
+        self.assertTrue(result['mounts'][0]['read_only'])
+        self.assertIsNone(result['mounts'][1]['write_guide'])
+        self.assertIsNone(result['mounts'][2]['write_guide'])
+        self.assertTrue(all(call[0] == 'get' for call in self.pve.method_calls))
+
+    def test_mergerfs_preview_rejects_arbitrary_host_paths(self):
+        library = MediaLibrary(self.pve)
+        for value in ['/etc', '/mnt', '/mnt/../etc', '/mnt/$(reboot)']:
+            with self.assertRaises(ValueError):
+                library.mergerfs_connection(value, {'mounts': []})
+        result = library.mergerfs_connection('/mnt/mediahub-storage', {'mounts': []})
+        self.assertIn('fuse.mergerfs', result['commands'])
+        self.assertIn('ro=1', result['commands'])
+
 
 class MediaLibraryEndpointTests(unittest.TestCase):
     def test_scoped_app_key_and_active_app_admin_are_required(self):

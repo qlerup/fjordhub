@@ -1374,7 +1374,11 @@ def api_fjordflix_library():
     if not allowed:
         return jsonify(ok=False, error='Kræver administratoradgang til FjordFlix.'), 403
     try:
-        return jsonify(ok=True, **MediaLibrary(app_storage.proxmox).inventory())
+        library = MediaLibrary(app_storage.proxmox)
+        inventory = library.inventory()
+        if request.args.get('pool_path'):
+            inventory['custom_pool'] = library.mergerfs_connection(request.args['pool_path'], inventory)
+        return jsonify(ok=True, **inventory)
     except ValueError as exc:
         return jsonify(ok=False, error=str(exc)), 400
 

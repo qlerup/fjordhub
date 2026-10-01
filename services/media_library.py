@@ -1,11 +1,26 @@
 """Proxmox inventory for reading existing media, never allocating or copying disks."""
 import re
+import hashlib
 import shlex
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
+from services.library_permissions import safe_path
 
 
 def beneath(path, root):
     return bool(path and root and PurePosixPath(path).is_relative_to(PurePosixPath(root)))
+
+
+def write_guide(ctid, slot, source, target):
+    """Generate commands only. The app never executes this privileged guide."""
+    if (not re.fullmatch(r'[1-9][0-9]{2,8}', str(ctid)) or not re.fullmatch(r'mp[0-9]{1,3}', slot)
+            or not safe_path(source) or not safe_path(target)):
+        return None
+    program = (Path(__file__).resolve().parents[1] / 'scripts' / 'library_write_host.py').read_text(encoding='utf-8')
+    arguments = ' '.join(shlex.quote(str(value)) for value in (ctid, slot, source, target))
+    def command(extra):
+        return "python3 - " + arguments + extra + " <<'FJORDHUB_WRITE_ACCESS'\n" + program + "\nFJORDHUB_WRITE_ACCESS"
+    return {'source': source, 'target': target, 'ctid': str(ctid),
+            'commands': command(''), 'permissions_commands': command(' --file-permissions')}
 
 
 def mount_commands(ctid, storage_id, source):
@@ -43,6 +58,31 @@ class MediaLibrary:
     def __init__(self, proxmox):
         self.proxmox = proxmox
 
+    def mergerfs_connection(self, source, inventory):
+        """Preview only: unregistered host pools cannot be discovered by PVE's storage API."""
+        source = str(source).strip().rstrip('/')
+        if source in ('/mnt', '/media', '/srv', '/var/lib/vz'):
+            raise ValueError('Angiv selve mergerfs-poolens mappe, fx /mnt/mediahub-storage.')
+        key = 'pool-' + hashlib.sha256(source.encode()).hexdigest()[:12]
+        commands = mount_commands(self.proxmox.ctid, key, source)
+        if not commands:
+            raise ValueError('Angiv en absolut sti under /mnt, /media eller /srv uden links eller specialtegn.')
+        paths = []
+        for mount in inventory['mounts']:
+            volume, target = mount['source'], mount['path']
+            if volume.startswith('/') and beneath(source, volume):
+                paths.append(str(PurePosixPath(target) / PurePosixPath(source).relative_to(volume)))
+            elif volume.startswith('/') and beneath(volume, source):
+                paths.append(target)
+        check = '''# Stop hvis poolen ikke er monteret; del aldrig en tom underliggende mappe.
+fstype=$(findmnt -rn -T "$source" -o FSTYPE)
+case "$fstype" in fuse.mergerfs|mergerfs) ;; *) echo 'mergerfs-poolen er ikke monteret på denne sti'; exit 1;; esac
+'''
+        commands = commands.replace('config=$(pct config "$ctid")', check + 'config=$(pct config "$ctid")')
+        return {'source': source, 'paths': sorted(set(paths)),
+                'commands': '' if paths else commands,
+                'reason': 'Poolen skal være monteret før FjordHubs LXC starter. FUSE- og filrettigheder skal tillade læseadgang fra containeren.'}
+
     def inventory(self):
         pve = self.proxmox
         errors = []
@@ -65,7 +105,8 @@ class MediaLibrary:
             options = dict(item.split('=', 1) for item in options if '=' in item)
             target = options.get('mp', '')
             if target.startswith('/') and '..' not in PurePosixPath(target).parts:
-                mounts.append({'source': volume, 'path': target})
+                mounts.append({'source': volume, 'path': target, 'read_only': options.get('ro') == '1',
+                               'write_guide': write_guide(pve.ctid, key, volume, target)})
 
         def paths_for(source='', storage_id=''):
             result = []
