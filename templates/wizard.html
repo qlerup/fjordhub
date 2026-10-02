@@ -360,6 +360,9 @@ WantedBy=multi-user.target
         <p>Kopiér kommandoen og kør den på PVE-værten. Den installerer manglende OpenCL, hvis en pakke matcher din NVIDIA-driver, og giver LXC’en adgang til bibliotekerne. Genstart derefter LXC’en; alle apps i den vil kortvarigt blive afbrudt.</p>
         <label>LXC-ID <input id="gpu-video-vmid" placeholder="1000" oninput="renderGpuVideoCommands()"></label>
         <div class="nfs-code-section"><div class="nfs-section-header"><span>PVE-vært · videotillæg</span><button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér videotillæg</button></div><div class="nfs-code-block" id="gpu-video-code" hidden style="display:none;"></div></div>
+        <div class="nfs-code-section"><div class="nfs-section-header"><span>2 · Genstart LXC på PVE-værten</span><button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér genstart</button></div><div class="nfs-code-block" id="gpu-video-restart-block" hidden style="display:none;"></div></div>
+        <div class="nfs-code-section"><div class="nfs-section-header"><span>3 · Når LXC’en er startet igen · kør på PVE-værten</span><button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér efter genstart</button></div><div class="nfs-code-block" id="gpu-video-after-block" hidden style="display:none;"></div></div>
+        <p class="field-hint">Kør derefter Docker GPU-testen igen i FjordHub.</p>
       </div>
       <div id="gpu-host-instructions">
       <h4>Fuld GPU-opsætning fra bunden</h4>
@@ -378,11 +381,12 @@ WantedBy=multi-user.target
         </div>
         <div class="nfs-code-section" style="margin-top:10px;">
           <div class="nfs-section-header">
-            <span class="nfs-block-location">Genstart LXC (kør til sidst)</span>
-            <button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button>
+            <span class="nfs-block-location">2 · Genstart LXC på PVE-værten</span>
+            <button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér genstart</button>
           </div>
           <div class="nfs-code-block" id="gpu-restart-block" hidden style="display:none;"></div>
         </div>
+        <div class="nfs-code-section"><div class="nfs-section-header"><span>3 · Når LXC’en er startet igen · kør på PVE-værten</span><button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér efter genstart</button></div><div class="nfs-code-block" id="gpu-after-block" hidden style="display:none;"></div></div>
       </div>
       </div>
       <div id="gpu-runtime-instructions">
@@ -806,6 +810,16 @@ function showFullGpuSetup() {
   renderGpuCommands(); renderGpuVideoCommands();
 }
 
+function renderGpuFollowup(prefix, vmid) {
+  const valid = /^\d+$/.test(vmid);
+  for (const [step, command] of Object.entries({restart: `pct reboot ${vmid}`, after: `pct exec ${vmid} -- ldconfig`})) {
+    const block = document.getElementById(`${prefix}-${step}-block`);
+    if (!block) continue;
+    block.textContent = valid ? command : '';
+    block.closest('.nfs-code-section').querySelector('button').disabled = !valid;
+  }
+}
+
 function renderGpuCommands() {
   const vmid = document.getElementById('gpu-vmid')?.value.trim() || RUNTIME_INFO.vmid || '<VMID>';
   const syncScript = (document.getElementById('gpu-sync-script')?.textContent || '').trim();
@@ -856,8 +870,7 @@ function renderGpuCommands() {
   const block = document.getElementById('gpu-code-block');
   if (block) block.textContent = lines.join('\n');
 
-  const restartBlock = document.getElementById('gpu-restart-block');
-  if (restartBlock) restartBlock.textContent = `pct reboot ${vmid} || (pct stop ${vmid} && pct start ${vmid})`;
+  renderGpuFollowup('gpu', vmid);
 
 }
 
@@ -865,6 +878,7 @@ function renderGpuVideoCommands() {
   const input = document.getElementById('gpu-video-vmid');
   if(!input.value && RUNTIME_INFO.vmid) input.value = RUNTIME_INFO.vmid;
   const ctid = input.value.trim();
+  renderGpuFollowup('gpu-video', ctid);
   const block = document.getElementById('gpu-video-code');
   if(!/^\d+$/.test(ctid)) { block.textContent = 'Indtast LXC-ID ovenfor først.'; return; }
   const script = document.getElementById('gpu-sync-script').textContent.trim();
