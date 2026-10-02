@@ -81,7 +81,18 @@ class GpuReuseTests(unittest.TestCase):
              patch('services.nvidia_devices.docker_desktop_gpu', return_value=True), \
              patch('services.nvidia_devices.subprocess.run', return_value=subprocess.CompletedProcess([], 0, 'ready', '')) as run:
             self.assertTrue(probe_gpu(require_video=True)['ok'])
-        self.assertEqual(run.call_count, 2)
+        self.assertEqual(run.call_count, 3)
+
+    def test_missing_opencl_warns_without_disabling_working_nvenc(self):
+        with patch('services.nvidia_devices.discover_nvidia_devices', return_value=['/dev/nvidia0']), \
+             patch('services.nvidia_devices.docker_desktop_gpu', return_value=False), \
+             patch('services.nvidia_devices.subprocess.run', side_effect=[
+                 subprocess.CompletedProcess([], 0, 'GPU ready', ''),
+                 subprocess.CompletedProcess([], 0, 'Video ready', ''),
+                 subprocess.CompletedProcess([], 1, '', '')]):
+            result = probe_gpu(require_video=True)
+        self.assertTrue(result['ok'])
+        self.assertIn('OpenCL', result['hdr_warning'])
 
     def test_both_installers_stop_before_clone_when_gpu_unavailable(self):
         for app_id in ('fjordflix', 'fjordlens'):

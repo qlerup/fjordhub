@@ -36,6 +36,7 @@ def probe_gpu(require_video: bool = False) -> dict:
         runtime_command = list(command)
         command.extend(['nvidia/cuda:12.4.1-base-ubuntu22.04', 'nvidia-smi'])
         result = subprocess.run(command, capture_output=True, text=True, timeout=180)
+        hdr_warning = ''
         output = '\n'.join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
         if result.returncode == 0 and require_video:
             check = subprocess.run(runtime_command + [
@@ -47,7 +48,15 @@ def probe_gpu(require_video: bool = False) -> dict:
                 return {"ok": False, "stage": "video", "output": output,
                         "error": "GPU-adgangen virker, men NVIDIA-videobibliotekerne mangler i Docker. Tilføj videoadgang på PVE-hosten, genstart LXC'en, og test igen. " + check.stderr[-800:]}
             output += '\nNVIDIA-videobiblioteker er tilgængelige. Den faktiske NVENC-encoder testes ved installation.'
+            opencl = subprocess.run(runtime_command + [
+                '-e', 'NVIDIA_DRIVER_CAPABILITIES=compute,utility,video',
+                'nvidia/cuda:12.4.1-base-ubuntu22.04', 'sh', '-c',
+                'ldconfig -p | grep -F libnvidia-opencl.so.1'
+            ], capture_output=True, text=True, timeout=180)
+            if opencl.returncode:
+                hdr_warning = 'NVIDIA OpenCL mangler i Docker. HDR-behandling kan derfor bruge CPU. Kør videotillægget på PVE-værten og genstart LXC’en.'
         return {"ok": result.returncode == 0, "stage": "ready" if result.returncode == 0 else "runtime",
+                "hdr_warning": hdr_warning,
                 "output": output[-4000:], "error": "" if result.returncode == 0 else (output[-1200:] or 'GPU-test fejlede')}
     except (OSError, subprocess.SubprocessError) as exc:
         return {"ok": False, "stage": "test_error", "error": str(exc) or 'GPU-test timeout'}

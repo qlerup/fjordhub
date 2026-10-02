@@ -232,7 +232,7 @@ find_lib() {
   soname="$1"
   found="$(ldconfig -p 2>/dev/null | grep -m1 -F "$soname" | sed -E 's/.* => //')"
   [ -n "$found" ] && { printf '%s' "$found"; return 0; }
-  base="${soname%.so.1}"
+  base="${soname%%.so*}"
   find /usr/lib /lib -type f \( -name "$soname" -o -name "${base}.so.[0-9]*" \) 2>/dev/null | sort -Vr | head -n1
 }
 
@@ -302,6 +302,12 @@ while IFS= read -r ctid || [ -n "$ctid" ]; do
     for so in libnvidia-encode.so.1 libnvcuvid.so.1; do
       add_file_mount "$(find_lib "$so")"
     done
+    # HDR tone mapping uses OpenCL in addition to CUDA/NVENC.
+    # Compiler SONAME varies with the host driver generation.
+    for so in libnvidia-opencl.so.1 libnvidia-nvvm.so.4 libnvidia-nvvm.so.3; do
+      add_file_mount "$(find_lib "$so")"
+    done
+    [ -n "$(find_lib libnvidia-opencl.so.1)" ] || echo "gpu-sync: OpenCL mangler paa PVE-hosten; HDR vil bruge CPU"
   fi
   nvsmi="$(command -v nvidia-smi 2>/dev/null || true)"
   [ -n "$nvsmi" ] && add_file_mount "$nvsmi"
@@ -342,7 +348,7 @@ WantedBy=multi-user.target
       <div id="gpu-setup-instructions" hidden>
       <div id="gpu-video-instructions" hidden>
         <h4>Tilføj videoadgang til den eksisterende GPU-opsætning</h4>
-        <p>GPU’en virker, men FjordFlix mangler videobiblioteker. Kør tillægget på PVE-værten. Det tilføjer kun videomounts og installerer ingen drivere. Genstart derefter LXC’en; alle apps i den vil kortvarigt blive afbrudt.</p>
+        <p>Tillægget giver adgang til NVIDIA-video og OpenCL til HDR-behandling. Kør det på PVE-værten. Det tilføjer biblioteksmounts og installerer ingen drivere. Genstart derefter LXC’en; alle apps i den vil kortvarigt blive afbrudt.</p>
         <label>LXC-ID <input id="gpu-video-vmid" placeholder="1000" oninput="renderGpuVideoCommands()"></label>
         <div class="nfs-code-section"><div class="nfs-section-header"><span>PVE-vært · videotillæg</span><button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button></div><div class="nfs-code-block" id="gpu-video-code"></div></div>
       </div>
@@ -837,6 +843,14 @@ function renderGpuVideoCommands() {
     '  p="$(ldconfig -p | grep -m1 -F "$so" | sed "s/.* => //")"',
     '  [ -n "$p" ] && [ -f "$p" ] || { echo "Mangler $so paa PVE-hosten"; exit 1; }',
     '  libs="$libs $p $(readlink -f "$p")"', 'done',
+    '# HDR: brug hostens OpenCL og compiler, hvis de er installeret.',
+    'for so in libnvidia-opencl.so.1 libnvidia-nvvm.so.4 libnvidia-nvvm.so.3 libnvidia-compiler.so.1; do',
+    '  p="$(ldconfig -p | grep -m1 -F "$so" | sed "s/.* => //")"',
+    '  if [ -n "$p" ] && [ -f "$p" ]; then',
+    '    libs="$libs $p $(readlink -f "$p")"',
+    '  elif [ "$so" = libnvidia-opencl.so.1 ]; then',
+    '    echo "OpenCL mangler paa PVE-hosten. HDR vil fortsat bruge CPU."',
+    '  fi', 'done',
     'cp "$conf" "$conf.bak.video.$(date +%Y%m%d%H%M%S)"',
     'for p in $libs; do',
     '  line="lxc.mount.entry: $p ${p#/} none ro,bind,optional,create=file"',
@@ -984,7 +998,15 @@ async function runGpuPreflight() {
       };
     }
     if (data.ok) {
+      if (data.hdr_warning) {
+        if (instructions) instructions.hidden = false;
+        document.getElementById('gpu-host-instructions').hidden = true;
+        document.getElementById('gpu-runtime-instructions').hidden = true;
+        document.getElementById('gpu-video-instructions').hidden = false;
+        renderGpuVideoCommands();
+      }
       if (resultEl) resultEl.innerHTML = `<span style="color:#22c55e">GPU er allerede klar. Appen kan bruge den eksisterende opsætning.</span>\n${_escapeHtml(data.output || '')}`;
+      if (resultEl && data.hdr_warning) resultEl.innerHTML += `\n<span style="color:#e5b567">${_escapeHtml(data.hdr_warning)}</span>`;
       if (useBtn) {
         useBtn.disabled = false;
         useBtn.style.opacity = '1';
