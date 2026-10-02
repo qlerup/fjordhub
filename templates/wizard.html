@@ -353,6 +353,7 @@ WantedBy=multi-user.target
       <p class="nfs-modal-desc">Vi tester først den fælles GPU-adgang. En fungerende opsætning genbruges af appen uden at geninstallere drivere eller genstarte Docker.</p>
       <button type="button" class="btn btn-toggle" onclick="showFullGpuSetup()">Vis hele GPU-opsætningen</button>
       <div id="gpu-setup-instructions" hidden>
+      <p class="field-hint">PVE-kommandoerne er to alternative veje: Brug videotillægget, når GPU'en allerede virker. Brug den fulde opsætning, når GPU-adgangen skal oprettes fra bunden. Kør ikke begge som to påkrævede trin. Genstart LXC'en efter den valgte ændring.</p>
       <div id="gpu-video-instructions" hidden>
         <h4>Tilføj videoadgang til den eksisterende GPU-opsætning</h4>
         <p>Tillægget giver adgang til NVIDIA-video og OpenCL til HDR-behandling. Kør det på PVE-værten. Det tilføjer biblioteksmounts og installerer ingen drivere. Genstart derefter LXC’en; alle apps i den vil kortvarigt blive afbrudt.</p>
@@ -360,6 +361,7 @@ WantedBy=multi-user.target
         <div class="nfs-code-section"><div class="nfs-section-header"><span>PVE-vært · videotillæg</span><button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button></div><div class="nfs-code-block" id="gpu-video-code"></div></div>
       </div>
       <div id="gpu-host-instructions">
+      <h4>Fuld GPU-opsætning fra bunden</h4>
       <div class="nfs-input-row">
         <label>Proxmox LXC VMID</label>
         <input id="gpu-vmid" type="text" placeholder="100" oninput="renderGpuCommands()">
@@ -632,6 +634,9 @@ function appendLog(line) {
 // GPU helper
 const GPU_HELPER_OPEN_KEY = 'fjordhub_gpu_helper_open';
 const GPU_SETUP_POLL_KEY = 'fjordhub_gpu_setup_poll';
+const GPU_FULL_SETUP_KEY = 'fjordhub_gpu_full_setup_' + APP_ID;
+let gpuFullSetup = false;
+try { gpuFullSetup = localStorage.getItem(GPU_FULL_SETUP_KEY) === '1'; } catch (_) {}
 
 function rememberGpuHelper(open) {
   try {
@@ -697,8 +702,12 @@ async function waitForGpuTestReady() {
     btn.disabled = false;
     btn.textContent = 'Kør Docker GPU-test';
   }
-  if (resultEl) resultEl.innerHTML = '<span style="color:#22c55e">✓ Alt er oppe igen — du kan køre GPU-testen nu.</span>';
   gpuTestWaitActive = false;
+  if (okStreak < 2) {
+    if (resultEl) resultEl.textContent = 'FjordHub svarede ikke stabilt efter genstarten. Kontrollér Docker, og kør GPU-testen igen.';
+    return;
+  }
+  if (resultEl) resultEl.innerHTML = '<span style="color:#22c55e">✓ Alt er oppe igen — du kan køre GPU-testen nu.</span>';
   await runGpuPreflight();
 }
 
@@ -718,10 +727,11 @@ function renderGpuSetupState(state) {
     return false;
   }
   if (state.ok) {
-    setGpuAutoStatus(`<span style="color:#22c55e">✓ GPU-forudsætninger er sat op automatisk.</span>\n${output}`);
+    setGpuAutoStatus(`<span style="color:#22c55e">${state.restart_scheduled ? 'GPU-runtime er sat op. Docker genstarter.' : 'GPU-runtime er klar. Ingen Docker-genstart er nødvendig. OpenCL/HDR kontrolleres i GPU-testen.'}</span>\n${output}`);
     if (gpuSetupSeenRunning) {
       gpuSetupSeenRunning = false;
-      waitForGpuTestReady();
+      if (state.restart_scheduled) waitForGpuTestReady();
+      else runGpuPreflight();
     }
     return false;
   }
@@ -777,6 +787,7 @@ function openGpuHelper(options = {}) {
     useBtn.style.cursor = 'not-allowed';
   }
   renderGpuCommands();
+  if (gpuFullSetup) showFullGpuSetup();
   if (remember) rememberGpuHelper(true);
   document.getElementById('gpu-modal').style.display = 'flex';
   if (resetResult) runGpuPreflight();
@@ -788,6 +799,8 @@ function closeGpuHelper() {
 }
 
 function showFullGpuSetup() {
+  gpuFullSetup = true;
+  try { localStorage.setItem(GPU_FULL_SETUP_KEY, '1'); } catch (_) {}
   for (const id of ['gpu-setup-instructions','gpu-host-instructions','gpu-video-instructions','gpu-runtime-instructions']) document.getElementById(id).hidden = false;
   renderGpuCommands(); renderGpuVideoCommands();
 }
@@ -902,27 +915,7 @@ async function autoGpuContainerSetup() {
   }
   setStatus('<span style="color:var(--text-muted)">Starter automatisk opsætning i containeren...</span>');
 
-  const renderState = (state) => {
-    const output = _escapeHtml(state.output || '');
-    if (state.running) {
-      gpuSetupSeenRunning = true;
-      setStatus(`<span style="color:var(--text-muted)">⏳ Kører... du kan følge output live herunder.</span>\n${output}`);
-      return;
-    }
-    if ((state.ok === null || typeof state.ok === 'undefined') && !state.error) {
-      setStatus(`<span style="color:var(--text-muted)">⏳ Afventer status fra backend...</span>\n${output}`);
-      return;
-    }
-    if (state.ok) {
-      setStatus(`<span style="color:#22c55e">✓ GPU-forudsætninger er sat op automatisk. Test-knappen aktiveres, når Docker er genstartet.</span>\n${output}`);
-      if (gpuSetupSeenRunning) {
-        gpuSetupSeenRunning = false;
-        waitForGpuTestReady();
-      }
-      return;
-    }
-    setStatus(`<span style="color:#ef4444">✗ Automatisk opsætning fejlede.</span>\n${_escapeHtml(state.error || '')}\n${output}`);
-  };
+  const renderState = renderGpuSetupState;
 
   const poll = async () => {
     try {
@@ -987,7 +980,7 @@ async function runGpuPreflight() {
   if (gpuPreflightRunning) return;
   gpuPreflightRunning = true;
   const instructions = document.getElementById('gpu-setup-instructions');
-  if (instructions) instructions.hidden = true;
+  if (instructions && !gpuFullSetup) instructions.hidden = true;
   const btn = document.getElementById('gpu-test-btn');
   const resultEl = document.getElementById('gpu-test-result');
   const useBtn = document.getElementById('gpu-use-btn');
@@ -1014,14 +1007,14 @@ async function runGpuPreflight() {
       };
     }
     if (data.ok) {
-      if (data.hdr_warning) {
+      if (data.hdr_warning && !gpuFullSetup) {
         if (instructions) instructions.hidden = false;
         document.getElementById('gpu-host-instructions').hidden = true;
         document.getElementById('gpu-runtime-instructions').hidden = true;
         document.getElementById('gpu-video-instructions').hidden = false;
         renderGpuVideoCommands();
       }
-      if (resultEl) resultEl.innerHTML = `<span style="color:#22c55e">GPU er allerede klar. Appen kan bruge den eksisterende opsætning.</span>\n${_escapeHtml(data.output || '')}`;
+      if (resultEl) resultEl.innerHTML = `<span style="color:${data.hdr_warning ? '#e5b567' : '#22c55e'}">${data.hdr_warning ? 'NVIDIA-video virker, men OpenCL/HDR-adgangen er ikke klar.' : 'GPU-testen bestod. HDR-afspilning kontrolleres af appen, når filmen starter.'}</span>\n${_escapeHtml(data.output || '')}`;
       if (resultEl && data.hdr_warning) resultEl.innerHTML += `\n<span style="color:#e5b567">${_escapeHtml(data.hdr_warning)}</span>`;
       if (useBtn) {
         useBtn.disabled = false;
@@ -1046,6 +1039,7 @@ async function runGpuPreflight() {
     if (resultEl) resultEl.innerHTML = `<span style="color:#ef4444">Netvaerksfejl: ${_escapeHtml(e.message)}</span>`;
   } finally {
     gpuPreflightRunning = false;
+    if (gpuFullSetup) showFullGpuSetup();
     if (btn) {
       btn.disabled = false;
       btn.textContent = 'Kør Docker GPU-test';

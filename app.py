@@ -2121,6 +2121,7 @@ def _extract_nvidia_driver_version(output: str) -> str:
 
 _gpu_setup_lock = threading.Lock()
 _gpu_setup_state = {
+    "restart_scheduled": False,
     "running": False,
     "ok": None,
     "error": "",
@@ -2163,6 +2164,7 @@ def _gpu_setup_reset_state() -> None:
         _gpu_setup_state.update(
             {
                 "running": True,
+                "restart_scheduled": False,
                 "ok": None,
                 "error": "",
                 "nvidia_major": "",
@@ -2191,9 +2193,10 @@ def _gpu_setup_snapshot() -> dict:
     return state
 
 
-def _gpu_setup_finish(ok: bool, error: str = "", nvidia_major: str = "") -> None:
+def _gpu_setup_finish(ok: bool, error: str = "", nvidia_major: str = "", *, restart_scheduled=False) -> None:
     with _gpu_setup_lock:
         _gpu_setup_state["running"] = False
+        _gpu_setup_state["restart_scheduled"] = restart_scheduled
         _gpu_setup_state["ok"] = bool(ok)
         _gpu_setup_state["error"] = str(error or "")
         _gpu_setup_state["nvidia_major"] = str(nvidia_major or "")
@@ -2505,7 +2508,7 @@ def _gpu_setup_worker() -> None:
 
         _gpu_setup_append("[info] Docker genstarter om få sekunder. Vent på at FjordHub kommer tilbage, og kør derefter Docker GPU-testen.")
 
-        _gpu_setup_finish(True, "", major)
+        _gpu_setup_finish(True, "", major, restart_scheduled=True)
     except Exception as exc:
         _gpu_setup_append(str(exc))
         _gpu_setup_finish(False, "Uventet fejl under GPU-opsætning.", major)
