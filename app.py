@@ -1920,6 +1920,7 @@ def api_app_settings(app_id):
             "app_name": app_def.get("name", app_id),
             "external_url": saved_url,
             "fallback_url": _fallback_app_url(app_def),
+            "gpu_setup_url": url_for('app_gpu_setup', app_id=app_id) if app_def.get('gpu_service') or app_def.get('gpu_video') else None,
         })
 
     data = request.get_json(silent=True) or {}
@@ -2850,6 +2851,17 @@ def uninstall_app(app_id):
 
 
 # ── Install wizard ───────────────────────────────────────────────────────────
+
+@app.route('/apps/<app_id>/gpu')
+@login_required
+def app_gpu_setup(app_id):
+    if not current_user.is_admin:
+        return 'Kun administratorer kan køre GPU-opsætningen.', 403
+    definition = _get_app(app_id)
+    if not definition or not (definition.get('gpu_service') or definition.get('gpu_video')):
+        return 'Appen har ingen GPU-opsætning.', 404
+    return render_template('wizard.html', app=definition, pregenerated={}, steps=[],
+                           nfs_runtime=_nfs_runtime_info(), gpu_only=True)
 
 @app.route("/apps/<app_id>/wizard")
 def install_wizard(app_id):

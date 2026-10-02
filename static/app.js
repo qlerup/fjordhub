@@ -525,6 +525,7 @@ async function openAppSettings(card) {
   const appId = card?.dataset.appId;
   if (!appId) return;
   _settingsAppId = appId;
+  document.getElementById('app-gpu-section').hidden = true;
   loadAppStorage(appId);
   const guide = document.getElementById('media-guide');
   if (guide) guide.hidden = appId !== 'fjordflix';
@@ -542,6 +543,11 @@ async function openAppSettings(card) {
     const res = await fetch(`/api/apps/${encodeURIComponent(appId)}/settings`);
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || 'Kunne ikke hente indstillinger');
+    if (_settingsAppId !== appId) return;
+    if (data.gpu_setup_url) {
+      document.getElementById('app-gpu-link').href = data.gpu_setup_url;
+      document.getElementById('app-gpu-section').hidden = false;
+    }
     if (input) { input.value = data.external_url || ''; input.focus(); }
     if (appId === 'fjordflix') {
       document.getElementById('media-guide-web').value = data.external_url || '';

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Installer {{ app.name }} — FjordHub{% endblock %}
+{% block title %}{{ 'GPU-opsætning' if gpu_only else 'Installer' }} {{ app.name }} — FjordHub{% endblock %}
 
 {% block content %}
 <div class="wizard-page">
@@ -7,7 +7,7 @@
   {# ── Breadcrumb ── #}
   <div class="wizard-breadcrumb">
     <a href="{{ url_for('dashboard') }}">← Dashboard</a>
-    <span>/ Installer {{ app.name }}</span>
+    <span>/ {{ 'GPU-opsætning ·' if gpu_only else 'Installer' }} {{ app.name }}</span>
   </div>
 
   {# ── Header ── #}
@@ -24,12 +24,17 @@
       {% endif %}
     </div>
     <div>
-      <h1>Installer {{ app.name }}</h1>
+      <h1>{{ 'GPU-opsætning ·' if gpu_only else 'Installer' }} {{ app.name }}</h1>
       <p class="wizard-desc">{{ app.description }}</p>
     </div>
   </div>
 
   {# ── Step indicator ── #}
+  {% if gpu_only %}
+  <p>Her kan du køre GPU-opsætningen igen for din installerede app. Proxmox-kommandoerne køres på værten; en LXC-genstart afbryder kort alle apps i den.</p>
+  <button type="button" class="btn btn-open" onclick="openGpuHelper()">Åbn GPU-opsætning</button>
+  <a class="btn btn-toggle" href="{{ url_for('dashboard') }}">Tilbage til apps</a>
+  {% else %}
   <div class="wizard-step-indicator" id="step-indicator">
     <div class="step-pill active" data-step="0">Intro</div>
     {% for step in steps %}
@@ -211,6 +216,7 @@
   </div>
 
   {# ── Navigation ── #}
+  {% endif %}
   <script type="text/plain" id="gpu-sync-script">
 #!/bin/sh
 # FjordHub GPU sync - holder LXC GPU passthrough i sync med hostens NVIDIA-driver.
@@ -345,6 +351,7 @@ WantedBy=multi-user.target
     <div class="nfs-modal">
       <h3>GPU passthrough hjælper — {{ app.name }}</h3>
       <p class="nfs-modal-desc">Vi tester først den fælles GPU-adgang. En fungerende opsætning genbruges af appen uden at geninstallere drivere eller genstarte Docker.</p>
+      <button type="button" class="btn btn-toggle" onclick="showFullGpuSetup()">Vis hele GPU-opsætningen</button>
       <div id="gpu-setup-instructions" hidden>
       <div id="gpu-video-instructions" hidden>
         <h4>Tilføj videoadgang til den eksisterende GPU-opsætning</h4>
@@ -396,13 +403,16 @@ WantedBy=multi-user.target
         <div id="gpu-test-result" style="font-size:.8rem;margin-top:8px;white-space:pre-wrap;"></div>
       </div>
       <div class="nfs-modal-actions">
+        {% if not gpu_only %}
         <button type="button" class="btn btn-open" id="gpu-use-btn" onclick="useGpuSettings()" disabled style="opacity:.35;cursor:not-allowed;">Brug GPU til installation</button>
         <button type="button" class="btn btn-toggle" onclick="useCpuSettings()">Brug CPU</button>
+        {% endif %}
         <button type="button" class="btn btn-toggle" onclick="closeGpuHelper()">Luk</button>
       </div>
     </div>
   </div>
 
+  {% if not gpu_only %}
   <div class="wizard-nav" id="wizard-nav">
     <button type="button" class="btn btn-toggle" id="btn-back" onclick="wizardBack()" style="display:none;">← Tilbage</button>
     <div style="flex:1"></div>
@@ -412,6 +422,7 @@ WantedBy=multi-user.target
     </button>
   </div>
 
+  {% endif %}
 </div>{# /.wizard-page #}
 {% endblock %}
 
@@ -616,7 +627,7 @@ function appendLog(line) {
 }
 
 // Init
-showPanel(0);
+{% if not gpu_only %}showPanel(0);{% endif %}
 
 // GPU helper
 const GPU_HELPER_OPEN_KEY = 'fjordhub_gpu_helper_open';
@@ -774,6 +785,11 @@ function openGpuHelper(options = {}) {
 function closeGpuHelper() {
   rememberGpuHelper(false);
   document.getElementById('gpu-modal').style.display = 'none';
+}
+
+function showFullGpuSetup() {
+  for (const id of ['gpu-setup-instructions','gpu-host-instructions','gpu-video-instructions','gpu-runtime-instructions']) document.getElementById(id).hidden = false;
+  renderGpuCommands(); renderGpuVideoCommands();
 }
 
 function renderGpuCommands() {
@@ -1049,7 +1065,11 @@ function useCpuSettings() {
   closeGpuHelper();
 }
 
+{% if gpu_only %}
+setTimeout(() => { resumeGpuHelperAfterReload(); if (document.getElementById('gpu-modal').style.display !== 'flex') openGpuHelper(); }, 0);
+{% else %}
 setTimeout(resumeGpuHelperAfterReload, 0);
+{% endif %}
 
 // ── NFS helper ───────────────────────────────────────────────────────────────
 
