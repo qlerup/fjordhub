@@ -358,7 +358,7 @@ WantedBy=multi-user.target
         <h4>Tilføj videoadgang til den eksisterende GPU-opsætning</h4>
         <p>Tillægget giver adgang til NVIDIA-video og OpenCL til HDR-behandling. Kør det på PVE-værten. Det tilføjer biblioteksmounts og installerer ingen drivere. Genstart derefter LXC’en; alle apps i den vil kortvarigt blive afbrudt.</p>
         <label>LXC-ID <input id="gpu-video-vmid" placeholder="1000" oninput="renderGpuVideoCommands()"></label>
-        <div class="nfs-code-section"><div class="nfs-section-header"><span>PVE-vært · videotillæg</span><button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button></div><div class="nfs-code-block" id="gpu-video-code"></div></div>
+        <div class="nfs-code-section"><div class="nfs-section-header"><span>PVE-vært · videotillæg</span><button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér videotillæg</button></div><div class="nfs-code-block" id="gpu-video-code" hidden style="display:none;"></div></div>
       </div>
       <div id="gpu-host-instructions">
       <h4>Fuld GPU-opsætning fra bunden</h4>
@@ -371,16 +371,16 @@ WantedBy=multi-user.target
         <div class="nfs-code-section">
           <div class="nfs-section-header">
             <span class="nfs-block-location">PVE-host</span>
-            <button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button>
+            <button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér GPU-opsætning</button>
           </div>
-          <div class="nfs-code-block" id="gpu-code-block"></div>
+          <div class="nfs-code-block" id="gpu-code-block" hidden style="display:none;"></div>
         </div>
         <div class="nfs-code-section" style="margin-top:10px;">
           <div class="nfs-section-header">
             <span class="nfs-block-location">Genstart LXC (kør til sidst)</span>
             <button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button>
           </div>
-          <div class="nfs-code-block" id="gpu-restart-block"></div>
+          <div class="nfs-code-block" id="gpu-restart-block" hidden style="display:none;"></div>
         </div>
       </div>
       </div>
@@ -1492,7 +1492,7 @@ function copyNfsCommands() {
 
 function copySectionCommands(btn) {
   const codeBlock = btn.closest('.nfs-code-section').querySelector('.nfs-code-block');
-  _copyText(codeBlock.innerText, btn);
+  _copyText(codeBlock.textContent, btn);
 }
 
 function _copyFallback(text, onSuccess) {
