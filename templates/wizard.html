@@ -332,6 +332,7 @@ done < "$CT_LIST_FILE"
 
 exit 0
   </script>
+  <script type="text/plain" id="gpu-opencl-script">{% include 'partials/gpu_opencl.sh' %}</script>
   <script type="text/plain" id="gpu-sync-unit">
 [Unit]
 Description=FjordHub GPU sync (NVIDIA passthrough til LXC containere)
@@ -356,7 +357,7 @@ WantedBy=multi-user.target
       <p class="field-hint">PVE-kommandoerne er to alternative veje: Brug videotillægget, når GPU'en allerede virker. Brug den fulde opsætning, når GPU-adgangen skal oprettes fra bunden. Kør ikke begge som to påkrævede trin. Genstart LXC'en efter den valgte ændring.</p>
       <div id="gpu-video-instructions" hidden>
         <h4>Tilføj videoadgang til den eksisterende GPU-opsætning</h4>
-        <p>Tillægget giver adgang til NVIDIA-video og OpenCL til HDR-behandling. Kør det på PVE-værten. Det tilføjer biblioteksmounts og installerer ingen drivere. Genstart derefter LXC’en; alle apps i den vil kortvarigt blive afbrudt.</p>
+        <p>Kopiér kommandoen og kør den på PVE-værten. Den installerer manglende OpenCL, hvis en pakke matcher din NVIDIA-driver, og giver LXC’en adgang til bibliotekerne. Genstart derefter LXC’en; alle apps i den vil kortvarigt blive afbrudt.</p>
         <label>LXC-ID <input id="gpu-video-vmid" placeholder="1000" oninput="renderGpuVideoCommands()"></label>
         <div class="nfs-code-section"><div class="nfs-section-header"><span>PVE-vært · videotillæg</span><button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér videotillæg</button></div><div class="nfs-code-block" id="gpu-video-code" hidden style="display:none;"></div></div>
       </div>
@@ -810,6 +811,7 @@ function renderGpuCommands() {
   const syncScript = (document.getElementById('gpu-sync-script')?.textContent || '').trim();
   const syncUnit = (document.getElementById('gpu-sync-unit')?.textContent || '').trim();
   const lines = [
+    '(', 'set -e',
     '# Koer paa PVE-hosten, ikke inde i FjordHub-containeren.',
     '# Engangs-opsaetning: installerer en gpu-sync service, der automatisk holder GPU',
     '# passthrough opdateret ved hver boot - ogsaa efter driveropdateringer paa hosten.',
@@ -826,6 +828,7 @@ function renderGpuCommands() {
     'if [ -n "$missing" ]; then echo "FEJL: device-filer mangler paa hosten:$missing"; echo "Uden dem bliver GPU-mounts ikke oprettet. Koer nvidia-modprobe -u -c0 (eller genstart hosten) og proev igen."; exit 1; fi',
     'if grep -q "^unprivileged: 1" "$conf"; then echo "ADVARSEL: CT ${ctid} er unprivileged - GPU passthrough kraever normalt en privileged container, saa opsaetningen vil sandsynligvis fejle."; fi',
     'echo "Preflight OK: driver $(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1)"',
+    ...({{ app.gpu_video | default(false) | tojson }} ? [document.getElementById('gpu-opencl-script').textContent.trim()] : []),
     '',
     'cp "$conf" "$conf.bak.$(date +%Y%m%d%H%M%S)"',
     'mkdir -p /etc/fjordhub',
@@ -848,6 +851,7 @@ function renderGpuCommands() {
     '',
     '# Koer derefter reset/genstart-kommandoen i boksen nedenfor.',
     '# Efter genstart: koer auto-opsaetningen / Docker GPU-testen i denne helper.',
+    ')',
   ];
   const block = document.getElementById('gpu-code-block');
   if (block) block.textContent = lines.join('\n');
@@ -867,6 +871,7 @@ function renderGpuVideoCommands() {
   const lines = [
     '(', 'set -e', `ctid="${ctid}"`, 'conf="/etc/pve/lxc/$ctid.conf"',
     '[ -f "$conf" ] || { echo "LXC config findes ikke"; exit 1; }',
+    document.getElementById('gpu-opencl-script').textContent.trim(),
     'libs=""',
     'for so in libnvidia-encode.so.1 libnvcuvid.so.1; do',
     '  p="$(ldconfig -p | grep -m1 -F "$so" | sed "s/.* => //")"',
