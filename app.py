@@ -8,6 +8,7 @@ import threading
 import shlex
 import ipaddress
 import secrets
+from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 import requests
@@ -72,6 +73,8 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 app.config.update(
     SESSION_COOKIE_NAME=os.environ.get("SESSION_COOKIE_NAME", "fjordhub_session"),
+    PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+    SESSION_REFRESH_EACH_REQUEST=False,
 )
 
 
@@ -109,6 +112,16 @@ package_manager  = PackageManager(DATA_DIR)
 
 login_manager = LoginManager(app)
 login_manager.login_view = "login"
+
+
+def _login_on_device(user):
+    """Persist browser login for 30 days without extending it on activity."""
+    if login_user(user):
+        session.permanent = True
+        session["login_expires_at"] = time.time() + app.permanent_session_lifetime.total_seconds()
+        # Replace the old, longer-lived Flask-Login remember cookie.
+        if app.config.get("REMEMBER_COOKIE_NAME", "remember_token") in request.cookies:
+            session["_remember"] = "clear"
 
 
 @login_manager.user_loader
@@ -191,6 +204,16 @@ if FJORDHUB_SRC_DIR:
 
 @app.before_request
 def _auth_gate():
+    expires_at = session.get("login_expires_at")
+    legacy_remember = (
+        expires_at is None
+        and app.config.get("REMEMBER_COOKIE_NAME", "remember_token") in request.cookies
+    )
+    if legacy_remember or (expires_at is not None and time.time() >= float(expires_at)):
+        logout_user()
+        session.clear()
+        if app.config.get("REMEMBER_COOKIE_NAME", "remember_token") in request.cookies:
+            session["_remember"] = "clear"
     if request.endpoint in _AUTH_EXEMPT:
         return None
     user_count = _auth.users_count()
@@ -342,7 +365,7 @@ def setup():
                 )
                 _mark_install_initialized("first-admin-created")
                 session.clear()
-                login_user(_auth.get_by_id(user_id), remember=True)
+                _login_on_device(_auth.get_by_id(user_id))
                 return redirect(url_for("onboarding"))
             except ValueError as exc:
                 error = str(exc)
@@ -376,7 +399,7 @@ def login():
         if user is None:
             error = "Forkert brugernavn eller adgangskode."
         else:
-            login_user(user, remember=True)
+            _login_on_device(user)
             if user.must_change_password:
                 return redirect(url_for("profile", force_password_change="1"))
             if _auth.onboarding_pending(user.id):
@@ -442,6 +465,8 @@ def forgot_password():
 @app.route("/logout", methods=["POST"])
 def logout():
     logout_user()
+    session.pop("login_expires_at", None)
+    session.permanent = False
     return redirect(url_for("login"))
 
 
