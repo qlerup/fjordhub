@@ -27,6 +27,47 @@ FjordHub is a lightweight control panel for a small fleet of self-hosted apps. I
 
 It is built for the home-lab case: one Linux host (bare metal, VM or Proxmox LXC) running Docker, administered by one or a few people.
 
+## FjordLens storage during installation
+
+In the storage step, choose **Samme lager** (default) for one upload folder, or
+**Separate lagre** for independent original and converted file locations. For
+example, select a mounted Synology NFS folder for originals and a local Proxmox
+disk folder for converted files. Both folders must be available on the Docker
+host. The NFS helper offers only the fields relevant to the selected mode.
+
+FjordHub writes `docker-compose.fjordhub-storage.yml` for split storage and adds
+it to `COMPOSE_FILE`, including when GPU support is enabled. Both the web app
+and conversion service receive the same mounts. Database, temporary conversion
+work and thumbnails retain their separate settings. Original retention remains
+controlled by FjordLens's conversion settings.
+
+Updating the hub does not change an existing installation's storage. Update
+FjordHub before using the split-storage fields from the FjordLens catalog manifest.
+
+For an installed FjordLens, open the app's **Indstillinger → Filplaceringer**.
+Select **Originaler** or **Konverterede filer**, then choose a Proxmox storage
+pool or enter an absolute path to an already mounted local/NAS/NFS folder.
+Choose **Kopiér** to retain the old files, or **Flyt** to remove them after
+verification. Move one folder at a time; this also works for older installations
+where both folders initially share the upload root. They can later be moved back
+onto the same disk using separate folders (for example `uploads/originals` and
+`uploads/converted`). Destinations must be empty and must not overlap.
+
+Finish uploads before starting. FjordHub pauses the app, copies files with SHA-256
+verification, activates and checks both services' mounts, and restarts only the
+services that were running. Stopped containers also receive the new mounts.
+Progress shows the phase, percentage and transferred bytes; it continues if the
+settings dialog is closed, and reopening it retrieves the current job. A lost
+browser connection is retried. A hub restart interrupts the job and blocks further
+changes pending manual inspection.
+
+The container paths stay `/uploads/originals` and `/uploads/converted`, preserving
+database references, upload/download behavior and conversion paths. Legacy files
+directly in the upload root remain at their existing mount. Each migration writes
+an immutable Compose override and backs up `.env`. Failed activation attempts to
+restore the old configuration; old files are removed only after activation succeeds.
+If cleanup fails, the new location remains active and remaining old files are kept.
+
 ## Access tokens for other apps
 
 Administrators can create named tokens under **Indstillinger → Adgangstokens**,

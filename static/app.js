@@ -870,6 +870,16 @@ window.addEventListener('pageshow',()=>{
 
 // File locations are separate from the public URL and never save on modal close.
 let _storagePollTimer, _storageFields = [], _storageGeneration = 0;
+function storageTargetSelection() {
+  const direct = document.getElementById('app-storage-target-type').value === 'path';
+  document.getElementById('app-storage-path-field').hidden = !direct;
+  document.getElementById('app-storage-pool-fields').hidden = direct;
+  document.getElementById('app-storage-path').required = direct;
+  document.getElementById('app-storage-pool').required = !direct;
+  document.getElementById('app-storage-folder').required = !direct;
+  selectStoragePool();
+}
+document.getElementById('app-storage-target-type')?.addEventListener('change', storageTargetSelection);
 function storageSelection() {
   const item = _storageFields.find(f => f.key === document.getElementById('app-storage-key').value);
   document.getElementById('app-storage-current').value = item?.path || '';
@@ -917,6 +927,7 @@ async function loadAppStorage(appId) {
     }
     form.hidden = !_storageFields.length;
     storageSelection();
+    storageTargetSelection();
     renderStorageJob(data.job);
     if (_storageFields.length) await loadProxmoxStorages(appId, generation);
     if (!data.job?.message) document.getElementById('app-storage-status').textContent = data.error || (_storageFields.length ? '' : 'Denne app har ingen filplaceringer, der kan ændres her.');
@@ -938,7 +949,10 @@ function pollAppStorage(appId, generation) {
       if (data.job?.running && !data.job.interrupted) pollAppStorage(appId, generation);
       else if (!data.job?.running) loadAppStorage(appId);
     } catch (error) {
-      if (_settingsAppId === appId) document.getElementById('app-storage-status').textContent = error.message;
+      if (_settingsAppId === appId && generation === _storageGeneration) {
+        document.getElementById('app-storage-status').textContent = 'Forbindelsen blev afbrudt. Flytningen fortsætter på serveren; henter status igen…';
+        pollAppStorage(appId, generation);
+      }
     }
   }, 1500);
 }
@@ -949,7 +963,7 @@ let _storagePools = [], _storageAccess = null;
 function selectStoragePool() {
   const pool = _storagePools.find(p => p.id === document.getElementById('app-storage-pool').value);
   document.getElementById('app-storage-size-field').hidden = !pool?.needs_size;
-  document.getElementById('app-storage-size').required = !!pool?.needs_size;
+  document.getElementById('app-storage-size').required = document.getElementById('app-storage-target-type').value === 'pool' && !!pool?.needs_size;
   document.getElementById('app-storage-pool-hint').textContent = pool
     ? `${(pool.free_bytes / 1073741824).toFixed(1)} GiB ledig. ${pool.system_pool ? 'Samme lager som systemdisken. Flytning hertil frigiver ikke plads i dette lager.' : 'FjordHub beregner filplaceringen ud fra dette lager.'}`
     : (_storageAccess?.message || 'Vælg et tilgængeligt lager.');
@@ -1068,7 +1082,10 @@ async function submitStorageChange(pending) {
     });
     const data = await response.json();
     if (_settingsAppId !== appId || generation !== _storageGeneration) return;
-    if (data.mount) { renderStorageJob({}); openStorageMount(pending, data.mount); return; }
+    if (data.mount) {
+      if (!payload.storage_id) { renderStorageJob({error:data.error || 'Tilslut drevet på Docker-serveren før flytning.'}); return; }
+      renderStorageJob({}); openStorageMount(pending, data.mount); return;
+    }
     if (!response.ok || !data.ok) throw new Error(data.error || 'Flytningen kunne ikke startes.');
     renderStorageJob(data.job);
     pollAppStorage(appId, generation);
@@ -1082,7 +1099,12 @@ document.getElementById('app-storage-form')?.addEventListener('submit', async ev
   const field = _storageFields.find(f => f.key === document.getElementById('app-storage-key').value);
   if (!appId || !field) return;
   const payload = {key:field.key,source:field.path,storage_id:document.getElementById('app-storage-pool').value,folder:document.getElementById('app-storage-folder').value.trim(),size_gib:document.getElementById('app-storage-size').value,mode:document.getElementById('app-storage-mode').value};
+  if (document.getElementById('app-storage-target-type').value === 'path') {
+    delete payload.storage_id; delete payload.folder; delete payload.size_gib;
+    payload.destination = document.getElementById('app-storage-path').value.trim();
+  }
   const pending = {appId,generation,payload};
+  if (payload.destination !== undefined) { await submitStorageChange(pending); return; }
   renderStorageJob({running:true,message:'Kontrollerer drevets mount…'});
   try {
     const status = await mountStatus(pending);

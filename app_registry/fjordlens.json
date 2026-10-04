@@ -99,11 +99,56 @@
           "hint": "Absolut sti på serveren. Bør ligge på lokal disk."
         },
         {
+          "key": "FJORDLENS_STORAGE_MODE",
+          "label": "Placering af originaler og konverterede filer",
+          "type": "select",
+          "default": "shared",
+          "options": [
+            {
+              "value": "shared",
+              "label": "Samme lager (fælles mappe)"
+            },
+            {
+              "value": "split",
+              "label": "Separate lagre"
+            }
+          ],
+          "hint": "Vælg fx originaler på Synology/NFS og konverterede filer på en lokal Proxmox-disk. Valget gælder denne installation; eksisterende filer flyttes ikke automatisk."
+        },
+        {
           "key": "UPLOADS_HOST_DIR",
           "label": "Upload-mappe (originaler og konverterede filer)",
           "type": "path",
           "default": "/opt/fjordlens-data/uploads",
-          "hint": "Kan ligge på NAS/NFS. Undermapper oprettes automatisk."
+          "hint": "Kan ligge på NAS/NFS. Undermapper oprettes automatisk.",
+          "show_if": {
+            "key": "FJORDLENS_STORAGE_MODE",
+            "value": "shared"
+          }
+        },
+        {
+          "key": "ORIGINALS_HOST_DIR",
+          "label": "Originaler",
+          "type": "path",
+          "default": "/opt/fjordlens-data/originals",
+          "hint": "Kan ligge på Synology/NFS. Slå behold originaler til i Fjordlens for de relevante formater.",
+          "nfs_recommended": true,
+          "show_if": {
+            "key": "FJORDLENS_STORAGE_MODE",
+            "value": "split"
+          }
+        },
+        {
+          "key": "CONVERTED_HOST_DIR",
+          "label": "Konverterede filer",
+          "type": "path",
+          "default": "/opt/fjordlens-data/converted",
+          "hint": "Vælg fx en mappe på din lokale Proxmox-disk.",
+          "nfs_recommended": false,
+          "show_if": {
+            "key": "FJORDLENS_STORAGE_MODE",
+            "value": "split"
+          }
         },
         {
           "key": "THUMBS_HOST_DIR",

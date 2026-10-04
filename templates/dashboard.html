@@ -191,10 +191,14 @@
         <div class="form-field"><label for="app-storage-key">Mappe</label><select id="app-storage-key"></select></div>
         <p id="app-storage-hint" class="field-hint"></p>
         <div class="form-field"><label for="app-storage-current">Nuværende placering</label><input id="app-storage-current" type="text" readonly></div>
+        <div class="form-field"><label for="app-storage-target-type">Vælg destination via</label><select id="app-storage-target-type"><option value="pool">Proxmox-lager</option><option value="path">Mappesti på serveren (lokal disk eller monteret NAS/NFS)</option></select></div>
+        <div class="form-field" id="app-storage-path-field" hidden><label for="app-storage-path">Ny mappe</label><input id="app-storage-path" type="text" placeholder="/mnt/synology/fjordlens/originals" autocomplete="off"><p class="field-hint">Brug en tom mappe. NAS/NFS skal allerede være monteret på Docker-serveren. Originaler og konverterede filer flyttes én mappe ad gangen.</p></div>
+        <div id="app-storage-pool-fields">
         <div class="form-field"><label for="app-storage-pool">Proxmox-lager</label><select id="app-storage-pool" required><option value="">Henter lagre…</option></select><p id="app-storage-pool-hint" class="field-hint" aria-live="polite"></p></div>
         <button type="button" id="app-storage-access" class="btn btn-open" hidden>Giv læseadgang til lagerlisten</button>
         <div class="form-field"><label for="app-storage-folder">Mappenavn</label><input type="text" id="app-storage-folder" placeholder="fjordflix-film" maxlength="100" autocomplete="off" required><p class="field-hint">FjordHub finder stien på det valgte lager og opretter mappen. En eksisterende mappe skal være tom.</p></div>
         <div class="form-field" id="app-storage-size-field" hidden><label for="app-storage-size">Containerdiskens størrelse (GiB)</label><input type="number" id="app-storage-size" value="100" min="1" max="1048576"><p class="field-hint">Bruges ved oprettelse af en ny containerdisk på fx local-lvm. En allerede tilsluttet disk genbruges.</p></div>
+        </div>
         <div class="form-field"><label for="app-storage-mode">Hvad skal der ske med filerne?</label><select id="app-storage-mode"><option value="copy">Kopiér — behold filerne på den gamle placering</option><option value="move">Flyt — slet filerne fra den gamle placering</option></select></div>
         <p class="field-hint">Afslut uploads først. Appen pauses, mens filerne kopieres og kontrolleres. Ved Flyt slettes originalerne først, når den nye placering er aktiveret og en kørende app er startet igen. En stoppet app forbliver stoppet.</p>
         <button type="submit" id="app-storage-save" class="btn-install">Kopiér filer og skift placering</button>

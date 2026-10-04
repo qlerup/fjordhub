@@ -244,6 +244,10 @@ class Installer:
                     else f"GPU-enheder fundet automatisk til {service_list}: {', '.join(devices)}"
                 )
 
+            if app_id == 'fjordlens':
+                from services.lens_storage import write_override
+                write_override(install_dir, env_values)
+
             log("Skriver .env ...")
             lines = ["# Genereret af FjordHub"]
             for key, value in env_values.items():
@@ -382,5 +386,9 @@ class Installer:
             from services.library_permissions import OVERRIDE, compose_files
             if (install_dir / OVERRIDE).is_file():
                 resolved['COMPOSE_FILE'] = ':'.join(compose_files(resolved.get('COMPOSE_FILE', compose_file)))
+
+        if app_def['id'] == 'fjordlens':
+            from services.lens_storage import configure
+            configure(resolved)
 
         return resolved

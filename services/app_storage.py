@@ -109,6 +109,14 @@ class AppStorage:
     def configuration(self, directory, extra=None):
         return json.loads(self.compose(directory, ['config', '--format', 'json'], extra))
 
+    def activate(self, directory, running, recreate_stopped=False):
+        if recreate_stopped:
+            # A stopped container must also receive the new mounts before a
+            # later start; otherwise it can reopen the old, now emptied source.
+            self.compose(directory, ['create', '--no-build', '--pull', 'never', '--force-recreate'], timeout=180)
+        if running:
+            self.compose(directory, ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', '120', *sorted(set(running))], timeout=180)
+
     def mappings(self, app_def):
         directory = self.directory(app_def)
         definitions = fields(app_def)
@@ -131,6 +139,14 @@ class AppStorage:
             if len(sources) == 1:
                 result.append({'key': field['key'], 'label': field.get('label', field['key']),
                                'hint': field.get('hint', ''), 'path': sources.pop(), 'mounts': matches})
+        if app_def['id'] == 'fjordlens':
+            from services.lens_storage import MEDIA, media_locations
+            result = [row for row in result if row['key'] not in MEDIA]
+            for row in result:
+                if row['key'] == 'UPLOADS_HOST_DIR':
+                    row['label'] = 'Upload-rod (inkl. ældre filer)'
+                    row['hint'] = 'Originaler og konverterede filer med egne placeringer flyttes separat via deres mappevalg.'
+            result = media_locations(current) + result
         return directory, current, result
 
     def describe(self, app_def):
@@ -150,7 +166,11 @@ class AppStorage:
         with self.lock:
             if self.busy(app_id):
                 raise ValueError('En flytning er allerede i gang eller kræver kontrol efter en genstart.')
-            if not isinstance(key, str) or key not in {f['key'] for f in fields(app_def)}:
+            valid_keys = {f['key'] for f in fields(app_def)}
+            if app_id == 'fjordlens':
+                from services.lens_storage import MEDIA
+                valid_keys.update(MEDIA)
+            if not isinstance(key, str) or key not in valid_keys:
                 raise ValueError('Ukendt filplacering.')
             if not isinstance(expected, str):
                 raise ValueError('Genåbn indstillingerne og prøv igen.')
@@ -166,7 +186,7 @@ class AppStorage:
                         raise ValueError('En anden flytning bruger denne mappe. Vent til den er færdig.')
             self.require_mount(destination)
             self.save(app_id, running=True, interrupted=False, message='Kontrollerer mapper og ledig plads…',
-                      error='', progress=None, mode=mode, key=key, source=expected, destination=destination, id=secrets.token_hex(8))
+                      phase='checking', error='', progress=None, mode=mode, key=key, source=expected, destination=destination, id=secrets.token_hex(8))
             self.active.add(app_id)
             threading.Thread(target=self.run, args=(app_def, key, destination, expected, mode), daemon=True).start()
 
@@ -253,6 +273,8 @@ class AppStorage:
     def run(self, app_def, key, destination, expected, mode="copy"):
         app_id = app_def['id']
         directory, old_env, new_env, running = None, None, None, []
+        prepared_override = None
+        media_move = False
         stopped, committed, cleanup_started = False, False, False
         try:
             directory, current, locations = self.mappings(app_def)
@@ -263,7 +285,14 @@ class AppStorage:
             a, b = PurePosixPath(source), PurePosixPath(destination)
             if a == b or a in b.parents or b in a.parents:
                 raise ValueError('Vælg en ny mappe uden for den gamle mappe.')
-            proposed = self.configuration(directory, {key: destination})
+            from services.lens_storage import MEDIA, migration_config, validate_media_containers
+            media_move = app_id == 'fjordlens' and key in MEDIA
+            if media_move:
+                self.require_mount(source)
+                old_env = (directory / '.env').read_text(encoding='utf-8')
+                new_env, prepared_override, media_proposed = migration_config(self, directory, current, key, destination,
+                                                                              self.job(app_id)['id'], old_env)
+            proposed = current if media_move else self.configuration(directory, {key: destination})
             if without_sources(current) != without_sources(proposed):
                 raise ValueError('Denne indstilling ændrer mere end en filplacering og skal tilpasses manuelt.')
             changed = []
@@ -275,14 +304,17 @@ class AppStorage:
                         if volume.get('source') != source or other.get('source') != destination:
                             raise ValueError('Indstillingen påvirker flere mapper. Skiftet er afbrudt.')
                         changed.append((name, volume['target']))
-            if not changed:
+            if not changed and not media_move:
                 raise ValueError('Placeringen bruges ikke af appens aktive konfiguration.')
-            old_env = (directory / '.env').read_text(encoding='utf-8')
-            new_env = patched_env(old_env, key, destination)
+            if not media_move:
+                old_env = (directory / '.env').read_text(encoding='utf-8')
+                new_env = patched_env(old_env, key, destination)
             client = self.manager.client
             if not client:
                 raise RuntimeError('Docker er ikke tilgængelig.')
             containers = client.containers.list(all=True, filters={'label': 'com.docker.compose.project=' + current['name']})
+            if media_move:
+                validate_media_containers(current, containers)
             for container in containers:
                 service = container.labels.get('com.docker.compose.service')
                 if service not in current['services']:
@@ -290,7 +322,7 @@ class AppStorage:
                 for mapping in location['mounts']:
                     if service == mapping['service']:
                         actual = next((m for m in container.attrs.get('Mounts', []) if m.get('Destination') == mapping['target']), {})
-                        if actual.get('Source') != source:
+                        if actual.get('Source') != mapping['source']:
                             raise ValueError('Den installerede app bruger en anden mappe end konfigurationen. Skiftet er afbrudt.')
                 if container.status == 'running':
                     running.append(service)
@@ -304,11 +336,13 @@ class AppStorage:
                     used = PurePosixPath(mount.get('Source', '/'))
                     if used == b or b in used.parents:
                         raise ValueError('Destinationen bruges allerede af en container.')
+                    if media_move and mount.get('Destination') == '/photos' and (used == a or used in a.parents or a in used.parents):
+                        raise ValueError('Kilden bruges også som fotobibliotek. Adskil biblioteket før flytning af uploadfiler.')
                     if (used == a or used in a.parents or a in used.parents) and container.labels.get('com.docker.compose.project') != current['name']:
                         raise ValueError('Kildemappen deles med en anden app. Flyt den manuelt med begge apps stoppet.')
             self.ensure_destination(destination)
             self.helper(source, destination, 'check')
-            self.save(app_id, message='Pauser appen og kopierer filerne. Den gamle mappe bevares…')
+            self.save(app_id, phase='copying', message='Pauser appen og kopierer filerne. Den gamle mappe bevares…')
             stopped = True
             self.compose(directory, ['stop'], timeout=180)
             copied = self.helper(source, destination, 'prepare-move' if mode == 'move' else 'copy')
@@ -316,6 +350,8 @@ class AppStorage:
                 self.save(app_id, manifest_sha256=copied['manifest_sha256'])
             if (directory / '.env').read_text(encoding='utf-8') != old_env:
                 raise ValueError('Konfigurationen blev ændret under kopieringen. Placeringen er ikke skiftet.')
+            if media_move and self.configuration(directory) != current:
+                raise ValueError('Compose-konfigurationen blev ændret under kopieringen. Skiftet er afbrudt.')
             backup_dir = self.state.data_dir / 'storage-backups' / app_id
             backup_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
             backup = backup_dir / (self.job(app_id)['id'] + '.env')
@@ -325,9 +361,13 @@ class AppStorage:
             temporary.write_text(new_env, encoding='utf-8'); temporary.chmod(0o600)
             temporary.replace(directory / '.env')
             committed = True
-            self.save(app_id, progress=None, message='Kopien er kontrolleret. Aktiverer den nye placering…')
-            if running:
-                self.compose(directory, ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', '120', *sorted(set(running))], timeout=180)
+            self.save(app_id, phase='activating', progress=None, message='Kopien er kontrolleret. Aktiverer den nye placering…')
+            self.activate(directory, running, recreate_stopped=media_move)
+            if media_move:
+                if self.configuration(directory) != media_proposed:
+                    raise RuntimeError('Den nye konfiguration er blevet ændret. De gamle filer bevares.')
+                actual_containers = client.containers.list(all=True, filters={'label': 'com.docker.compose.project=' + current['name']})
+                validate_media_containers(media_proposed, actual_containers)
             if mode == 'move':
                 cleanup_started = True
                 self.save(app_id, phase='cleanup', message='Den nye placering er aktiveret. Fjerner de kontrollerede originaler…')
@@ -346,7 +386,9 @@ class AppStorage:
                 try:
                     if (directory / '.env').read_text(encoding='utf-8') != old_env:
                         recovery = ' Konfigurationen er ændret af en anden handling; appen forbliver stoppet til kontrol.'
-                except OSError:
+                    elif media_move and self.configuration(directory) != current:
+                        recovery = ' Compose-konfigurationen er ændret; appen forbliver stoppet til kontrol.'
+                except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
                     recovery = ' Konfigurationen kunne ikke læses; appen forbliver stoppet til kontrol.'
             if committed:
                 try:
@@ -357,14 +399,21 @@ class AppStorage:
                     temporary.replace(directory / '.env')
                 except Exception:
                     recovery = ' Konfigurationen kunne ikke gendannes automatisk. Kontrollér appen før opstart.'
-            if stopped and running and not recovery:
+            if stopped and (running or media_move) and not recovery:
                 try:
-                    self.compose(directory, ['up', '-d', '--no-build', '--pull', 'never', '--no-deps', '--force-recreate', '--wait', '--wait-timeout', '120', *sorted(set(running))], timeout=180)
+                    self.activate(directory, running, recreate_stopped=media_move)
                 except Exception:
                     recovery = ' Appen kunne ikke genstartes automatisk.'
             message = str(exc) if isinstance(exc, (ValueError, RuntimeError)) else 'Flytningen kunne ikke gennemføres. Kontrollér mapper og Docker.'
             self.save(app_id, running=False, message='Skiftet blev ikke gennemført. Den gamle mappe er bevaret.',
                       error=message + recovery)
         finally:
+            # Keep overrides referenced by .env (including after failed rollback).
+            if prepared_override and directory:
+                try:
+                    if prepared_override.name not in (directory / '.env').read_text(encoding='utf-8'):
+                        prepared_override.unlink(missing_ok=True)
+                except OSError:
+                    pass
             with self.lock:
                 self.active.discard(app_id)

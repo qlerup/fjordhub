@@ -523,6 +523,11 @@ function setWizardField(key, value) {
   onFieldChange(key, value);
 }
 
+function wizardFieldActive(key) {
+  const field = document.getElementById(`f-${key}`)?.closest('.form-field');
+  return !field?.dataset.showKey || VALUES[field.dataset.showKey] === field.dataset.showVal;
+}
+
 function updateConditionals() {
   document.querySelectorAll('.form-field.conditional').forEach(el => {
     const key = el.dataset.showKey;
@@ -541,7 +546,7 @@ async function regenSecret(key) {
 function buildSummary() {
   const list = document.getElementById('summary-list');
   const rows = Object.entries(VALUES)
-    .filter(([k, v]) => v !== '' && v !== null)
+    .filter(([k, v]) => v !== '' && v !== null && wizardFieldActive(k))
     .map(([k, v]) => {
       const isSecret = k.toLowerCase().includes('key') || k.toLowerCase().includes('secret');
       const display = isSecret ? '••••••••' : v;
@@ -1124,7 +1129,7 @@ function onNfsTypeChange() {
 }
 
 function openNfsHelper(fields) {
-  _nfsPathFields = (fields || []).map(_normalizeNfsField);
+  _nfsPathFields = (fields || []).map(_normalizeNfsField).filter(field => wizardFieldActive(field.key));
   document.getElementById('nfs-fetch-result').style.display = 'none';
   document.getElementById('nfs-export-select').innerHTML = '<option value="">— Tryk Connect først —</option>';
   document.getElementById('nfs-field-selector').style.display = 'none';
