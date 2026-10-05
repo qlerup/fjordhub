@@ -93,6 +93,13 @@
           {% endfor %}
           <p class="field-hint">Kun apps med understøttet datadeling vises her.</p>
         </fieldset>
+        <fieldset class="token-apps">
+          <legend>Opdateringsadgang</legend>
+          <p class="field-hint">Tokenet må se opdateringsstatus og starte opdateringer for de valgte apps. FjordHub kan vælges separat.</p>
+          {% for target in update_apps %}
+          <label class="token-app-choice"><input type="checkbox" name="update_apps" value="{{ target.id }}" {% if not target.installed %}disabled{% endif %}><span><strong>{{ target.name }}</strong><small>Se og start opdateringer{% if not target.installed %} · Ikke installeret{% endif %}</small></span></label>
+          {% endfor %}
+        </fieldset>
         <button class="btn-install" type="submit">Opret adgangstoken</button>
       </form>
       <p id="token-error" class="auth-error" role="alert" hidden></p>
@@ -112,11 +119,18 @@
         <p>Senest brugt: {{ token.last_used_at[:16]|replace('T', ' ') if token.last_used_at else 'Aldrig' }} (UTC)</p>
         <p>Ekstra appdata: {{ token.apps|join(', ') if token.apps else 'Ingen — kun Docker-forbrug' }}</p>
         {% if not token.revoked_at %}
-        <details class="token-guide"><summary>Rediger adgang til appdata</summary>
+        <p>Opdateringsadgang: {{ token.update_apps|join(', ') if token.update_apps else 'Ingen' }}</p>
+        <details class="token-guide"><summary>Rediger appadgang</summary>
           <form class="token-app-form token-guide-content" data-token-id="{{ token.id }}">
             {% for integration in integration_apps %}
             <label class="token-app-choice"><input type="checkbox" name="apps" value="{{ integration.id }}" {% if integration.id in token.apps %}checked{% elif not integration.installed %}disabled{% endif %}><span><strong>{{ integration.name }}</strong><small>{{ integration.description }}{% if not integration.installed %} · Ikke installeret{% endif %}</small></span></label>
             {% endfor %}
+            <fieldset class="token-apps"><legend>Opdateringsadgang</legend>
+              <p class="field-hint">Se status og start opdateringer for de valgte apps.</p>
+              {% for target in update_apps %}
+              <label class="token-app-choice"><input type="checkbox" name="update_apps" value="{{ target.id }}" {% if target.id in token.update_apps %}checked{% elif not target.installed %}disabled{% endif %}><span><strong>{{ target.name }}</strong><small>Se og start opdateringer{% if not target.installed %} · Ikke installeret{% endif %}</small></span></label>
+              {% endfor %}
+            </fieldset>
             <button type="submit" class="btn-open">Gem appadgang</button><p role="status" class="token-save-status"></p>
           </form>
         </details>
@@ -242,7 +256,8 @@
       const result = await send({{ url_for('create_access_token')|tojson }}, {
         name: document.getElementById('token-name').value,
         days: Number(document.getElementById('token-days').value),
-        apps: Array.from(form.querySelectorAll('input[name="apps"]:checked'), input => input.value)
+        apps: Array.from(form.querySelectorAll('input[name="apps"]:checked'), input => input.value),
+        update_apps: Array.from(form.querySelectorAll('input[name="update_apps"]:checked'), input => input.value)
       });
       secret.value = result.token;
       form.hidden = true;
@@ -264,7 +279,8 @@
       status.textContent = 'Gemmer…';
       try {
         await send('/settings/access-tokens/' + scopeForm.dataset.tokenId + '/apps', {
-          apps: Array.from(scopeForm.querySelectorAll('input[name="apps"]:checked'), input => input.value)
+          apps: Array.from(scopeForm.querySelectorAll('input[name="apps"]:checked'), input => input.value),
+          update_apps: Array.from(scopeForm.querySelectorAll('input[name="update_apps"]:checked'), input => input.value)
         });
         window.location.reload();
       } catch (err) { status.textContent = err.message; button.disabled = false; }

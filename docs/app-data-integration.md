@@ -1,14 +1,48 @@
 # Ekstra appdata via FjordHub
 
 Administratorer vælger apps under **Indstillinger → Adgangstokens**, enten ved
-oprettelse eller under **Rediger adgang til appdata** på et eksisterende token.
+oprettelse eller under **Rediger appadgang** på et eksisterende token.
 Docker-forbrug er altid inkluderet. Eksisterende tokens får ingen ekstra adgang,
 før en administrator vælger den. Første understøttede app er FjordFlix.
 Opdater både FjordHub og FjordFlix. FjordFlix skal være installeret via FjordHub.
 
 Alle kald kræver LAN-adgang og headeren `Authorization: Bearer DIT_TOKEN`.
-Tokenet giver læseadgang, inklusive seernavne i aktive streams, men ingen
-afspilningskontrol, mediefiler, konti eller opsætning.
+Appdata giver læseadgang, inklusive seernavne i aktive streams, men ingen
+afspilningskontrol, mediefiler, konti eller opsætning. Opdateringsadgang er
+en separat rettighed, som administratoren skal vælge pr. app.
+
+## Opdateringsadgang
+
+Under **Opdateringsadgang** vælges installerede apps og eventuelt **FjordHub**.
+Det kan også ændres på et eksisterende token under **Rediger appadgang**.
+Eksisterende tokens får ingen opdateringsrettigheder automatisk. Appdata og
+opdatering vælges uafhængigt; også apps uden indholdsdeling kan opdateres.
+
+Alle nedenstående kald bruger samme Bearer-token og kræver LAN-adgang:
+
+- `GET /api/integrations/v1/updates`: `{ "ok": true, "updates": { "fjordflix": { ... } } }`.
+  Kun de apps, tokenet har opdateringsadgang til, vises.
+- `GET /api/integrations/v1/updates/{app_id}/status`: status for én app.
+- `POST /api/integrations/v1/updates/{app_id}/check`: tjek seneste version.
+- `POST /api/integrations/v1/updates/{app_id}/start`: giv besked om, at den valgte
+  app må opdatere nu. FjordHub bruger `app_id=fjordhub` og sin updater-service.
+  Der accepteres ingen kommando, sti, repo, URL eller oprydningsvalg fra klienten.
+
+Status indeholder `app_id`, `ok`, `state`, `update_available`, `running` og
+eventuelt `label`, `available`, `dirty`, `current_rev`, `remote_rev` og tidspunkter.
+En accepteret start returnerer HTTP 202 og `state=updating`, `running=true`.
+Poll status, eksempelvis hvert 30–60 sekund normalt og hvert 5 sekund under en
+opdatering. Når `update_available=true`, kan klientappen vise en opdateringsknap;
+først når brugeren vælger den, sendes POST til `start`. Ingen automatisk installation
+sker ved et statuskald. Dette er polling, ikke en webhook eller push-abonnement.
+
+`GET /api/integrations/v1/resources` indeholder også `updates`, når tokenet har
+opdateringsadgang. Det separate status-endpoint virker uafhængigt af Docker-målinger.
+HTTP 401 betyder ugyldigt/inaktivt/tilbagekaldt/udløbet token, 403 manglende rettighed
+eller adgang uden for LAN, 404 manglende installation, 409 igangværende opdatering
+eller blokerende filflytning. FjordHub kan genstarte under sin egen opdatering:
+behold sidste status, håndter midlertidige forbindelsesfejl og genoptag polling.
+Tokenets appvalg gemmes i databasen og bevares efter genstart.
 
 ## Endpoints
 

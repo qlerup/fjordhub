@@ -147,6 +147,8 @@ _AUTH_EXEMPT = {
     "api_integration_resources",
     "api_integration_app_data",
     "api_integration_app_poster",
+    "api_integration_updates",
+    "api_integration_update_action",
     "static",
     "setup",
     "login",
@@ -753,6 +755,8 @@ def api_integration_resources():
             payload["hub_url"] = _integration_hub_url()
             if grant['apps']:
                 payload['app_data'] = {app_id: _integration_app_payload(app_id) for app_id in grant['apps']}
+            if grant['update_apps']:
+                payload['updates'] = _integration_updates_payload(grant)
             response = jsonify(payload)
             response.status_code = 200 if payload["ok"] else 503
     response.headers["Cache-Control"] = "no-store"
@@ -809,6 +813,73 @@ def integration_no_store(response):
     if request.path.startswith('/api/integrations/v1/'):
         response.headers['Cache-Control'] = 'no-store'
     return response
+
+
+def _integration_update_status(app_id, action='status'):
+    if app_id == 'fjordhub':
+        if FJORDHUB_UPDATER_URL:
+            return _hub_update_proxy('/' + action, method='GET' if action == 'status' else 'POST',
+                                     payload=None if action == 'status' else {},
+                                     timeout=90 if action == 'check' else 10)
+        definition = _FJORDHUB_APP_DEF
+    else:
+        definition = _get_app(app_id)
+        if not definition or not _install_state.get_install_dir(app_id):
+            return {'ok': False, 'state': 'not_installed', 'error': 'Appen er ikke installeret.'}, 404
+    if action == 'start':
+        return _update_manager.start_update(definition)
+    status = (_update_manager.check_now(definition) if action == 'check'
+              else _update_manager.get_status(definition))
+    return status, 200
+
+
+def _integration_update_public(app_id, status):
+    # Never expose updater logs, repository paths, dirty file lists or config.
+    fields = ('state', 'available', 'running', 'update_available', 'label', 'dirty',
+              'current_rev', 'remote_rev', 'checked_at', 'started_at', 'finished_at')
+    result = {key: status[key] for key in fields if key in status}
+    result.update(app_id=app_id, ok=bool(status.get('ok', status.get('state') not in {'error', 'failed', 'not_installed'})))
+    if not result['ok']:
+        result['error'] = 'Opdateringen kunne ikke udføres. Se status i FjordHub.'
+    return result
+
+
+def _integration_updates_payload(grant):
+    return {app_id: _integration_update_public(app_id, _integration_update_status(app_id)[0])
+            for app_id in grant['update_apps']}
+
+
+@app.get('/api/integrations/v1/updates')
+def api_integration_updates():
+    grant, error = _integration_read_grant()
+    if error:
+        return error
+    return jsonify(ok=True, updates=_integration_updates_payload(grant))
+
+
+@app.route('/api/integrations/v1/updates/<app_id>/<action>', methods=['GET', 'POST'])
+def api_integration_update_action(app_id, action):
+    grant, error = _integration_read_grant()
+    if error:
+        return error
+    app_id = canonical_app_id(app_id)
+    if app_id not in grant['update_apps']:
+        return jsonify(ok=False, error='Tokenet har ikke opdateringsadgang til denne app.'), 403
+    if (action, request.method) not in {('status', 'GET'), ('check', 'POST'), ('start', 'POST')}:
+        return jsonify(ok=False, error='Ugyldig opdateringshandling.'), 400
+    if action == 'start':
+        # Keep the same operation lock and storage safeguards as the UI.
+        with _app_operation_lock:
+            if (_install_state.has_storage_jobs() if app_id == 'fjordhub' else app_storage.busy(app_id)):
+                return jsonify(ok=False, error='En filflytning er i gang eller kræver kontrol.'), 409
+            if app_id != 'fjordhub' and _install_state.get(app_id).get('state') == 'installing':
+                return jsonify(ok=False, error='Appen installeres allerede.'), 409
+            payload, code = _integration_update_status(app_id, action)
+    else:
+        payload, code = _integration_update_status(app_id, action)
+    if action == 'start':
+        app.logger.info('Integration token %s requested update for %s (HTTP %s)', grant['id'], app_id, code)
+    return jsonify(_integration_update_public(app_id, payload)), code
 
 
 @app.get('/api/integrations/v1/app-data/<app_id>')
@@ -1011,6 +1082,9 @@ def settings():
         access_token_csrf=session["access_token_csrf"],
         integration_apps=[{'id': app_id, **info, 'installed': bool(_install_state.get_install_dir(app_id))}
                           for app_id, info in app_integration.SUPPORTED_APPS.items()],
+        update_apps=[{'id': 'fjordhub', 'name': 'FjordHub', 'installed': bool(FJORDHUB_SRC_DIR or FJORDHUB_UPDATER_URL)}]
+                    + [{'id': a['id'], 'name': a['name'], 'installed': bool(_install_state.get_install_dir(a['id']))}
+                       for a in _get_apps()],
         hub_src_configured=bool(FJORDHUB_SRC_DIR or FJORDHUB_UPDATER_URL),
         mail_configured=bool(mail_settings),
         smtp_user=(mail_settings or {}).get("user", ""),
@@ -1031,6 +1105,16 @@ def _access_token_management_error():
     return None
 
 
+def _validate_token_update_selection(values):
+    selected = _auth._validate_token_update_apps(values)
+    installed = {a['id'] for a in _get_apps() if _install_state.get_install_dir(a['id'])}
+    if FJORDHUB_SRC_DIR or FJORDHUB_UPDATER_URL:
+        installed.add('fjordhub')
+    if any(a not in installed for a in selected):
+        raise ValueError('Vælg installerede apps til opdatering.')
+    return selected
+
+
 @app.route("/settings/access-tokens", methods=["POST"])
 def create_access_token():
     error = _access_token_management_error()
@@ -1045,7 +1129,8 @@ def create_access_token():
         apps = _auth._validate_token_apps(data.get('apps'))
         if any(not _install_state.get_install_dir(app_id) for app_id in apps):
             raise ValueError('Vælg installerede apps.')
-        token = _auth.create_access_token(data["name"], current_user.id, data["days"], apps)
+        updates = _validate_token_update_selection(data.get('update_apps'))
+        token = _auth.create_access_token(data["name"], current_user.id, data["days"], apps, updates)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     response = jsonify({"token": token})
@@ -1067,7 +1152,8 @@ def update_access_token_apps(token_id):
         existing = next((t['apps'] for t in _auth.list_access_tokens() if t['id'] == token_id), [])
         if any(app_id not in existing and not _install_state.get_install_dir(app_id) for app_id in apps):
             raise ValueError('Vælg installerede apps.')
-        if not _auth.update_access_token_apps(token_id, apps):
+        updates = (_validate_token_update_selection(data['update_apps']) if 'update_apps' in data else None)
+        if not _auth.update_access_token_apps(token_id, apps, updates):
             return jsonify(error='Tokenet findes ikke eller er tilbagekaldt.'), 404
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
@@ -2027,6 +2113,8 @@ def app_sso_url(app_id):
 
 @app.before_request
 def _guard_storage_operation():
+    if request.endpoint == 'api_integration_update_action':
+        return None  # This endpoint authorizes the bearer token before taking the lock.
     app_id = (request.view_args or {}).get('app_id')
     self_update = request.endpoint == 'api_hub_self_update_start'
     if request.method != 'POST' or not (app_id or self_update):

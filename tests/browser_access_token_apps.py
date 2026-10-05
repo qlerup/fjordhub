@@ -40,16 +40,20 @@ with tempfile.TemporaryDirectory() as tmp:
         page.goto('http://hub.test/settings?section=tokens')
         page.locator('#token-name').fill('Min anden app æøå')
         page.locator('#access-token-form input[name="apps"]').check()
+        page.locator('#access-token-form input[name="update_apps"][value="fjordflix"]').check()
         page.locator('#access-token-form button[type="submit"]').click()
         expect(page.locator('#token-created')).to_be_visible()
         assert auth.list_access_tokens()[0]['apps'] == ['fjordflix']
+        assert auth.list_access_tokens()[0]['update_apps'] == ['fjordflix']
         assert page.locator('#token-secret').input_value().startswith('fh_at_')
         page.goto('http://hub.test/settings?section=tokens')
-        page.get_by_text('Rediger adgang til appdata', exact=True).click()
+        page.get_by_text('Rediger appadgang', exact=True).click()
         page.locator('.token-app-form input[name="apps"]').uncheck()
+        page.locator('.token-app-form input[name="update_apps"][value="fjordflix"]').uncheck()
         page.locator('.token-app-form button[type="submit"]').click()
         expect(page.get_by_text('Ekstra appdata: Ingen — kun Docker-forbrug', exact=True)).to_be_visible()
         assert auth.list_access_tokens()[0]['apps'] == []
+        assert auth.list_access_tokens()[0]['update_apps'] == []
         page.set_viewport_size({'width':390, 'height':844})
         page.goto('http://hub.test/settings?section=tokens')
         page.screenshot(path=str(Path(__file__).parents[2] / '.codex-investigation/token-apps-mobile.png'), full_page=True)
