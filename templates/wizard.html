@@ -12,7 +12,7 @@
 
   {# ── Header ── #}
   <div class="wizard-header">
-    <div class="wizard-app-icon" style="--accent: {{ app.accent }};">
+    <div class="wizard-app-icon{% if app.icon_url %} has-image{% endif %}" style="--accent: {{ app.accent }};">
       {% if app.icon_url %}
       <img src="{{ app.icon_url }}" alt="{{ app.name }}" class="card-icon-img">
       {% elif app.icon == "camera" %}
