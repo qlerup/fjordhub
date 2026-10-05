@@ -70,7 +70,7 @@
     <div class="app-card" id="card-{{ app.id }}" data-app-id="{{ app.id }}" data-default-port="{{ app.default_port }}" data-sort-order="{{ loop.index0 }}">
       <div class="card-accent" style="--accent: {{ app.accent }};"></div>
       <div class="card-body">
-        <div class="card-icon-wrap" style="--accent: {{ app.accent }};">
+        <div class="card-icon-wrap{% if app.icon_url %} has-image{% endif %}" style="--accent: {{ app.accent }};">
           {% if app.icon_url %}
           <img src="{{ app.icon_url }}" alt="{{ app.name }}" class="card-icon-img">
           {% elif app.icon == "camera" %}
