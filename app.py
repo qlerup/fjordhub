@@ -1084,6 +1084,16 @@ def revoke_access_token(token_id):
     return jsonify({"ok": True})
 
 
+@app.post('/settings/access-tokens/<int:token_id>/delete')
+def delete_access_token(token_id):
+    error = _access_token_management_error()
+    if error is not None:
+        return error
+    if not _auth.delete_access_token(token_id):
+        return jsonify(error='Tokenet findes ikke eller skal tilbagekaldes før sletning.'), 404
+    return jsonify(ok=True)
+
+
 @app.route("/settings/mail", methods=["POST"])
 @login_required
 def save_mail_settings():

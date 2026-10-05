@@ -66,6 +66,44 @@ class AccessTokenTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(self.auth.authenticate_access_token(token))
 
+    def test_delete_requires_revocation_and_removes_saved_scopes(self):
+        self.login(self.admin)
+        token = self.auth.create_access_token('Delete me', self.admin, apps=['fjordflix'])
+        token_id = self.auth.list_access_tokens()[0]['id']
+        endpoint = f'/settings/access-tokens/{token_id}/delete'
+        headers = {'X-CSRF-Token': 'csrf-test'}
+        self.assertEqual(self.client.post(endpoint, headers=headers).status_code, 404)
+        self.assertTrue(self.auth.authenticate_access_token(token))
+        page = self.client.get('/settings?section=tokens').get_data(as_text=True)
+        self.assertIn('data-token-action="revoke"', page)
+        self.assertNotIn('data-token-action="delete"', page)
+        self.assertEqual(self.client.post(f'/settings/access-tokens/{token_id}/revoke',
+                                         headers=headers).status_code, 200)
+        page = self.client.get('/settings?section=tokens').get_data(as_text=True)
+        self.assertIn('token-action-delete', page)
+        self.assertIn('data-token-action="delete"', page)
+        self.assertEqual(self.client.post(endpoint, headers=headers).status_code, 200)
+        self.assertEqual(AuthService(self.auth._db_path).list_access_tokens(), [])
+        self.assertFalse(self.auth.authenticate_access_token(token))
+        with closing(self.auth._conn()) as conn:
+            self.assertEqual(conn.execute('SELECT COUNT(*) FROM access_token_apps').fetchone()[0], 0)
+        self.assertNotIn('Delete me', self.client.get('/settings?section=tokens').get_data(as_text=True))
+        self.assertEqual(self.client.post(endpoint, headers=headers).status_code, 404)
+
+    def test_delete_requires_admin_and_csrf(self):
+        token = self.auth.create_access_token('Keep me', self.admin)
+        token_id = self.auth.list_access_tokens()[0]['id']
+        self.auth.revoke_access_token(token_id)
+        endpoint = f'/settings/access-tokens/{token_id}/delete'
+        headers = {'X-CSRF-Token': 'csrf-test'}
+        self.assertEqual(self.client.post(endpoint, headers=headers).status_code, 302)
+        self.login(self.user)
+        self.assertEqual(self.client.post(endpoint, headers=headers).status_code, 403)
+        self.login(self.admin)
+        self.assertEqual(self.client.post(endpoint).status_code, 403)
+        self.assertEqual(self.client.post(endpoint, headers={'X-CSRF-Token': 'wrong'}).status_code, 403)
+        self.assertEqual(len(self.auth.list_access_tokens()), 1)
+
     def test_catalog_endpoint_removed(self):
         self.assertNotIn('/api/integrations/v1/apps',
                          {rule.rule for rule in fjordhub.app.url_map.iter_rules()})

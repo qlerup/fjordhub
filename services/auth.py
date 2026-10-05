@@ -295,6 +295,19 @@ class AuthService:
             conn.commit()
             return cursor.rowcount > 0
 
+    def delete_access_token(self, token_id: int) -> bool:
+        with closing(self._conn()) as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            cursor = conn.execute(
+                'DELETE FROM access_tokens WHERE id=? AND revoked_at IS NOT NULL',
+                (token_id,),
+            )
+            if not cursor.rowcount:
+                return False
+            conn.execute('DELETE FROM access_token_apps WHERE token_id=?', (token_id,))
+            conn.commit()
+            return True
+
     @staticmethod
     def _validate_token_apps(apps):
         if apps is None:

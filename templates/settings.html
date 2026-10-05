@@ -106,7 +106,7 @@
     <div class="settings-card">
       <div class="settings-card-head"><h2>Oprettede tokens</h2></div>
       {% for token in access_tokens %}
-      <div style="padding:12px 0;border-bottom:1px solid var(--border)">
+      <div class="token-row" style="padding:12px 0;border-bottom:1px solid var(--border)">
         <strong>{{ token.name }}</strong> <span class="badge">{{ token.status }}</span>
         <p><code>{{ token.prefix }}…</code> · Oprettet {{ token.created_at[:10] }} · {{ 'Udløber ' + token.expires_at[:10] if token.expires_at else 'Udløber aldrig' }}</p>
         <p>Senest brugt: {{ token.last_used_at[:16]|replace('T', ' ') if token.last_used_at else 'Aldrig' }} (UTC)</p>
@@ -121,9 +121,10 @@
           </form>
         </details>
         {% endif %}
-        {% if not token.revoked_at %}<button type="button" class="btn-open" data-revoke-token="{{ token.id }}">Tilbagekald</button>{% endif %}
+        <button type="button" class="btn btn-open token-action{% if token.revoked_at %} token-action-delete{% endif %}" data-token-id="{{ token.id }}" data-token-action="{{ 'delete' if token.revoked_at else 'revoke' }}">{{ 'Slet' if token.revoked_at else 'Tilbagekald' }}</button>
       </div>
-      {% else %}<p>Der er endnu ikke oprettet adgangstokens.</p>{% endfor %}
+      {% endfor %}
+      <p id="token-list-empty" role="status" {% if access_tokens %}hidden{% endif %}>Der er ingen adgangstokens.</p>
     </div>
   </div>
 
@@ -269,16 +270,26 @@
       } catch (err) { status.textContent = err.message; button.disabled = false; }
     });
   });
-  document.querySelectorAll('[data-revoke-token]').forEach(function (button) {
+  document.querySelectorAll('[data-token-action]').forEach(function (button) {
     button.addEventListener('click', async function () {
-      if (!confirm('Tilbagekald tokenet? Apps, der bruger det, mister straks adgangen.')) return;
+      const deleting = button.dataset.tokenAction === 'delete';
+      if (!confirm(deleting ? 'Slet det tilbagekaldte token permanent?' : 'Tilbagekald tokenet? Apps, der bruger det, mister straks adgangen.')) return;
       button.disabled = true;
       error.hidden = true;
       try {
-        await send('/settings/access-tokens/' + button.dataset.revokeToken + '/revoke', {});
-        button.parentElement.querySelector('.badge').textContent = 'Tilbagekaldt';
-        button.parentElement.querySelector('.token-app-form')?.closest('details').remove();
-        button.remove();
+        await send('/settings/access-tokens/' + button.dataset.tokenId + '/' + button.dataset.tokenAction, {});
+        const row = button.closest('.token-row');
+        if (deleting) {
+          row.remove();
+          document.getElementById('token-list-empty').hidden = !!document.querySelector('.token-row');
+        } else {
+          row.querySelector('.badge').textContent = 'Tilbagekaldt';
+          row.querySelector('.token-app-form')?.closest('details').remove();
+          button.dataset.tokenAction = 'delete';
+          button.classList.add('token-action-delete');
+          button.textContent = 'Slet';
+          button.disabled = false;
+        }
       } catch (err) { showError(err); button.disabled = false; }
     });
   });
