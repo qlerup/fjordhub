@@ -2,6 +2,7 @@ import json
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from services.app_identity import canonical_app_id
 
 
 class InstallState:
@@ -15,14 +16,17 @@ class InstallState:
         return self._file.parent
 
     def get(self, app_id: str) -> dict:
+        app_id = canonical_app_id(app_id)
         with self._lock:
             return dict(self._state.get(app_id, {}))
 
     def get_install_dir(self, app_id: str) -> str | None:
+        app_id = canonical_app_id(app_id)
         with self._lock:
             return self._state.get(app_id, {}).get("install_dir")
 
     def get_external_url(self, app_id: str) -> str:
+        app_id = canonical_app_id(app_id)
         with self._lock:
             return str(self._state.get(app_id, {}).get("external_url") or "")
 
@@ -63,6 +67,7 @@ class InstallState:
         })
 
     def clear(self, app_id: str):
+        app_id = canonical_app_id(app_id)
         with self._lock:
             self._state.pop(app_id, None)
             self._save()
@@ -80,6 +85,7 @@ class InstallState:
             return bool(state.get("initialized"))
 
     def register(self, app_id: str, install_dir: str) -> None:
+        app_id = canonical_app_id(app_id)
         with self._lock:
             entry = self._state.get(app_id, {})
             if entry.get("install_dir") == install_dir and entry.get("state") == "installed":
@@ -99,6 +105,7 @@ class InstallState:
         })
 
     def _update(self, app_id: str, updates: dict):
+        app_id = canonical_app_id(app_id)
         with self._lock:
             self._state.setdefault(app_id, {}).update(updates)
             self._save()
@@ -106,7 +113,12 @@ class InstallState:
     def _load(self) -> dict:
         if self._file.exists():
             try:
-                return json.loads(self._file.read_text(encoding="utf-8"))
+                rows = json.loads(self._file.read_text(encoding="utf-8"))
+                legacy = rows.pop('fjordshare', None)
+                if legacy:
+                    # Canonical state wins if both exist; fill missing legacy fields.
+                    rows['fjord3d'] = {**legacy, **rows.get('fjord3d', {})}
+                return rows
             except Exception:
                 pass
         return {}

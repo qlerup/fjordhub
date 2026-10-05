@@ -179,7 +179,7 @@ All configuration is environment variables, read from `.env` (see [.env.example]
 | `REGISTRY_URL` | this repo's `registry.json` | Raw URL of the app registry. Point it at your own fork to curate your own catalog. |
 | `FJORDHUB_HOST_DIR` | `/opt/fjordhub` | Host path of this repository — required for self-update. |
 | `FJORDHUB_IMAGE` | `fjordhub-fjordhub:latest` | Image used for the hub's privileged helper jobs. |
-| `FJORDLENS_DIR` / `FJORDSHARE_DIR` / `FJORDPARCEL_DIR` | — | Optional host paths for apps that were installed manually, so the hub can manage them too. |
+| `FJORDLENS_DIR` / `FJORD3D_DIR` / `FJORDPARCEL_DIR` | — | Optional host paths for apps that were installed manually, so the hub can manage them too. |
 | `PROXMOX_*` | — | Optional Proxmox API credentials, used for LXC-specific helpers such as GPU passthrough setup. |
 
 ## The app catalog
@@ -437,3 +437,7 @@ The command verifies the Compose service identity before removing anything.
 This is not an LXC-destruction command. Deleting a whole LXC or storage volume in
 Proxmox is a separate operation and is not covered by this storage-preserving
 uninstaller.
+
+## Fjord3D identity migration
+
+Update FjordHub before updating Fjord3D. Existing app permissions and installation registrations are migrated when FjordHub starts. Old installation directory and environment aliases remain supported so mounted data is preserved. Running apps installed manually can be registered from Docker Compose metadata when their checkout is visible through a FjordHub bind mount.

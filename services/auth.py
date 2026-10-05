@@ -6,6 +6,7 @@ from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+from services.app_identity import canonical_app_id
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
@@ -139,6 +140,7 @@ def _normalize_email(value, required: bool = False) -> str:
 class AuthService:
     @staticmethod
     def app_roles(app_id: str) -> tuple[str, ...]:
+        app_id = canonical_app_id(app_id)
         return ("admin", "manager", "user") if app_id == "fjordlens" else ("admin", "user")
 
     def __init__(self, db_path: Path):
@@ -217,6 +219,11 @@ class AuthService:
             conn.execute("UPDATE users SET email=LOWER(TRIM(COALESCE(email, '')))")
             conn.execute("UPDATE users SET language=COALESCE(NULLIF(language, ''), 'da')")
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email COLLATE NOCASE) WHERE email <> ''")
+            # Move existing keys and access grants to the new canonical identity.
+            # Existing canonical rows win; repeated startup is idempotent.
+            for table in ('app_hub_keys', 'user_app_access', 'access_token_apps'):
+                conn.execute(f"UPDATE OR IGNORE {table} SET app_id='fjord3d' WHERE app_id='fjordshare'")
+                conn.execute(f"DELETE FROM {table} WHERE app_id='fjordshare'")
             conn.commit()
 
     # ── Users ────────────────────────────────────────────────────────────────
@@ -609,6 +616,7 @@ class AuthService:
     # ── Hub keys ─────────────────────────────────────────────────────────────
 
     def save_hub_key(self, app_id: str, key: str) -> None:
+        app_id = canonical_app_id(app_id)
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
         with closing(self._conn()) as conn:
             conn.execute(
@@ -618,6 +626,7 @@ class AuthService:
             conn.commit()
 
     def get_hub_key(self, app_id: str) -> Optional[str]:
+        app_id = canonical_app_id(app_id)
         with closing(self._conn()) as conn:
             row = conn.execute(
                 "SELECT api_key, api_key_hash FROM app_hub_keys WHERE app_id=?", (app_id,)
@@ -627,6 +636,7 @@ class AuthService:
             return str(row["api_key_hash"] or row["api_key"] or "")
 
     def verify_hub_key(self, app_id: str, key: str) -> bool:
+        app_id = canonical_app_id(app_id)
         if not app_id or not key:
             return False
         with closing(self._conn()) as conn:
@@ -649,6 +659,7 @@ class AuthService:
             return ok
 
     def delete_hub_key(self, app_id: str) -> None:
+        app_id = canonical_app_id(app_id)
         with closing(self._conn()) as conn:
             conn.execute("DELETE FROM app_hub_keys WHERE app_id=?", (app_id,))
             conn.execute("DELETE FROM user_app_access WHERE app_id=?", (app_id,))
@@ -664,6 +675,7 @@ class AuthService:
     # ── User app access ──────────────────────────────────────────────────────
 
     def set_user_app_access(self, user_id: int, app_id: str, role: str = "user") -> None:
+        app_id = canonical_app_id(app_id)
         if role not in self.app_roles(app_id):
             role = "user"
         now = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
@@ -678,6 +690,7 @@ class AuthService:
             conn.commit()
 
     def remove_user_app_access(self, user_id: int, app_id: str) -> None:
+        app_id = canonical_app_id(app_id)
         with closing(self._conn()) as conn:
             conn.execute(
                 "DELETE FROM user_app_access WHERE user_id=? AND app_id=?",
@@ -697,6 +710,7 @@ class AuthService:
             ]
 
     def get_user_app_role(self, user_id: int, app_id: str) -> Optional[str]:
+        app_id = canonical_app_id(app_id)
         with closing(self._conn()) as conn:
             row = conn.execute(
                 "SELECT role FROM user_app_access WHERE user_id=? AND app_id=?",
@@ -705,6 +719,7 @@ class AuthService:
             return str(row["role"]) if row else None
 
     def authenticate_app_user(self, app_id: str, username: str, password: str) -> Optional[dict]:
+        app_id = canonical_app_id(app_id)
         user = self.check_password(username, password)
         if not user:
             return None
@@ -732,6 +747,7 @@ class AuthService:
         Kræver at den nuværende adgangskode er korrekt, og at brugeren har adgang
         til appen. Rydder must_change_password-flaget.
         """
+        app_id = canonical_app_id(app_id)
         user = self.check_password(username, current_password)
         if not user:
             return None
@@ -753,6 +769,7 @@ class AuthService:
         }
 
     def list_app_users(self, app_id: str) -> list[dict]:
+        app_id = canonical_app_id(app_id)
         with closing(self._conn()) as conn:
             rows = conn.execute(
                 """
@@ -780,6 +797,7 @@ class AuthService:
         language: str = "",
         password_hash: str = "",
     ) -> dict:
+        app_id = canonical_app_id(app_id)
         username = str(username or "").strip()
         first_name = str(first_name or "").strip()
         last_name = str(last_name or "").strip()
@@ -843,6 +861,7 @@ class AuthService:
         }
 
     def update_app_user_role(self, user_id: int, app_id: str, role: str) -> Optional[dict]:
+        app_id = canonical_app_id(app_id)
         if role not in self.app_roles(app_id):
             raise ValueError("Ugyldig rolle.")
         user = self.get_by_id(int(user_id))

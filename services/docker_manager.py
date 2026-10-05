@@ -53,7 +53,13 @@ class DockerManager:
         if not container_name or not self.client:
             return {"state": "unknown", "uptime": None}
         try:
-            container = self.client.containers.get(container_name)
+            try:
+                container = self.client.containers.get(container_name)
+            except docker.errors.NotFound:
+                legacy_names = app_def.get('legacy_container_names', [])
+                if not legacy_names:
+                    raise
+                container = self.client.containers.get(legacy_names[0])
             state = container.status  # "running", "exited", "paused", "restarting", etc.
             uptime = None
             if state == "running":

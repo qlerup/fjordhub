@@ -38,10 +38,10 @@ class ManagerRoleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.auth.create_user('invalid', 'test-password', role='manager')
         uid = self.auth.create_user('user', 'test-password')
-        self.auth.set_user_app_access(uid, 'fjordshare', 'manager')
-        self.assertEqual(self.auth.get_user_app_role(uid, 'fjordshare'), 'user')
+        self.auth.set_user_app_access(uid, 'fjord3d', 'manager')
+        self.assertEqual(self.auth.get_user_app_role(uid, 'fjord3d'), 'user')
         with self.assertRaises(ValueError):
-            self.auth.update_app_user_role(uid, 'fjordshare', 'manager')
+            self.auth.update_app_user_role(uid, 'fjord3d', 'manager')
 
 
 class ManagerEndpointTests(unittest.TestCase):

@@ -397,8 +397,63 @@ class UpdateManager:
             "label": "Update-tjek fejlede",
         }
 
+    def _capture_legacy_3d(self, install_dir: Path) -> dict | None:
+        result = self._run(['docker', 'inspect', 'fjordshare'], cwd=install_dir, timeout=30)
+        if result.returncode:
+            return None
+        container = json.loads(result.stdout)[0]
+        current = self._run(['docker', 'inspect', 'fjord3d'], cwd=install_dir, timeout=30)
+        if not current.returncode and json.loads(current.stdout)[0].get('State', {}).get('Running'):
+            raise RuntimeError('Der kører allerede en Fjord3D-container; automatisk sammenlægning er stoppet.')
+        labels = container.get('Config', {}).get('Labels', {}) or {}
+        if labels.get('com.docker.compose.service') != 'fjordshare':
+            raise RuntimeError('Den gamle container tilhører ikke den forventede Compose-app.')
+        mounts = {m.get('Destination'): m.get('Source') for m in container.get('Mounts', []) if m.get('Type') == 'bind'}
+        required = {'DATA_DIR': '/data', 'UPLOADS_HOST_DIR': '/uploads', 'THUMBS_HOST_DIR': '/thumbs'}
+        if not all(mounts.get(target) for target in required.values()):
+            raise RuntimeError('Fjord3D datastier kunne ikke bekræftes; omdøbningen er stoppet.')
+        env_file = install_dir / '.env'
+        text = env_file.read_text(encoding='utf-8') if env_file.exists() else ''
+        # Preserve the actual mounted locations, including installations using
+        # the old defaults. Do not infer a new NAS path from a renamed folder.
+        import re
+        values = {key: mounts[target] for key, target in required.items()}
+        values['FJORDHUB_APP_ID'] = 'fjord3d'
+        for key, value in values.items():
+            if any(c in value for c in ('\n', '\r')):
+                raise RuntimeError('Ugyldig datasti i den tidligere installation.')
+            line = key + '=' + json.dumps(value, ensure_ascii=False)
+            pattern = r'(?m)^' + re.escape(key) + r'=.*$'
+            if re.search(pattern, text):
+                text = re.sub(pattern, lambda match: line, text)
+            else:
+                text = text.rstrip() + '\n' + line + '\n'
+        if env_file.exists() and not (install_dir / '.env.before-fjord3d').exists():
+            import shutil
+            shutil.copy2(env_file, install_dir / '.env.before-fjord3d')
+        env_file.write_text(text, encoding='utf-8')
+        self._append_job_log('fjord3d', 'Bevarer database, uploads og thumbnails fra den tidligere installation.')
+        return container
+
+    def _complete_legacy_3d(self, install_dir: Path) -> None:
+        for _ in range(90):
+            result = self._run(['docker', 'inspect', 'fjord3d'], cwd=install_dir, timeout=30)
+            if not result.returncode:
+                state = json.loads(result.stdout)[0].get('State', {})
+                if state.get('Running') and state.get('Health', {}).get('Status') == 'healthy':
+                    # No -v: data mounts and backups remain intact.
+                    if self._run(['docker', 'rm', 'fjordshare'], cwd=install_dir, timeout=30).returncode:
+                        raise RuntimeError('Den tidligere container kunne ikke ryddes op.')
+                    return
+                if state.get('Health', {}).get('Status') == 'unhealthy':
+                    break
+            time.sleep(2)
+        raise RuntimeError('Fjord3D blev ikke klar efter omdøbningen; den tidligere container genstartes.')
+
     def _run_update(self, app_def: dict, install_dir: Path) -> None:
         app_id = app_def["id"]
+        legacy_3d = None
+        legacy_stopped = False
         try:
             self._append_job_log(app_id, f"[{_now_iso()}] Starter opdatering af {app_def.get('name', app_id)}")
             info = self._git_info(install_dir, fetch=True)
@@ -407,8 +462,11 @@ class UpdateManager:
             if info.get("dirty"):
                 raise RuntimeError("Repoet har lokale ændringer i trackede filer. Opdatering er stoppet.")
 
+            if app_id == 'fjord3d':
+                legacy_3d = self._capture_legacy_3d(install_dir)
+
             branch = str(info.get("branch") or "main")
-            if not info.get("update_available"):
+            if not info.get("update_available") and not legacy_3d:
                 if app_id == 'fjordlens' and self.fjordlens_memory_needs_activation(install_dir):
                     self._append_job_log(app_id, 'Aktiverer FjordHub RAM-budget på eksisterende installation.')
                     self._activate_fjordlens_memory(install_dir)
@@ -486,6 +544,14 @@ class UpdateManager:
             # someone notices and restarts it by hand. Forcing a recreate on
             # every update run guarantees each container gets a fresh start.
             build_services = self._compose_build_services_for_changes(install_dir, changed_paths)
+            if legacy_3d:
+                # Build before stopping the old app, then create the renamed service.
+                if self._run_logged(app_id, ['docker', 'compose', 'build'], cwd=install_dir, timeout=900):
+                    raise RuntimeError('Fjord3D build fejlede; den gamle app kører fortsat.')
+                if self._run_logged(app_id, ['docker', 'stop', 'fjordshare'], cwd=install_dir, timeout=60):
+                    raise RuntimeError('Den tidligere Fjord3D-container kunne ikke stoppes.')
+                legacy_stopped = True
+                build_services = []
             if build_services is None:
                 self._append_job_log(app_id, "Kunne ikke analysere compose build-contexts; bruger sikkert fuldt cachebaseret build.")
                 compose_code = self._run_logged(
@@ -518,6 +584,9 @@ class UpdateManager:
                 if up_code != 0:
                     raise RuntimeError("docker compose up -d --no-build fejlede")
 
+            if legacy_3d:
+                self._complete_legacy_3d(install_dir)
+                legacy_stopped = False
             final_info = self._git_info(install_dir, fetch=False)
             final_info.update({"state": "up_to_date", "label": "Opdateret", "update_available": False})
             self._append_job_log(app_id, "Opdatering færdig.")
@@ -532,6 +601,11 @@ class UpdateManager:
                 },
             )
         except Exception as error:
+            if legacy_stopped:
+                # Retain the old container until the new one is healthy.
+                self._run(['docker', 'stop', 'fjord3d'], cwd=install_dir, timeout=60)
+                self._run(['docker', 'rm', 'fjord3d'], cwd=install_dir, timeout=30)
+                self._run(['docker', 'start', 'fjordshare'], cwd=install_dir, timeout=60)
             status = self._error_status(str(error))
             status.update({"state": "failed", "label": "Opdatering fejlede"})
             self._append_job_log(app_id, f"Fejl: {error}")

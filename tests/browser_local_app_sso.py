@@ -19,7 +19,7 @@ with tempfile.TemporaryDirectory() as tmp:
     auth = AuthService(root / 'auth.db')
     uid = auth.create_user('Local Link Admin', 'Temporary-local-link-73!', role='admin')
     state = InstallState(root)
-    app_ids = ('fjordlens', 'fjordshare', 'fjordparcel', 'orbitmap',
+    app_ids = ('fjordlens', 'fjord3d', 'fjordparcel', 'orbitmap',
                'urban-explorer', 'fjordflix', 'fjordbudget', 'fjordvpn')
     apps = [json.loads((Path(__file__).parents[1] / 'app_registry' / f'{app_id}.json').read_text(encoding='utf-8')) for app_id in app_ids]
     statuses = {}

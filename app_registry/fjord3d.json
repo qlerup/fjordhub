@@ -1,17 +1,17 @@
 {
-  "id": "fjordshare",
+  "id": "fjord3d",
   "name": "Fjord3D",
   "tagline": "Bibliotek og værktøjer til 3D-filer",
   "description": "Organisér og vis 3D-modeller, administrer prints og integrer med Bambu Studio direkte fra browseren.",
   "icon": "share",
   "accent": "#8b5cf6",
-  "container_name": "fjordshare",
+  "container_name": "fjord3d",
   "default_port": 9090,
   "health_path": "/api/health",
   "traefik_prefix": "/share",
-  "compose_dir_env": "FJORDSHARE_DIR",
-  "source_url": "https://github.com/qlerup/fjordshare",
-  "icon_url": "https://raw.githubusercontent.com/qlerup/fjordshare/main/static/logos/icons/fjord3D-mark-transparent-512.png?v=brand-20261005",
+  "compose_dir_env": "FJORD3D_DIR",
+  "source_url": "https://github.com/qlerup/fjord3d",
+  "icon_url": "https://raw.githubusercontent.com/qlerup/fjord3d/main/static/logos/icons/fjord3D-mark-transparent-512.png?v=brand-20261005",
   "sort_order": 2,
   "setup_steps": [
     {
@@ -42,21 +42,21 @@
           "key": "DATA_DIR",
           "label": "Data-mappe (database og app-data)",
           "type": "path",
-          "default": "/opt/fjordshare-data/appdata",
+          "default": "/opt/fjord3d-data/appdata",
           "hint": "Absolut sti på serveren. Lokal disk anbefales."
         },
         {
           "key": "UPLOADS_HOST_DIR",
           "label": "Upload-mappe (delte filer)",
           "type": "path",
-          "default": "/opt/fjordshare-data/uploads",
+          "default": "/opt/fjord3d-data/uploads",
           "hint": "Kan ligge på NAS/NFS."
         },
         {
           "key": "THUMBS_HOST_DIR",
           "label": "Thumbnail-mappe",
           "type": "path",
-          "default": "/opt/fjordshare-data/thumbs",
+          "default": "/opt/fjord3d-data/thumbs",
           "hint": "Lokal disk anbefales."
         }
       ]
@@ -108,5 +108,8 @@
         }
       ]
     }
+  ],
+  "legacy_container_names": [
+    "fjordshare"
   ]
 }

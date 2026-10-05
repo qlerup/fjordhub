@@ -60,6 +60,7 @@ services:
       FJORDHUB_SRC_DIR: /fjordhub-src
       # Paths to each app's docker-compose directory on the host
       FJORDLENS_DIR: ${FJORDLENS_DIR:-}
+      FJORD3D_DIR: ${FJORD3D_DIR:-${FJORDSHARE_DIR:-}}
       FJORDSHARE_DIR: ${FJORDSHARE_DIR:-}
       FJORDPARCEL_DIR: ${FJORDPARCEL_DIR:-}
     labels:

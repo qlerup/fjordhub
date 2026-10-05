@@ -10,8 +10,8 @@
       "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordlens/main/fjordhub.json"
     },
     {
-      "id": "fjordshare",
-      "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordshare/main/fjordhub.json"
+      "id": "fjord3d",
+      "manifest_url": "https://raw.githubusercontent.com/qlerup/fjord3d/main/fjordhub.json"
     },
     {
       "id": "fjordparcel",

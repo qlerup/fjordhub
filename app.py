@@ -1,3 +1,4 @@
+from services.app_identity import canonical_app_id
 import os
 import copy
 import shutil
@@ -12,6 +13,7 @@ from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 import requests
+import docker
 from flask import Flask, render_template, jsonify, request, redirect, url_for, Response, send_file, session, g
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 
@@ -270,10 +272,20 @@ def _get_apps() -> list[dict]:
         apps = enriched_apps
     else:
         apps = local_apps
-    return [_with_nfs_recommendations(a) for a in apps]
+    result = []
+    for a in apps:
+        a = dict(a)
+        a['id'] = canonical_app_id(a.get('id', ''))
+        if a['id'] == 'fjord3d':
+            a['name'] = 'Fjord3D'
+            a.setdefault('legacy_container_names', ['fjordshare'])
+        result.append(_with_nfs_recommendations(a))
+    return result
 
 
 def _get_app(app_id: str) -> dict | None:
+    from services.app_identity import canonical_app_id
+    app_id = canonical_app_id(app_id)
     return next((a for a in _get_apps() if a.get("id") == app_id), None)
 
 
@@ -292,6 +304,38 @@ def _candidate_app_dirs(app_def: dict) -> list[Path]:
 
     if app_id:
         candidates.append(APPS_BASE / app_id)
+        if app_id == 'fjord3d':
+            legacy_dir = str(os.environ.get('FJORDSHARE_DIR') or '').strip()
+            if legacy_dir:
+                candidates.append(Path(legacy_dir))
+            candidates.append(APPS_BASE / 'fjordshare')
+
+    # Discover manually installed apps from their Compose working directory.
+    # Translate the host path through FjordHub's real bind mounts rather than
+    # guessing /opt paths that may not be visible inside this container.
+    if docker_mgr.client:
+        names = [app_def.get('container_name'), *app_def.get('legacy_container_names', [])]
+        for name in filter(None, names):
+            try:
+                container = docker_mgr.client.containers.get(name)
+                labels = container.attrs.get('Config', {}).get('Labels', {}) or {}
+                working_dir = str(labels.get('com.docker.compose.project.working_dir') or '')
+                if not working_dir:
+                    continue
+                host_path = Path(working_dir)
+                candidates.append(host_path)
+                hub_container = docker_mgr.client.containers.get('fjordhub')
+                for mount in hub_container.attrs.get('Mounts', []):
+                    if mount.get('Type') != 'bind' or not mount.get('Source') or not mount.get('Destination'):
+                        continue
+                    try:
+                        suffix = host_path.relative_to(Path(mount['Source']))
+                    except ValueError:
+                        continue
+                    candidates.append(Path(mount['Destination']) / suffix)
+                break
+            except (OSError, RuntimeError, AttributeError, docker.errors.DockerException):
+                continue
 
     seen: set[str] = set()
     unique: list[Path] = []
@@ -716,6 +760,7 @@ def api_integration_resources():
 
 
 def _integration_app_connection(app_id):
+    app_id = canonical_app_id(app_id)
     if app_id not in app_integration.SUPPORTED_APPS or not _install_state.get_install_dir(app_id):
         raise app_integration.AppDataError('Appen er ikke installeret.', 404)
     key = _installed_env_value(app_id, 'FJORDHUB_API_KEY')
@@ -733,6 +778,7 @@ def _integration_app_connection(app_id):
 
 
 def _integration_app_payload(app_id):
+    app_id = canonical_app_id(app_id)
     try:
         base_url, key = _integration_app_connection(app_id)
         payload = app_integration.fetch(base_url, key)
@@ -767,6 +813,7 @@ def integration_no_store(response):
 
 @app.get('/api/integrations/v1/app-data/<app_id>')
 def api_integration_app_data(app_id):
+    app_id = canonical_app_id(app_id)
     grant, error = _integration_read_grant()
     if error:
         return error
@@ -778,6 +825,7 @@ def api_integration_app_data(app_id):
 
 @app.get('/api/integrations/v1/app-data/<app_id>/posters/<mid>')
 def api_integration_app_poster(app_id, mid):
+    app_id = canonical_app_id(app_id)
     grant, error = _integration_read_grant()
     if error:
         return error
@@ -1480,7 +1528,7 @@ def delete_user(user_id: int):
 def hub_user_sync():
     """Backward-compatible grant endpoint for older app builds."""
     data = request.get_json(silent=True) or {}
-    app_id = str(data.get("app_id") or "")
+    app_id = canonical_app_id(str(data.get("app_id") or ""))
     key = request.headers.get("X-Hub-Key") or str(data.get("hub_key") or "")
     if not app_id or not key:
         return jsonify({"ok": False, "error": "app_id og hub_key påkrævet"}), 400
@@ -1518,7 +1566,7 @@ def hub_user_sync():
 # ── App status & control ─────────────────────────────────────────────────────
 
 def _require_app_key(data: dict) -> tuple[str, tuple | None]:
-    app_id = str(data.get("app_id") or "").strip()
+    app_id = canonical_app_id(str(data.get("app_id") or "").strip())
     key = request.headers.get("X-Hub-Key") or str(data.get("hub_key") or "")
     if not app_id or not key:
         return "", (jsonify({"ok": False, "error": "app_id og hub_key påkrævet"}), 400)
@@ -1729,7 +1777,7 @@ def api_hub_app_user(user_id: int):
 @app.route("/api/hub/sso-token")
 @login_required
 def api_hub_sso_token():
-    app_id = request.args.get("app_id", "").strip()
+    app_id = canonical_app_id(request.args.get("app_id", "").strip())
     token, error_response = _create_app_sso_token(app_id)
     if error_response:
         return error_response
@@ -1737,6 +1785,7 @@ def api_hub_sso_token():
 
 
 def _create_app_sso_token(app_id: str) -> tuple[str, object | None]:
+    app_id = canonical_app_id(app_id)
     app_id = str(app_id or "").strip()
     if not app_id:
         return "", (jsonify({"ok": False, "error": "App mangler"}), 400)
@@ -1765,6 +1814,7 @@ def _create_app_sso_token(app_id: str) -> tuple[str, object | None]:
 
 
 def _installed_env_value(app_id: str, key: str) -> str:
+    app_id = canonical_app_id(app_id)
     install_dir = _install_state.get_install_dir(app_id)
     env_path = Path(install_dir) / ".env" if install_dir else None
     if not env_path or not env_path.exists():
@@ -1951,6 +2001,7 @@ def _normalize_external_url(value: str) -> str:
 @app.route("/apps/<app_id>/sso-url")
 @login_required
 def app_sso_url(app_id):
+    app_id = canonical_app_id(app_id)
     target = request.args.get('target', '')
     if target not in {'', 'local'}:
         return jsonify(ok=False, error='Ukendt destination'), 400
@@ -1986,6 +2037,7 @@ def _release_app_operation_lock(error=None):
 @app.route('/api/apps/<app_id>/storage', methods=['GET', 'POST'])
 @login_required
 def api_app_storage(app_id):
+    app_id = canonical_app_id(app_id)
     if not current_user.is_admin:
         return jsonify(ok=False, error='Kun administratorer kan ændre filplaceringer.'), 403
     app_def = _get_app(app_id)
@@ -2041,6 +2093,7 @@ def api_app_storage(app_id):
 @app.route("/api/apps/<app_id>/settings", methods=["GET", "POST"])
 @login_required
 def api_app_settings(app_id):
+    app_id = canonical_app_id(app_id)
     if not current_user.is_admin:
         return jsonify({"ok": False, "error": "Kun administratorer kan ændre app-indstillinger"}), 403
     app_def = _get_app(app_id)
@@ -2097,6 +2150,7 @@ def api_media_gateway():
 @app.route("/api/apps/<app_id>/link-hub", methods=["POST"])
 @login_required
 def api_link_hub(app_id):
+    app_id = canonical_app_id(app_id)
     if not current_user.is_admin:
         return jsonify({"ok": False, "error": "Kun administratorer kan linke hub-integration"}), 403
     app_def = _get_app(app_id)
@@ -2140,7 +2194,7 @@ def api_link_hub(app_id):
 
 @app.route("/api/hub/sso-verify")
 def api_hub_sso_verify():
-    app_id = request.args.get("app_id", "").strip()
+    app_id = canonical_app_id(request.args.get("app_id", "").strip())
     token = request.args.get("token", "").strip()
     hub_key = request.headers.get("X-Hub-Key", "")
     if not app_id or not token or not hub_key:
@@ -2150,7 +2204,7 @@ def api_hub_sso_verify():
     entry = _sso_tokens.pop(token, None)
     if not entry:
         return jsonify({"ok": False, "error": "Ugyldigt token"}), 401
-    if entry["app_id"] != app_id:
+    if canonical_app_id(entry["app_id"]) != app_id:
         return jsonify({"ok": False, "error": "Token tilhører en anden app"}), 401
     if time.time() > entry["expires_at"]:
         return jsonify({"ok": False, "error": "Token er udløbet"}), 401
@@ -2924,6 +2978,7 @@ def api_apps_updates():
 
 def _with_compose_dir(app_def: dict, app_id: str) -> dict:
     """Inject compose_dir from install_state for wizard-installed apps."""
+    app_id = canonical_app_id(app_id)
     install_dir = _install_state.get_install_dir(app_id)
     if install_dir:
         return {**app_def, "compose_dir": install_dir}
@@ -2932,6 +2987,7 @@ def _with_compose_dir(app_def: dict, app_id: str) -> dict:
 
 @app.route("/apps/<app_id>/start", methods=["POST"])
 def start_app(app_id):
+    app_id = canonical_app_id(app_id)
     a = _get_app(app_id)
     if not a:
         return jsonify({"error": "Unknown app"}), 404
@@ -2941,6 +2997,7 @@ def start_app(app_id):
 
 @app.route("/apps/<app_id>/stop", methods=["POST"])
 def stop_app(app_id):
+    app_id = canonical_app_id(app_id)
     a = _get_app(app_id)
     if not a:
         return jsonify({"error": "Unknown app"}), 404
@@ -2950,6 +3007,7 @@ def stop_app(app_id):
 
 @app.route("/apps/<app_id>/update/check", methods=["POST"])
 def check_app_update(app_id):
+    app_id = canonical_app_id(app_id)
     a = _get_app(app_id)
     if not a:
         return jsonify({"error": "Unknown app"}), 404
@@ -2958,6 +3016,7 @@ def check_app_update(app_id):
 
 @app.route("/apps/<app_id>/update/start", methods=["POST"])
 def start_app_update(app_id):
+    app_id = canonical_app_id(app_id)
     a = _get_app(app_id)
     if not a:
         return jsonify({"error": "Unknown app"}), 404
@@ -2967,6 +3026,7 @@ def start_app_update(app_id):
 
 @app.route("/apps/<app_id>/uninstall", methods=["POST"])
 def uninstall_app(app_id):
+    app_id = canonical_app_id(app_id)
     a = _get_app(app_id)
     if not a:
         return jsonify({"error": "Unknown app"}), 404
@@ -2993,6 +3053,7 @@ def uninstall_app(app_id):
 @app.route('/apps/<app_id>/gpu')
 @login_required
 def app_gpu_setup(app_id):
+    app_id = canonical_app_id(app_id)
     if not current_user.is_admin:
         return 'Kun administratorer kan køre GPU-opsætningen.', 403
     definition = _get_app(app_id)
@@ -3003,6 +3064,7 @@ def app_gpu_setup(app_id):
 
 @app.route("/apps/<app_id>/wizard")
 def install_wizard(app_id):
+    app_id = canonical_app_id(app_id)
     a = _get_app(app_id)
     if not a:
         return redirect(url_for("dashboard"))
@@ -3026,6 +3088,7 @@ def install_wizard(app_id):
 
 @app.route("/apps/<app_id>/install", methods=["POST"])
 def install_app(app_id):
+    app_id = canonical_app_id(app_id)
     a = _get_app(app_id)
     if not a:
         return jsonify({"error": "Unknown app"}), 404
@@ -3077,6 +3140,7 @@ def install_app(app_id):
 
 @app.route("/apps/<app_id>/install/status")
 def install_status(app_id):
+    app_id = canonical_app_id(app_id)
     s = _install_state.get(app_id)
     return jsonify({
         "state":   s.get("state", "idle"),
