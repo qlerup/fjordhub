@@ -19,8 +19,13 @@ afspilningskontrol, mediefiler, konti eller opsætning.
 - `GET /api/integrations/v1/app-data/fjordflix/posters/{movie_id}`: JPEG via
   FjordHub. Brug den returnerede `poster_url` og samme Authorization-header.
 
-FjordFlix returnerer de 10 senest tilføjede film/serieafsnit fra biblioteket,
+FjordFlix returnerer de 10 senest tilføjede film/serier fra biblioteket,
 sorteret med nyeste først efter tilføjelsestidspunktet (upload eller import).
+Alle afsnit og sæsoner fra samme serie tæller som én titel. Seriens placering
+følger dens senest tilføjede afsnit, og `title` er seriens navn. `id` og
+`poster_url` bruger det seneste afsnit, så billedadgangen er uændret. Serier
+har ikke `season` eller `episode` i denne liste; aktive streams beskriver
+stadig den konkrete afspilning. `library_count` tæller fortsat mediefiler.
 Er biblioteket mindre end 10 titler, returneres alle. En titel med en manglende
 poster er stadig med; billedkaldet kan returnere 404, så vis en placeholder.
 Udvalget ændres, når titler tilføjes eller fjernes. Bevar rækkefølgen i `items`.

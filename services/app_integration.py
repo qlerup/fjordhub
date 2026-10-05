@@ -3,7 +3,7 @@ import re
 import requests
 
 SUPPORTED_APPS = {'fjordflix': {'name': 'FjordFlix',
-    'description': 'De 10 senest tilføjede film/serieafsnit med posters samt aktive streams og seernavne.'}}
+    'description': 'De 10 senest tilføjede film/serier med posters samt aktive streams og seernavne.'}}
 MAX_JSON_BYTES = 512 * 1024
 MAX_POSTER_BYTES = 8 * 1024 * 1024
 
