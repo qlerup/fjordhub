@@ -24,6 +24,8 @@ services:
     image: ${FJORDHUB_IMAGE:-fjordhub-fjordhub:latest}
     build: .
     container_name: fjordhub
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${APP_PORT:-8091}:8080"
     volumes:

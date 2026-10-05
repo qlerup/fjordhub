@@ -1458,7 +1458,7 @@ a { color: inherit; text-decoration: none; }
 .user-menu-logout:hover { background: color-mix(in srgb, var(--red) 10%, var(--surface)); color: var(--red); }
 
 /* ── Settings ── */
-.settings-page { max-width: 720px; }
+.settings-page { max-width: 720px; min-width: 0; overflow-wrap: anywhere; }
 
 .settings-select { position: relative; width: 100%; max-width: 280px; }
 .settings-select-trigger {
@@ -1495,6 +1495,8 @@ a { color: inherit; text-decoration: none; }
 
 .settings-tabs {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: 3px;
   padding: 4px;
   background: var(--surface-2);
@@ -1529,6 +1531,13 @@ a { color: inherit; text-decoration: none; }
 }
 .settings-card-head h2 { font-size: 1rem; font-weight: 700; margin: 0; }
 .token-intro { margin-bottom: 24px; font-size: .9rem; line-height: 1.65; }
+.token-apps { border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin: 0 0 20px; min-width: 0; }
+.token-apps legend { padding: 0 6px; font-weight: 600; }
+.token-app-choice { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0; cursor: pointer; }
+.token-app-choice input { width: 18px; height: 18px; flex-shrink: 0; margin-top: 2px; accent-color: var(--accent); }
+.token-app-choice small { display: block; color: var(--text-muted); line-height: 1.5; margin-top: 3px; }
+.token-app-choice:has(input:disabled) { opacity: .65; cursor: default; }
+.token-save-status { font-size: .85rem; margin-top: 8px; }
 .token-intro p { margin: 0; }
 .token-intro .token-intro-note { margin-top: 8px; color: var(--text-muted); }
 .token-guide { margin-top: 16px; border: 1px solid var(--border); border-radius: 8px; }

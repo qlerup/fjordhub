@@ -182,6 +182,11 @@ class AuthService:
                     api_key_hash TEXT,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS access_token_apps (
+                    token_id INTEGER NOT NULL REFERENCES access_tokens(id) ON DELETE CASCADE,
+                    app_id TEXT NOT NULL,
+                    PRIMARY KEY(token_id, app_id)
+                );
                 CREATE TABLE IF NOT EXISTS user_app_access (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -221,7 +226,8 @@ class AuthService:
             row = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()
             return int(row["c"] if row else 0)
 
-    def create_access_token(self, name: str, created_by: int, days: int = 90) -> str:
+    def create_access_token(self, name: str, created_by: int, days: int = 90, apps=None) -> str:
+        apps = self._validate_token_apps(apps)
         name = name.strip()
         if not name or len(name) > 80:
             raise ValueError("Navnet skal være mellem 1 og 80 tegn.")
@@ -235,13 +241,15 @@ class AuthService:
         # An empty expiry represents no expiry in the existing NOT NULL column.
         expires_at = (now + timedelta(days=days)).isoformat() if days else ""
         with closing(self._conn()) as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """INSERT INTO access_tokens
                    (name, token_hash, prefix, created_by, created_at, expires_at)
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (name, _hash_api_key(token), token[:12], created_by,
                  now.isoformat(), expires_at),
             )
+            conn.executemany('INSERT INTO access_token_apps VALUES(?,?)',
+                             ((cursor.lastrowid, app_id) for app_id in apps))
             conn.commit()
         return token
 
@@ -255,9 +263,13 @@ class AuthService:
                    FROM access_tokens t LEFT JOIN users u ON u.id=t.created_by
                    ORDER BY t.id DESC"""
             ).fetchall()
+            scopes = {}
+            for token_id, app_id in conn.execute('SELECT token_id,app_id FROM access_token_apps ORDER BY app_id'):
+                scopes.setdefault(token_id, []).append(app_id)
         result = []
         for row in rows:
             item = dict(row)
+            item['apps'] = scopes.get(item['id'], [])
             item["status"] = (
                 "Tilbagekaldt" if item["revoked_at"] else
                 "Udløbet" if item["expires_at"] and item["expires_at"] <= now else
@@ -276,9 +288,32 @@ class AuthService:
             conn.commit()
             return cursor.rowcount > 0
 
+    @staticmethod
+    def _validate_token_apps(apps):
+        if apps is None:
+            return []
+        if not isinstance(apps, list) or len(apps) > 20 or any(
+                not isinstance(app_id, str) or app_id not in {'fjordflix'} for app_id in apps):
+            raise ValueError('Vælg apps med understøttet datadeling.')
+        return sorted(set(apps))
+
+    def update_access_token_apps(self, token_id: int, apps) -> bool:
+        apps = self._validate_token_apps(apps)
+        with closing(self._conn()) as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            if not conn.execute('SELECT 1 FROM access_tokens WHERE id=? AND revoked_at IS NULL', (token_id,)).fetchone():
+                return False
+            conn.execute('DELETE FROM access_token_apps WHERE token_id=?', (token_id,))
+            conn.executemany('INSERT INTO access_token_apps VALUES(?,?)', ((token_id, a) for a in apps))
+            conn.commit()
+            return True
+
     def authenticate_access_token(self, token: str) -> bool:
+        return self.access_token_grant(token) is not None
+
+    def access_token_grant(self, token: str):
         if not re.fullmatch(r"fh_at_[A-Za-z0-9_-]{43}", token):
-            return False
+            return None
         now = datetime.now(timezone.utc).isoformat()
         with closing(self._conn()) as conn:
             cursor = conn.execute(
@@ -290,8 +325,13 @@ class AuthService:
                    )""",
                 (now, _hash_api_key(token), now),
             )
+            if cursor.rowcount != 1:
+                conn.commit()
+                return None
+            token_id = conn.execute('SELECT id FROM access_tokens WHERE token_hash=?', (_hash_api_key(token),)).fetchone()[0]
+            apps = [r[0] for r in conn.execute('SELECT app_id FROM access_token_apps WHERE token_id=? ORDER BY app_id', (token_id,))]
             conn.commit()
-            return cursor.rowcount == 1
+            return {'id': token_id, 'apps': apps}
 
     def admin_count(self) -> int:
         with closing(self._conn()) as conn:

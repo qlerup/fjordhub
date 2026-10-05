@@ -50,7 +50,7 @@
     <div class="settings-card">
       <div class="settings-card-head"><h2>Adgangstokens</h2></div>
       <div class="token-intro">
-        <p>Følg FjordHubs Docker-ressourcer fra en anden app.</p>
+        <p>Følg FjordHubs Docker-ressourcer og valgte appdata fra en anden app.</p>
         <p class="token-intro-note">Tokenet giver læseadgang til CPU, RAM, netværk, disk-I/O og containerstatus for FjordHub og installerede apps samt FjordHubs adresse, så du kan åbne den fra den anden app. Adgangen virker kun på dit lokale netværk (LAN).</p>
         <details class="token-guide">
           <summary>Sådan henter du målingerne</summary>
@@ -61,6 +61,8 @@
             <span class="token-guide-label">Header</span>
             <code>Authorization: Bearer DIT_TOKEN</code>
             <p>Hent fx nye målinger hvert 10. sekund. Tokenet giver ikke adgang til at ændre eller styre containerne.</p>
+            <p>Vælger du en app nedenfor, indeholder samme svar også <code>app_data</code>. FjordFlix deler op til 10 tilfældige titler med posters samt aktuelle streams og seernavne. Begge apps skal være opdateret.</p>
+            <p>Posters kræver også <code>Authorization: Bearer DIT_TOKEN</code>. Hent dem med fetch og vis dem som blob-billeder. Appdata kan hentes separat fra <code>/api/integrations/v1/app-data/fjordflix</code>.</p>
           </div>
         </details>
       </div>
@@ -83,6 +85,14 @@
             </div>
           </div>
         </div>
+        <fieldset class="token-apps">
+          <legend>Ekstra data fra apps</legend>
+          <p class="field-hint">Docker-forbrug er altid inkluderet. Vælg, hvilke apps dette token også må hente indhold fra.</p>
+          {% for integration in integration_apps %}
+          <label class="token-app-choice"><input type="checkbox" name="apps" value="{{ integration.id }}" {% if not integration.installed %}disabled{% endif %}><span><strong>{{ integration.name }}</strong><small>{{ integration.description }}{% if not integration.installed %} · Ikke installeret{% endif %}</small></span></label>
+          {% endfor %}
+          <p class="field-hint">Kun apps med understøttet datadeling vises her.</p>
+        </fieldset>
         <button class="btn-install" type="submit">Opret adgangstoken</button>
       </form>
       <p id="token-error" class="auth-error" role="alert" hidden></p>
@@ -100,6 +110,17 @@
         <strong>{{ token.name }}</strong> <span class="badge">{{ token.status }}</span>
         <p><code>{{ token.prefix }}…</code> · Oprettet {{ token.created_at[:10] }} · {{ 'Udløber ' + token.expires_at[:10] if token.expires_at else 'Udløber aldrig' }}</p>
         <p>Senest brugt: {{ token.last_used_at[:16]|replace('T', ' ') if token.last_used_at else 'Aldrig' }} (UTC)</p>
+        <p>Ekstra appdata: {{ token.apps|join(', ') if token.apps else 'Ingen — kun Docker-forbrug' }}</p>
+        {% if not token.revoked_at %}
+        <details class="token-guide"><summary>Rediger adgang til appdata</summary>
+          <form class="token-app-form token-guide-content" data-token-id="{{ token.id }}">
+            {% for integration in integration_apps %}
+            <label class="token-app-choice"><input type="checkbox" name="apps" value="{{ integration.id }}" {% if integration.id in token.apps %}checked{% elif not integration.installed %}disabled{% endif %}><span><strong>{{ integration.name }}</strong><small>{{ integration.description }}{% if not integration.installed %} · Ikke installeret{% endif %}</small></span></label>
+            {% endfor %}
+            <button type="submit" class="btn-open">Gem appadgang</button><p role="status" class="token-save-status"></p>
+          </form>
+        </details>
+        {% endif %}
         {% if not token.revoked_at %}<button type="button" class="btn-open" data-revoke-token="{{ token.id }}">Tilbagekald</button>{% endif %}
       </div>
       {% else %}<p>Der er endnu ikke oprettet adgangstokens.</p>{% endfor %}
@@ -219,7 +240,8 @@
     try {
       const result = await send({{ url_for('create_access_token')|tojson }}, {
         name: document.getElementById('token-name').value,
-        days: Number(document.getElementById('token-days').value)
+        days: Number(document.getElementById('token-days').value),
+        apps: Array.from(form.querySelectorAll('input[name="apps"]:checked'), input => input.value)
       });
       secret.value = result.token;
       form.hidden = true;
@@ -232,6 +254,21 @@
     try { await navigator.clipboard.writeText(secret.value); this.textContent = 'Kopieret'; }
     catch (_) { secret.focus(); secret.select(); showError(new Error('Kopiér det markerede token manuelt.')); }
   });
+  document.querySelectorAll('.token-app-form').forEach(function (scopeForm) {
+    scopeForm.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      const button = scopeForm.querySelector('button[type="submit"]');
+      const status = scopeForm.querySelector('.token-save-status');
+      button.disabled = true;
+      status.textContent = 'Gemmer…';
+      try {
+        await send('/settings/access-tokens/' + scopeForm.dataset.tokenId + '/apps', {
+          apps: Array.from(scopeForm.querySelectorAll('input[name="apps"]:checked'), input => input.value)
+        });
+        window.location.reload();
+      } catch (err) { status.textContent = err.message; button.disabled = false; }
+    });
+  });
   document.querySelectorAll('[data-revoke-token]').forEach(function (button) {
     button.addEventListener('click', async function () {
       if (!confirm('Tilbagekald tokenet? Apps, der bruger det, mister straks adgangen.')) return;
@@ -240,6 +277,7 @@
       try {
         await send('/settings/access-tokens/' + button.dataset.revokeToken + '/revoke', {});
         button.parentElement.querySelector('.badge').textContent = 'Tilbagekaldt';
+        button.parentElement.querySelector('.token-app-form')?.closest('details').remove();
         button.remove();
       } catch (err) { showError(err); button.disabled = false; }
     });

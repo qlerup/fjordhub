@@ -18,6 +18,7 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 from services.auth import AuthService
 from services.local_network import is_local_request
 from services.resource_integration import docker_resource_payload
+from services import app_integration
 from services.docker_manager import DockerManager
 from services.registry import AppRegistry
 from services.remote_registry import RemoteRegistry
@@ -142,6 +143,8 @@ def _unauthorized():
 _AUTH_EXEMPT = {
     'api_fjordlens_memory_budget',
     "api_integration_resources",
+    "api_integration_app_data",
+    "api_integration_app_poster",
     "static",
     "setup",
     "login",
@@ -691,8 +694,9 @@ def api_integration_resources():
         response.status_code = 403
     else:
         authorization = request.headers.get("Authorization", "").split()
-        if (len(authorization) != 2 or authorization[0].lower() != "bearer"
-                or not _auth.authenticate_access_token(authorization[1])):
+        grant = (_auth.access_token_grant(authorization[1])
+                 if len(authorization) == 2 and authorization[0].lower() == 'bearer' else None)
+        if grant is None:
             response = jsonify({"ok": False, "error": "Ugyldigt eller udløbet adgangstoken."})
             response.status_code = 401
             response.headers["WWW-Authenticate"] = "Bearer"
@@ -703,10 +707,88 @@ def api_integration_resources():
                 app.logger.exception("Failed to collect integration resource metrics")
                 payload = {"ok": False, "error": "Docker metrics unavailable"}
             payload["hub_url"] = _integration_hub_url()
+            if grant['apps']:
+                payload['app_data'] = {app_id: _integration_app_payload(app_id) for app_id in grant['apps']}
             response = jsonify(payload)
             response.status_code = 200 if payload["ok"] else 503
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+def _integration_app_connection(app_id):
+    if app_id not in app_integration.SUPPORTED_APPS or not _install_state.get_install_dir(app_id):
+        raise app_integration.AppDataError('Appen er ikke installeret.', 404)
+    key = _installed_env_value(app_id, 'FJORDHUB_API_KEY')
+    if not key or not _auth.verify_hub_key(app_id, key):
+        raise app_integration.AppDataError('Opdater appens FjordHub-forbindelse.')
+    app_def = _get_app(app_id)
+    if not app_def:
+        raise app_integration.AppDataError('Appen findes ikke.', 404)
+    # Trusted installation config only; never send the app key to a request Host
+    # or a configurable public URL, and never follow a redirect carrying it.
+    host = _host_lan_ip() or 'host.docker.internal'
+    if ':' in host:
+        host = f'[{host}]'
+    return f'http://{host}:{_app_port(app_def)}', key
+
+
+def _integration_app_payload(app_id):
+    try:
+        base_url, key = _integration_app_connection(app_id)
+        payload = app_integration.fetch(base_url, key)
+        for item in payload['items'][:10] + payload['streams'][:100]:
+            mid = str(item.get('movie_id') or item.get('id') or '')
+            item['poster_url'] = (_integration_hub_url().rstrip('/') + url_for(
+                'api_integration_app_poster', app_id=app_id, mid=mid))
+        payload['items'] = payload['items'][:10]
+        payload['streams'] = payload['streams'][:100]
+        return payload
+    except app_integration.AppDataError as exc:
+        return {'ok': False, 'error': str(exc), 'status': exc.status}
+
+
+def _integration_read_grant():
+    if not is_local_request(request.remote_addr, request.headers):
+        return None, (jsonify(ok=False, error='Dette API er kun tilgængeligt på LAN.'), 403)
+    parts = request.headers.get('Authorization', '').split()
+    grant = (_auth.access_token_grant(parts[1]) if len(parts) == 2 and parts[0].lower() == 'bearer' else None)
+    if grant is None:
+        return None, (jsonify(ok=False, error='Ugyldigt eller udløbet adgangstoken.'), 401,
+                      {'WWW-Authenticate': 'Bearer'})
+    return grant, None
+
+
+@app.after_request
+def integration_no_store(response):
+    if request.path.startswith('/api/integrations/v1/'):
+        response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@app.get('/api/integrations/v1/app-data/<app_id>')
+def api_integration_app_data(app_id):
+    grant, error = _integration_read_grant()
+    if error:
+        return error
+    if app_id not in grant['apps']:
+        return jsonify(ok=False, error='Tokenet har ikke adgang til data fra denne app.'), 403
+    payload = _integration_app_payload(app_id)
+    return jsonify(payload), 200 if payload['ok'] else payload.get('status', 503)
+
+
+@app.get('/api/integrations/v1/app-data/<app_id>/posters/<mid>')
+def api_integration_app_poster(app_id, mid):
+    grant, error = _integration_read_grant()
+    if error:
+        return error
+    if app_id not in grant['apps']:
+        return jsonify(ok=False, error='Tokenet har ikke adgang til data fra denne app.'), 403
+    try:
+        base_url, key = _integration_app_connection(app_id)
+        content = app_integration.fetch(base_url, key, mid)
+        return Response(content, mimetype='image/jpeg')
+    except app_integration.AppDataError as exc:
+        return jsonify(ok=False, error=str(exc)), exc.status
 
 
 DOCKER_CLEANUP_COMMANDS = (
@@ -879,6 +961,8 @@ def settings():
         section=section,
         access_tokens=_auth.list_access_tokens(),
         access_token_csrf=session["access_token_csrf"],
+        integration_apps=[{'id': app_id, **info, 'installed': bool(_install_state.get_install_dir(app_id))}
+                          for app_id, info in app_integration.SUPPORTED_APPS.items()],
         hub_src_configured=bool(FJORDHUB_SRC_DIR or FJORDHUB_UPDATER_URL),
         mail_configured=bool(mail_settings),
         smtp_user=(mail_settings or {}).get("user", ""),
@@ -910,13 +994,36 @@ def create_access_token():
     try:
         if not isinstance(data.get("name"), str) or type(data.get("days")) is not int:
             raise ValueError("Angiv navn og levetid.")
-        token = _auth.create_access_token(data["name"], current_user.id, data["days"])
+        apps = _auth._validate_token_apps(data.get('apps'))
+        if any(not _install_state.get_install_dir(app_id) for app_id in apps):
+            raise ValueError('Vælg installerede apps.')
+        token = _auth.create_access_token(data["name"], current_user.id, data["days"], apps)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     response = jsonify({"token": token})
     response.status_code = 201
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+@app.post('/settings/access-tokens/<int:token_id>/apps')
+def update_access_token_apps(token_id):
+    error = _access_token_management_error()
+    if error is not None:
+        return error
+    data = request.get_json(silent=True)
+    try:
+        if not isinstance(data, dict) or not isinstance(data.get('apps'), list):
+            raise ValueError('Vælg de apps, tokenet må læse fra.')
+        apps = _auth._validate_token_apps(data['apps'])
+        existing = next((t['apps'] for t in _auth.list_access_tokens() if t['id'] == token_id), [])
+        if any(app_id not in existing and not _install_state.get_install_dir(app_id) for app_id in apps):
+            raise ValueError('Vælg installerede apps.')
+        if not _auth.update_access_token_apps(token_id, apps):
+            return jsonify(error='Tokenet findes ikke eller er tilbagekaldt.'), 404
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    return jsonify(ok=True, apps=apps)
 
 
 @app.route("/settings/access-tokens/<int:token_id>/revoke", methods=["POST"])
