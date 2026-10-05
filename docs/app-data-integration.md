@@ -81,5 +81,3 @@ Hent sekventielt med fx 10 sekunders interval og undgå overlappende forespørgs
 Behold seneste gode resultat med en markering af, at det er forældet, ved netværksfejl.
 Tokenet skal opbevares i den anden apps backend. En webfrontend bør hente data og
 billeder gennem sin egen backend; der gives ikke CORS-adgang til andre origins.
-
-Se [prompten til den anden apps udvikler](fjordhub-app-data-prompt.md).

@@ -74,8 +74,7 @@ Tokens can additionally opt in to data from installed apps. FjordFlix supplies
 up to 10 random titles with authenticated posters and current playback sessions.
 Docker metrics remain available, and existing tokens keep their original access
 until an administrator selects extra apps. See the
-[API contract](docs/app-data-integration.md) and the
-[implementation prompt for a consuming app](docs/fjordhub-app-data-prompt.md).
+[API contract](docs/app-data-integration.md).
 
 Administrators can create named tokens under **Indstillinger → Adgangstokens**,
 with a lifetime of 30, 90 or 365 days, or **Udløber aldrig** (no expiry). Copy the token when it is created: only
