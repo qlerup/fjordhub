@@ -46,6 +46,21 @@ Tokenets appvalg gemmes i databasen og bevares efter genstart.
 
 ## Endpoints
 
+- `GET /api/integrations/v1/app-info`: `{ "ok": true, "app_info": { "fjordflix": { ... } } }`.
+  Kun apps valgt til **Appikoner og porte**, appdata eller opdatering er med.
+  Virker uafhængigt af Docker-målinger. `resources` indeholder samme `app_info`
+  for de valgte apps; feltet udelades, når ingen apps er valgt.
+  Hver app har `id`, `name`, `icon_url`, `port`, `installed` og
+  `permissions: { "app_data": false, "updates": false }`.
+  `icon_url` er en absolut billedadresse, der kan indlæses uden token. Porten
+  er et heltal læst fra den gemte `APP_PORT`, med registry-standard som fallback.
+  `fjordhub` bruger FjordHubs egen port. Ved `installed=false` kan porten være
+  standardporten; brug den kun til en installeret app.
+  Opdatér cachede appoplysninger ved næste polling, da ikon og port kan ændres.
+  Ikon/port-læseadgang giver aldrig opdateringsadgang eller adgang til appindhold.
+  Aktiver valget under **Rediger appadgang** på et eksisterende token; du behøver
+  ikke oprette et nyt. Behandl ukendte eller manglende ikoner med en placeholder.
+
 - `GET /api/integrations/v1/resources`: eksisterende målinger, plus `app_data`
   for de apps, tokenet har adgang til. `app_data` udelades, når ingen apps er valgt.
 - `GET /api/integrations/v1/app-data/fjordflix`: kun FjordFlix-data; uafhængig

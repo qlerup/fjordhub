@@ -148,6 +148,7 @@ _AUTH_EXEMPT = {
     "api_integration_app_data",
     "api_integration_app_poster",
     "api_integration_updates",
+    "api_integration_apps",
     "api_integration_update_action",
     "static",
     "setup",
@@ -757,6 +758,9 @@ def api_integration_resources():
                 payload['app_data'] = {app_id: _integration_app_payload(app_id) for app_id in grant['apps']}
             if grant['update_apps']:
                 payload['updates'] = _integration_updates_payload(grant)
+            info = _integration_app_info(grant)
+            if info:
+                payload['app_info'] = info
             response = jsonify(payload)
             response.status_code = 200 if payload["ok"] else 503
     response.headers["Cache-Control"] = "no-store"
@@ -847,6 +851,36 @@ def _integration_update_public(app_id, status):
 def _integration_updates_payload(grant):
     return {app_id: _integration_update_public(app_id, _integration_update_status(app_id)[0])
             for app_id in grant['update_apps']}
+
+
+def _integration_app_info(grant):
+    selected = set(grant['apps']) | set(grant['update_apps']) | set(grant['metadata_apps'])
+    result = {}
+    for app_id in sorted(selected):
+        if app_id == 'fjordhub':
+            name, icon, port = 'FjordHub', url_for('static', filename='logos/icons/fjordhub-mark-transparent-512.png', v='brand-20261005'), APP_PORT
+            installed = True
+        else:
+            definition = _get_app(app_id)
+            if not definition:
+                continue
+            name, icon, port = definition['name'], definition.get('icon_url') or '', _app_port(definition)
+            installed = bool(_install_state.get_install_dir(app_id))
+        if icon.startswith('/'):
+            icon = _integration_hub_url().rstrip('/') + icon
+        result[app_id] = {'id': app_id, 'name': name, 'icon_url': icon, 'port': port,
+                          'installed': installed,
+                          'permissions': {'app_data': app_id in grant['apps'],
+                                          'updates': app_id in grant['update_apps']}}
+    return result
+
+
+@app.get('/api/integrations/v1/app-info')
+def api_integration_apps():
+    grant, error = _integration_read_grant()
+    if error:
+        return error
+    return jsonify(ok=True, app_info=_integration_app_info(grant))
 
 
 @app.get('/api/integrations/v1/updates')
@@ -1105,13 +1139,13 @@ def _access_token_management_error():
     return None
 
 
-def _validate_token_update_selection(values):
+def _validate_token_update_selection(values, allow_existing=(), read_hub=False):
     selected = _auth._validate_token_update_apps(values)
     installed = {a['id'] for a in _get_apps() if _install_state.get_install_dir(a['id'])}
-    if FJORDHUB_SRC_DIR or FJORDHUB_UPDATER_URL:
+    if read_hub or FJORDHUB_SRC_DIR or FJORDHUB_UPDATER_URL:
         installed.add('fjordhub')
-    if any(a not in installed for a in selected):
-        raise ValueError('Vælg installerede apps til opdatering.')
+    if any(a not in installed and a not in allow_existing for a in selected):
+        raise ValueError('Vælg installerede apps.')
     return selected
 
 
@@ -1130,7 +1164,8 @@ def create_access_token():
         if any(not _install_state.get_install_dir(app_id) for app_id in apps):
             raise ValueError('Vælg installerede apps.')
         updates = _validate_token_update_selection(data.get('update_apps'))
-        token = _auth.create_access_token(data["name"], current_user.id, data["days"], apps, updates)
+        metadata = _validate_token_update_selection(data.get('metadata_apps'), read_hub=True)
+        token = _auth.create_access_token(data["name"], current_user.id, data["days"], apps, updates, metadata)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     response = jsonify({"token": token})
@@ -1149,11 +1184,13 @@ def update_access_token_apps(token_id):
         if not isinstance(data, dict) or not isinstance(data.get('apps'), list):
             raise ValueError('Vælg de apps, tokenet må læse fra.')
         apps = _auth._validate_token_apps(data['apps'])
-        existing = next((t['apps'] for t in _auth.list_access_tokens() if t['id'] == token_id), [])
+        current = next((t for t in _auth.list_access_tokens() if t['id'] == token_id), {})
+        existing = current.get('apps', [])
         if any(app_id not in existing and not _install_state.get_install_dir(app_id) for app_id in apps):
             raise ValueError('Vælg installerede apps.')
-        updates = (_validate_token_update_selection(data['update_apps']) if 'update_apps' in data else None)
-        if not _auth.update_access_token_apps(token_id, apps, updates):
+        updates = (_validate_token_update_selection(data['update_apps'], current.get('update_apps', [])) if 'update_apps' in data else None)
+        metadata = (_validate_token_update_selection(data['metadata_apps'], current.get('metadata_apps', []), read_hub=True) if 'metadata_apps' in data else None)
+        if not _auth.update_access_token_apps(token_id, apps, updates, metadata):
             return jsonify(error='Tokenet findes ikke eller er tilbagekaldt.'), 404
     except ValueError as exc:
         return jsonify(error=str(exc)), 400

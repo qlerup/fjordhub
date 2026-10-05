@@ -194,6 +194,11 @@ class AuthService:
                     app_id TEXT NOT NULL,
                     PRIMARY KEY(token_id, app_id)
                 );
+                CREATE TABLE IF NOT EXISTS access_token_metadata (
+                    token_id INTEGER NOT NULL REFERENCES access_tokens(id) ON DELETE CASCADE,
+                    app_id TEXT NOT NULL,
+                    PRIMARY KEY(token_id, app_id)
+                );
                 CREATE TABLE IF NOT EXISTS user_app_access (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -226,7 +231,7 @@ class AuthService:
             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email COLLATE NOCASE) WHERE email <> ''")
             # Move existing keys and access grants to the new canonical identity.
             # Existing canonical rows win; repeated startup is idempotent.
-            for table in ('app_hub_keys', 'user_app_access', 'access_token_apps', 'access_token_updates'):
+            for table in ('app_hub_keys', 'user_app_access', 'access_token_apps', 'access_token_updates', 'access_token_metadata'):
                 conn.execute(f"UPDATE OR IGNORE {table} SET app_id='fjord3d' WHERE app_id='fjordshare'")
                 conn.execute(f"DELETE FROM {table} WHERE app_id='fjordshare'")
             conn.commit()
@@ -238,9 +243,10 @@ class AuthService:
             row = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()
             return int(row["c"] if row else 0)
 
-    def create_access_token(self, name: str, created_by: int, days: int = 90, apps=None, update_apps=None) -> str:
+    def create_access_token(self, name: str, created_by: int, days: int = 90, apps=None, update_apps=None, metadata_apps=None) -> str:
         apps = self._validate_token_apps(apps)
         update_apps = self._validate_token_update_apps(update_apps)
+        metadata_apps = self._validate_token_update_apps(metadata_apps)
         name = name.strip()
         if not name or len(name) > 80:
             raise ValueError("Navnet skal være mellem 1 og 80 tegn.")
@@ -265,6 +271,8 @@ class AuthService:
                              ((cursor.lastrowid, app_id) for app_id in apps))
             conn.executemany('INSERT INTO access_token_updates VALUES(?,?)',
                              ((cursor.lastrowid, app_id) for app_id in update_apps))
+            conn.executemany('INSERT INTO access_token_metadata VALUES(?,?)',
+                             ((cursor.lastrowid, app_id) for app_id in metadata_apps))
             conn.commit()
         return token
 
@@ -284,11 +292,15 @@ class AuthService:
             updates = {}
             for token_id, app_id in conn.execute('SELECT token_id,app_id FROM access_token_updates ORDER BY app_id'):
                 updates.setdefault(token_id, []).append(app_id)
+            metadata = {}
+            for token_id, app_id in conn.execute('SELECT token_id,app_id FROM access_token_metadata ORDER BY app_id'):
+                metadata.setdefault(token_id, []).append(app_id)
         result = []
         for row in rows:
             item = dict(row)
             item['apps'] = scopes.get(item['id'], [])
             item['update_apps'] = updates.get(item['id'], [])
+            item['metadata_apps'] = metadata.get(item['id'], [])
             item["status"] = (
                 "Tilbagekaldt" if item["revoked_at"] else
                 "Udløbet" if item["expires_at"] and item["expires_at"] <= now else
@@ -318,6 +330,7 @@ class AuthService:
                 return False
             conn.execute('DELETE FROM access_token_apps WHERE token_id=?', (token_id,))
             conn.execute('DELETE FROM access_token_updates WHERE token_id=?', (token_id,))
+            conn.execute('DELETE FROM access_token_metadata WHERE token_id=?', (token_id,))
             conn.commit()
             return True
 
@@ -336,12 +349,13 @@ class AuthService:
             return []
         if not isinstance(apps, list) or len(apps) > 50 or any(
                 not isinstance(a, str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,79}', a) for a in apps):
-            raise ValueError('Vælg gyldige apps til opdatering.')
+            raise ValueError('Vælg gyldige apps.')
         return sorted(set(apps))
 
-    def update_access_token_apps(self, token_id: int, apps, update_apps=None) -> bool:
+    def update_access_token_apps(self, token_id: int, apps, update_apps=None, metadata_apps=None) -> bool:
         apps = self._validate_token_apps(apps)
         updates = self._validate_token_update_apps(update_apps) if update_apps is not None else None
+        metadata = self._validate_token_update_apps(metadata_apps) if metadata_apps is not None else None
         with closing(self._conn()) as conn:
             conn.execute('BEGIN IMMEDIATE')
             if not conn.execute('SELECT 1 FROM access_tokens WHERE id=? AND revoked_at IS NULL', (token_id,)).fetchone():
@@ -351,6 +365,9 @@ class AuthService:
             if updates is not None:
                 conn.execute('DELETE FROM access_token_updates WHERE token_id=?', (token_id,))
                 conn.executemany('INSERT INTO access_token_updates VALUES(?,?)', ((token_id, a) for a in updates))
+            if metadata is not None:
+                conn.execute('DELETE FROM access_token_metadata WHERE token_id=?', (token_id,))
+                conn.executemany('INSERT INTO access_token_metadata VALUES(?,?)', ((token_id, a) for a in metadata))
             conn.commit()
             return True
 
@@ -377,8 +394,9 @@ class AuthService:
             token_id = conn.execute('SELECT id FROM access_tokens WHERE token_hash=?', (_hash_api_key(token),)).fetchone()[0]
             apps = [r[0] for r in conn.execute('SELECT app_id FROM access_token_apps WHERE token_id=? ORDER BY app_id', (token_id,))]
             updates = [r[0] for r in conn.execute('SELECT app_id FROM access_token_updates WHERE token_id=? ORDER BY app_id', (token_id,))]
+            metadata = [r[0] for r in conn.execute('SELECT app_id FROM access_token_metadata WHERE token_id=? ORDER BY app_id', (token_id,))]
             conn.commit()
-            return {'id': token_id, 'apps': apps, 'update_apps': updates}
+            return {'id': token_id, 'apps': apps, 'update_apps': updates, 'metadata_apps': metadata}
 
     def admin_count(self) -> int:
         with closing(self._conn()) as conn:

@@ -100,6 +100,13 @@
           <label class="token-app-choice"><input type="checkbox" name="update_apps" value="{{ target.id }}" {% if not target.installed %}disabled{% endif %}><span><strong>{{ target.name }}</strong><small>Se og start opdateringer{% if not target.installed %} · Ikke installeret{% endif %}</small></span></label>
           {% endfor %}
         </fieldset>
+        <fieldset class="token-apps">
+          <legend>Appikoner og porte</legend>
+          <p class="field-hint">Hent navn, ikon og den valgte port uden opdateringsadgang. Medfølger også for apps valgt til appdata eller opdatering.</p>
+          {% for target in update_apps %}
+          <label class="token-app-choice"><input type="checkbox" name="metadata_apps" value="{{ target.id }}" {% if not target.installed and target.id != 'fjordhub' %}disabled{% endif %}><span><strong>{{ target.name }}</strong><small>Kun appoplysninger</small></span></label>
+          {% endfor %}
+        </fieldset>
         <button class="btn-install" type="submit">Opret adgangstoken</button>
       </form>
       <p id="token-error" class="auth-error" role="alert" hidden></p>
@@ -120,6 +127,7 @@
         <p>Ekstra appdata: {{ token.apps|join(', ') if token.apps else 'Ingen — kun Docker-forbrug' }}</p>
         {% if not token.revoked_at %}
         <p>Opdateringsadgang: {{ token.update_apps|join(', ') if token.update_apps else 'Ingen' }}</p>
+        <p>Appikoner og porte: {{ (token.metadata_apps + token.apps + token.update_apps)|unique|join(', ') or 'Ingen' }}</p>
         <details class="token-guide"><summary>Rediger appadgang</summary>
           <form class="token-app-form token-guide-content" data-token-id="{{ token.id }}">
             {% for integration in integration_apps %}
@@ -129,6 +137,12 @@
               <p class="field-hint">Se status og start opdateringer for de valgte apps.</p>
               {% for target in update_apps %}
               <label class="token-app-choice"><input type="checkbox" name="update_apps" value="{{ target.id }}" {% if target.id in token.update_apps %}checked{% elif not target.installed %}disabled{% endif %}><span><strong>{{ target.name }}</strong><small>Se og start opdateringer{% if not target.installed %} · Ikke installeret{% endif %}</small></span></label>
+              {% endfor %}
+            </fieldset>
+            <fieldset class="token-apps"><legend>Appikoner og porte</legend>
+              <p class="field-hint">Medfølger også for apps valgt til appdata eller opdatering.</p>
+              {% for target in update_apps %}
+              <label class="token-app-choice"><input type="checkbox" name="metadata_apps" value="{{ target.id }}" {% if target.id in token.metadata_apps %}checked{% elif not target.installed and target.id != 'fjordhub' %}disabled{% endif %}><span><strong>{{ target.name }}</strong><small>Kun appoplysninger</small></span></label>
               {% endfor %}
             </fieldset>
             <button type="submit" class="btn-open">Gem appadgang</button><p role="status" class="token-save-status"></p>
@@ -257,7 +271,8 @@
         name: document.getElementById('token-name').value,
         days: Number(document.getElementById('token-days').value),
         apps: Array.from(form.querySelectorAll('input[name="apps"]:checked'), input => input.value),
-        update_apps: Array.from(form.querySelectorAll('input[name="update_apps"]:checked'), input => input.value)
+        update_apps: Array.from(form.querySelectorAll('input[name="update_apps"]:checked'), input => input.value),
+        metadata_apps: Array.from(form.querySelectorAll('input[name="metadata_apps"]:checked'), input => input.value)
       });
       secret.value = result.token;
       form.hidden = true;
@@ -280,7 +295,8 @@
       try {
         await send('/settings/access-tokens/' + scopeForm.dataset.tokenId + '/apps', {
           apps: Array.from(scopeForm.querySelectorAll('input[name="apps"]:checked'), input => input.value),
-          update_apps: Array.from(scopeForm.querySelectorAll('input[name="update_apps"]:checked'), input => input.value)
+          update_apps: Array.from(scopeForm.querySelectorAll('input[name="update_apps"]:checked'), input => input.value),
+          metadata_apps: Array.from(scopeForm.querySelectorAll('input[name="metadata_apps"]:checked'), input => input.value)
         });
         window.location.reload();
       } catch (err) { status.textContent = err.message; button.disabled = false; }
