@@ -227,6 +227,46 @@ class AppUrlTests(unittest.TestCase):
 
         self.assertEqual(local_url, "http://10.10.0.50:4321")
 
+    def test_local_sso_uses_installed_port_and_keeps_normal_open_on_public_url(self):
+        app_id = 'fjordlens'
+        install_dir = Path(self.tempdir.name) / app_id
+        install_dir.mkdir()
+        (install_dir / '.env').write_text('APP_PORT=4321\n', encoding='utf-8')
+        fjordhub._install_state.register(app_id, str(install_dir))
+        fjordhub._install_state.set_external_url(app_id, 'https://photos.example.com')
+        fjordhub._auth.save_hub_key(app_id, 'test-lens-key')
+        uid = fjordhub._auth.create_user('local-sso-admin', 'test-password', role='admin')
+        os.environ['HOST_LAN_IP'] = '10.10.0.50'
+        client = fjordhub.app.test_client()
+        with client.session_transaction() as session:
+            session['_user_id'] = str(uid)
+            session['_fresh'] = True
+        normal = client.get(f'/apps/{app_id}/sso-url')
+        local = client.get(f'/apps/{app_id}/sso-url?target=local')
+        self.assertEqual(normal.status_code, 200)
+        self.assertEqual(local.status_code, 200)
+        self.assertTrue(normal.json['url'].startswith('https://photos.example.com/hub-login?token='))
+        self.assertTrue(local.json['url'].startswith('http://10.10.0.50:4321/hub-login?token='))
+        from urllib.parse import urlsplit, parse_qs
+        token = parse_qs(urlsplit(local.json['url']).query)['token'][0]
+        verified = client.get('/api/hub/sso-verify', query_string={'app_id': app_id, 'token': token}, headers={'X-Hub-Key':'test-lens-key'})
+        self.assertEqual(verified.status_code, 200)
+        self.assertEqual(verified.json['id'], uid)
+        self.assertEqual(client.get('/api/hub/sso-verify', query_string={'app_id':app_id, 'token':token}, headers={'X-Hub-Key':'test-lens-key'}).status_code, 401)
+
+    def test_local_sso_does_not_accept_arbitrary_destination_or_bypass_access(self):
+        app_id = 'fjordlens'
+        client = fjordhub.app.test_client()
+        self.assertEqual(client.get(f'/apps/{app_id}/sso-url?target=local').status_code, 302)
+        uid = fjordhub._auth.create_user('no-app-access', 'test-password')
+        fjordhub._auth.save_hub_key(app_id, 'test-key')
+        with client.session_transaction() as session:
+            session['_user_id'] = str(uid)
+            session['_fresh'] = True
+        self.assertEqual(client.get(f'/apps/{app_id}/sso-url?target=local').status_code, 403)
+        self.assertEqual(client.get(f'/apps/{app_id}/sso-url?target=https://evil.example').status_code, 400)
+        self.assertEqual(fjordhub._sso_tokens, {})
+
     def test_app_users_api_imports_urban_explorer_argon2_hash(self):
         hub_key = "test-hub-key"
         fjordhub._auth.save_hub_key("urban-explorer", hub_key)

@@ -661,21 +661,21 @@ async function confirmUninstall(card) {
 // ── SSO open ─────────────────────────────────────────────────────────────
 
 document.getElementById('app-sections')?.addEventListener('click', e => {
-  const openBtn = e.target.closest('.btn-open');
+  const openBtn = e.target.closest('.btn-open, .card-local-address');
   if (!openBtn) return;
   const card  = openBtn.closest('.app-card');
   const appId = card?.dataset.appId;
   const href  = openBtn.getAttribute('href');
   if (!href || href === '#' || !appId) return;
   e.preventDefault();
-  openWithSso(appId, href);
+  openWithSso(appId, href, openBtn.classList.contains('card-local-address'));
 });
 
-async function openWithSso(appId, appUrl) {
+async function openWithSso(appId, appUrl, local = false) {
   const popup = window.open('about:blank', '_blank');
   if (popup) popup.opener = null;
   try {
-    const res  = await fetch(`/apps/${encodeURIComponent(appId)}/sso-url`);
+    const res  = await fetch(`/apps/${encodeURIComponent(appId)}/sso-url${local ? '?target=local' : ''}`);
     const data = await res.json();
     if (data.ok && data.url) {
       if (popup) {

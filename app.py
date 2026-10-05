@@ -1951,13 +1951,16 @@ def _normalize_external_url(value: str) -> str:
 @app.route("/apps/<app_id>/sso-url")
 @login_required
 def app_sso_url(app_id):
+    target = request.args.get('target', '')
+    if target not in {'', 'local'}:
+        return jsonify(ok=False, error='Ukendt destination'), 400
     app_def = _get_app(app_id)
     if not app_def:
         return jsonify({"ok": False, "error": "Ukendt app"}), 404
     token, error_response = _create_app_sso_token(app_id)
     if error_response:
         return error_response
-    app_url = _external_app_url(app_def)
+    app_url = _fallback_app_url(app_def) if target == 'local' else _external_app_url(app_def)
     return jsonify({"ok": True, "url": f"{app_url}/hub-login?token={token}"})
 
 
