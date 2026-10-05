@@ -3,7 +3,7 @@
 {% block center_class %}onboarding-center{% endblock %}
 {% block content %}
 <main class="auth-card onboarding-card">
-  <img class="auth-logo" src="{{ url_for('static', filename='logos/logos/fjordhub-logo-horizontal-transparent.png') }}" alt="FjordHub">
+  <img class="auth-logo" src="{{ url_for('static', filename='logos/logos/fjordhub-logo-horizontal-transparent.png', v='brand-20261005') }}" alt="FjordHub">
   {% if onboarding %}<ol class="onboarding-steps" aria-label="Opsætning">
     <li><span>✓</span> Konto oprettet</li><li><span>✓</span> Email</li><li aria-current="step"><span>3</span> Lageradgang</li>
   </ol>{% endif %}

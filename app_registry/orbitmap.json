@@ -11,7 +11,7 @@
   "traefik_prefix": "/orbitmap",
   "compose_dir_env": "ORBITMAP_DIR",
   "source_url": "https://github.com/qlerup/orbitmap",
-  "icon_url": "https://raw.githubusercontent.com/qlerup/orbitmap/main/app/public/orbitmap-mark.svg",
+  "icon_url": "https://raw.githubusercontent.com/qlerup/orbitmap/main/app/public/hub-icon.png?v=brand-20261005",
   "sort_order": 4,
   "setup_steps": [
     {

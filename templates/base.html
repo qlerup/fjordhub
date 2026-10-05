@@ -4,16 +4,16 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{% block title %}FjordHub{% endblock %}</title>
-  <link rel="icon" href="{{ url_for('static', filename='logos/web/favicon.ico') }}" sizes="any">
-  <link rel="icon" href="{{ url_for('static', filename='logos/web/favicon-32x32.png') }}" type="image/png" sizes="32x32">
-  <link rel="icon" href="{{ url_for('static', filename='logos/web/favicon-16x16.png') }}" type="image/png" sizes="16x16">
-  <link rel="apple-touch-icon" href="{{ url_for('static', filename='logos/web/apple-touch-icon.png') }}">
+  <link rel="icon" href="{{ url_for('static', filename='logos/web/favicon.ico', v='brand-20261005') }}" sizes="any">
+  <link rel="icon" href="{{ url_for('static', filename='logos/web/favicon-32x32.png', v='brand-20261005') }}" type="image/png" sizes="32x32">
+  <link rel="icon" href="{{ url_for('static', filename='logos/web/favicon-16x16.png', v='brand-20261005') }}" type="image/png" sizes="16x16">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='logos/web/apple-touch-icon.png', v='brand-20261005') }}">
   <meta name="theme-color" content="#0f1115">
   <meta name="application-name" content="FjordHub">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="FjordHub">
-  <meta name="msapplication-TileImage" content="{{ url_for('static', filename='logos/web/mstile-150x150.png') }}">
+  <meta name="msapplication-TileImage" content="{{ url_for('static', filename='logos/web/mstile-150x150.png', v='brand-20261005') }}">
   <meta name="msapplication-TileColor" content="#0f1115">
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=static_version) }}">
   {% block head %}{% endblock %}
@@ -21,7 +21,7 @@
 <body>
   <header class="topbar">
     <a href="{{ url_for('dashboard') }}" class="topbar-brand">
-      <img src="{{ url_for('static', filename='logos/logos/fjordhub-logo-horizontal-transparent.png') }}" alt="FjordHub" class="brand-logo">
+      <img src="{{ url_for('static', filename='logos/logos/fjordhub-logo-horizontal-transparent.png', v='brand-20261005') }}" alt="FjordHub" class="brand-logo">
     </a>
     <nav class="topbar-nav">
       {% block topbar_right %}{% endblock %}

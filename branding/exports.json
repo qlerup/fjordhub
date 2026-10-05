@@ -1,0 +1,250 @@
+{
+  "name": "FjordHub",
+  "exports": [
+    {
+      "path": "static/logos/icons/apple-touch-icon.png",
+      "size": [
+        180,
+        180
+      ],
+      "kind": "icon",
+      "background": "#102b4c"
+    },
+    {
+      "path": "static/logos/icons/favicon-128x128.png",
+      "size": [
+        128,
+        128
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/icons/favicon-16x16.png",
+      "size": [
+        16,
+        16
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/icons/favicon-256x256.png",
+      "size": [
+        256,
+        256
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/icons/favicon-32x32.png",
+      "size": [
+        32,
+        32
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/icons/favicon-48x48.png",
+      "size": [
+        48,
+        48
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/icons/favicon-64x64.png",
+      "size": [
+        64,
+        64
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/icons/favicon.ico",
+      "size": [
+        256,
+        256
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/icons/fjordhub-mark-transparent-512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/icons/fjordhub-mark-white-bg-512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon",
+      "background": "#ffffff"
+    },
+    {
+      "path": "static/logos/icons/mstile-150x150.png",
+      "size": [
+        150,
+        150
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/icons/pwa-maskable-512x512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon",
+      "background": "#102b4c",
+      "scale": 0.7
+    },
+    {
+      "path": "static/logos/logos/fjordhub-app-icon-master.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/logos/fjordhub-logo-horizontal-dark.png",
+      "size": [
+        2400,
+        800
+      ],
+      "kind": "horizontal",
+      "ink": "#edf3f7"
+    },
+    {
+      "path": "static/logos/logos/fjordhub-logo-horizontal-light.png",
+      "size": [
+        2400,
+        800
+      ],
+      "kind": "horizontal",
+      "ink": "#172c36"
+    },
+    {
+      "path": "static/logos/logos/fjordhub-logo-horizontal-transparent.png",
+      "size": [
+        2400,
+        800
+      ],
+      "kind": "horizontal",
+      "ink": "#edf3f7"
+    },
+    {
+      "path": "static/logos/logos/fjordhub-logo-mark-transparent.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/logos/fjordhub-logo-mark-white-bg.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "kind": "icon",
+      "background": "#ffffff"
+    },
+    {
+      "path": "static/logos/logos/fjordhub-logo-stacked-light.png",
+      "size": [
+        1400,
+        1400
+      ],
+      "kind": "stacked",
+      "ink": "#172c36"
+    },
+    {
+      "path": "static/logos/logos/fjordhub-logo-stacked-transparent.png",
+      "size": [
+        1400,
+        1400
+      ],
+      "kind": "stacked",
+      "ink": "#edf3f7"
+    },
+    {
+      "path": "static/logos/web/android-chrome-192x192.png",
+      "size": [
+        192,
+        192
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/web/android-chrome-512x512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/web/apple-touch-icon.png",
+      "size": [
+        180,
+        180
+      ],
+      "kind": "icon",
+      "background": "#102b4c"
+    },
+    {
+      "path": "static/logos/web/favicon-16x16.png",
+      "size": [
+        16,
+        16
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/web/favicon-32x32.png",
+      "size": [
+        32,
+        32
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/web/favicon-48x48.png",
+      "size": [
+        48,
+        48
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/web/favicon.ico",
+      "size": [
+        256,
+        256
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/web/mstile-150x150.png",
+      "size": [
+        150,
+        150
+      ],
+      "kind": "icon"
+    },
+    {
+      "path": "static/logos/web/pwa-maskable-512x512.png",
+      "size": [
+        512,
+        512
+      ],
+      "kind": "icon",
+      "background": "#102b4c",
+      "scale": 0.7
+    }
+  ]
+}

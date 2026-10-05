@@ -12,7 +12,7 @@
   "compose_dir_env": "FJORDLENS_DIR",
   "gpu_service": "fjordlens-ai",
   "source_url": "https://github.com/qlerup/fjordlens",
-  "icon_url": "https://raw.githubusercontent.com/qlerup/fjordlens/main/static/logos/icons/fjordlens-mark-transparent-512.png",
+  "icon_url": "https://raw.githubusercontent.com/qlerup/fjordlens/main/static/logos/icons/fjordlens-mark-transparent-512.png?v=brand-20261005",
   "sort_order": 1,
   "setup_steps": [
     {

@@ -1,8 +1,8 @@
 {
   "id": "fjordshare",
-  "name": "FjordShare",
-  "tagline": "Fildeling og print-hub",
-  "description": "Del filer, administrer 3D-prints og integrer med Bambu Studio direkte fra browseren.",
+  "name": "Fjord3D",
+  "tagline": "Bibliotek og værktøjer til 3D-filer",
+  "description": "Organisér og vis 3D-modeller, administrer prints og integrer med Bambu Studio direkte fra browseren.",
   "icon": "share",
   "accent": "#8b5cf6",
   "container_name": "fjordshare",
@@ -11,7 +11,7 @@
   "traefik_prefix": "/share",
   "compose_dir_env": "FJORDSHARE_DIR",
   "source_url": "https://github.com/qlerup/fjordshare",
-  "icon_url": "https://raw.githubusercontent.com/qlerup/fjordshare/main/static/logos/icons/fjord3D-mark-transparent-512.png",
+  "icon_url": "https://raw.githubusercontent.com/qlerup/fjordshare/main/static/logos/icons/fjord3D-mark-transparent-512.png?v=brand-20261005",
   "sort_order": 2,
   "setup_steps": [
     {
