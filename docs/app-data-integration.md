@@ -19,9 +19,12 @@ afspilningskontrol, mediefiler, konti eller opsætning.
 - `GET /api/integrations/v1/app-data/fjordflix/posters/{movie_id}`: JPEG via
   FjordHub. Brug den returnerede `poster_url` og samme Authorization-header.
 
-FjordFlix returnerer højst 10 tilfældige titler med eksisterende posters fra hele
-biblioteket. Er færre end 10 posters tilgængelige, returneres færre titler.
-En ny forespørgsel kan give et nyt udvalg. Metadatafelter er valgfrie, da nogle
+FjordFlix returnerer de 10 senest tilføjede film/serieafsnit fra biblioteket,
+sorteret med nyeste først efter tilføjelsestidspunktet (upload eller import).
+Er biblioteket mindre end 10 titler, returneres alle. En titel med en manglende
+poster er stadig med; billedkaldet kan returnere 404, så vis en placeholder.
+Udvalget ændres, når titler tilføjes eller fjernes. Bevar rækkefølgen i `items`.
+Metadatafelter er valgfrie, da nogle
 titler ikke er identificeret i TMDB. `streams` indeholder aktuelle afspilninger
 (også pause/buffering), op til 100. Afspilninger uden heartbeat udløber efter 120
 sekunder; ved genstart er listen tom, indtil klienterne igen registrerer afspilning.

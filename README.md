@@ -71,7 +71,7 @@ If cleanup fails, the new location remains active and remaining old files are ke
 ## Access tokens for other apps
 
 Tokens can additionally opt in to data from installed apps. FjordFlix supplies
-up to 10 random titles with authenticated posters and current playback sessions.
+the 10 most recently added titles with authenticated posters and current playback sessions.
 Docker metrics remain available, and existing tokens keep their original access
 until an administrator selects extra apps. See the
 [API contract](docs/app-data-integration.md).
