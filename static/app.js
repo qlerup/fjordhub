@@ -351,6 +351,7 @@ async function refreshRegistry() {
   const icon = document.getElementById('refresh-icon');
   if (btn.disabled) return;
 
+  let reloadScheduled = false;
   btn.disabled = true;
   icon.classList.add('spinning');
   setUpdateStatusChecking(true);
@@ -374,15 +375,20 @@ async function refreshRegistry() {
     showToast(data.ok ? `✓ ${data.message}` : `✗ ${data.message}`, data.ok ? 'ok' : 'err');
 
     if (data.ok) {
-      // Reload page to show any newly added apps
+      // Keep all per-app update buttons locked until the final page refresh has
+      // actually happened. Unlocking here leaves a short race where an update
+      // can be clicked against the just-refreshed-but-not-yet-reloaded state.
+      reloadScheduled = true;
       setTimeout(() => location.reload(), 800);
     }
   } catch (_) {
     showToast('✗ Kunne ikke nå serveren', 'err');
   } finally {
-    setUpdateStatusChecking(false);
-    btn.disabled = false;
-    icon.classList.remove('spinning');
+    if (!reloadScheduled) {
+      setUpdateStatusChecking(false);
+      btn.disabled = false;
+      icon.classList.remove('spinning');
+    }
   }
 }
 
