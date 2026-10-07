@@ -346,6 +346,38 @@
   });
 })();
 
+(function () {
+  var userInteracted = false;
+  var sender = document.getElementById('smtp_from');
+
+  function markInteraction() { userInteracted = true; }
+  ['pointerdown', 'touchstart', 'keydown'].forEach(function (eventName) {
+    window.addEventListener(eventName, markInteraction, { capture: true, once: true, passive: eventName !== 'keydown' });
+  });
+
+  function clearRestoredMailFocus() {
+    if (userInteracted || !sender) return;
+    var mobile = false;
+    try {
+      mobile = window.matchMedia('(max-width: 760px)').matches &&
+        (navigator.maxTouchPoints > 0 || 'ontouchstart' in window);
+    } catch (_) {}
+    if (!mobile) return;
+
+    var active = document.activeElement;
+    if (active === sender || (active && active.closest && active.closest('#mail-settings-form'))) {
+      try { active.blur(); } catch (_) {}
+      try { window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); } catch (_) { window.scrollTo(0, 0); }
+    }
+  }
+
+  window.addEventListener('pageshow', function () {
+    clearRestoredMailFocus();
+    window.setTimeout(clearRestoredMailFocus, 60);
+    window.setTimeout(clearRestoredMailFocus, 220);
+  });
+})();
+
 {% if hub_src_configured %}
 (function () {
   var badge    = document.getElementById('hubUpdateBadge');
