@@ -1,5 +1,6 @@
 import sqlite3
 import tempfile
+import time
 import unittest
 from contextlib import closing
 from pathlib import Path
@@ -107,14 +108,18 @@ class AuthEmailTests(unittest.TestCase):
             self.auth.authenticate_app_user("urban-explorer", "rate@example.com", "secret1")
         )
 
-        with self.auth._login_attempt_lock:
-            self.auth._login_failures.clear()
+        with closing(self.auth._conn()) as conn:
+            conn.execute("UPDATE login_rate_limits SET window_started=?", (time.time() - 301,))
+            conn.commit()
 
         self.assertIsNotNone(self.auth.check_password("rate@example.com", "secret1"))
         for _ in range(4):
             self.assertIsNone(self.auth.check_password("rate-user", "wrong"))
         self.assertIsNotNone(self.auth.check_password("rate-user", "secret1"))
-        self.assertNotIn(f"user:{user_id}", self.auth._login_failures)
+        with closing(self.auth._conn()) as conn:
+            self.assertIsNone(conn.execute(
+                "SELECT 1 FROM login_rate_limits WHERE key=?", (f"user:{user_id}",)
+            ).fetchone())
 
     def test_legacy_werkzeug_hash_is_upgraded_after_correct_login(self):
         legacy_hash = generate_password_hash("secret1")
