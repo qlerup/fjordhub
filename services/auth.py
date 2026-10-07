@@ -452,14 +452,15 @@ class AuthService:
     def _login_failed(self, key: str) -> None:
         now = time.monotonic()
         with self._login_attempt_lock:
-            if len(self._login_failures) > 4096:
-                cutoff = now - 300
-                for stale_key in list(self._login_failures):
-                    recent = [stamp for stamp in self._login_failures[stale_key] if stamp >= cutoff]
-                    if recent:
-                        self._login_failures[stale_key] = recent
-                    else:
-                        self._login_failures.pop(stale_key, None)
+            cutoff = now - 300
+            for stale_key in list(self._login_failures):
+                recent = [stamp for stamp in self._login_failures[stale_key] if stamp >= cutoff]
+                if recent:
+                    self._login_failures[stale_key] = recent
+                else:
+                    self._login_failures.pop(stale_key, None)
+            if key not in self._login_failures and len(self._login_failures) >= 4096:
+                self._login_failures.pop(next(iter(self._login_failures)), None)
             self._login_failures.setdefault(key, []).append(now)
 
     def _login_succeeded(self, key: str) -> None:
