@@ -2,7 +2,6 @@ import hashlib
 import secrets
 import sqlite3
 import re
-import threading
 import time
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
@@ -147,8 +146,6 @@ class AuthService:
 
     def __init__(self, db_path: Path):
         self._db_path = db_path
-        self._login_attempt_lock = threading.Lock()
-        self._login_failures: dict[str, list[float]] = {}
         self._init_db()
 
     def _conn(self) -> sqlite3.Connection:
@@ -210,6 +207,11 @@ class AuthService:
                     role TEXT NOT NULL DEFAULT 'user',
                     synced_at TEXT,
                     UNIQUE(user_id, app_id)
+                );
+                CREATE TABLE IF NOT EXISTS login_rate_limits (
+                    key TEXT PRIMARY KEY,
+                    window_started REAL NOT NULL,
+                    attempts INTEGER NOT NULL
                 );
             """)
             cols = {r["name"] for r in conn.execute("PRAGMA table_info(app_hub_keys)").fetchall()}
@@ -440,32 +442,42 @@ class AuthService:
         return f"user:{int(row['id'])}" if row is not None else f"login:{login.casefold()}"
 
     def _login_locked(self, key: str) -> bool:
-        now = time.monotonic()
-        with self._login_attempt_lock:
-            recent = [stamp for stamp in self._login_failures.get(key, []) if now - stamp < 300]
-            if recent:
-                self._login_failures[key] = recent
-            else:
-                self._login_failures.pop(key, None)
-            return len(recent) >= 5
+        now = time.time()
+        with closing(self._conn()) as conn:
+            row = conn.execute(
+                "SELECT window_started,attempts FROM login_rate_limits WHERE key=?", (key,)
+            ).fetchone()
+            if row is None:
+                return False
+            if now - float(row["window_started"]) >= 300:
+                conn.execute("DELETE FROM login_rate_limits WHERE key=?", (key,))
+                conn.commit()
+                return False
+            return int(row["attempts"]) >= 5
 
     def _login_failed(self, key: str) -> None:
-        now = time.monotonic()
-        with self._login_attempt_lock:
-            cutoff = now - 300
-            for stale_key in list(self._login_failures):
-                recent = [stamp for stamp in self._login_failures[stale_key] if stamp >= cutoff]
-                if recent:
-                    self._login_failures[stale_key] = recent
-                else:
-                    self._login_failures.pop(stale_key, None)
-            if key not in self._login_failures and len(self._login_failures) >= 4096:
-                self._login_failures.pop(next(iter(self._login_failures)), None)
-            self._login_failures.setdefault(key, []).append(now)
+        now = time.time()
+        with closing(self._conn()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("DELETE FROM login_rate_limits WHERE window_started<?", (now - 300,))
+            row = conn.execute(
+                "SELECT window_started,attempts FROM login_rate_limits WHERE key=?", (key,)
+            ).fetchone()
+            if row is not None and now - float(row["window_started"]) < 300:
+                conn.execute(
+                    "UPDATE login_rate_limits SET attempts=attempts+1 WHERE key=?", (key,)
+                )
+            else:
+                conn.execute(
+                    "INSERT OR REPLACE INTO login_rate_limits(key,window_started,attempts) VALUES (?,?,1)",
+                    (key, now),
+                )
+            conn.commit()
 
     def _login_succeeded(self, key: str) -> None:
-        with self._login_attempt_lock:
-            self._login_failures.pop(key, None)
+        with closing(self._conn()) as conn:
+            conn.execute("DELETE FROM login_rate_limits WHERE key=?", (key,))
+            conn.commit()
 
     def check_password(self, username: str, password: str) -> Optional[User]:
         login = str(username or "").strip()
