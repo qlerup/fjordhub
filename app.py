@@ -111,6 +111,40 @@ _app_operation_lock = threading.RLock()
 resource_monitor = ResourceMonitor(docker_mgr)
 package_manager  = PackageManager(DATA_DIR)
 
+# Five failed password attempts from the same caller lock authentication for five minutes.
+_LOGIN_FAILURE_LIMIT = 5
+_LOGIN_FAILURE_WINDOW = 300
+_login_failure_lock = threading.Lock()
+_login_failures: dict[str, list[float]] = {}
+
+
+def _login_rate_key(scope: str) -> str:
+    return f"{scope}:{request.remote_addr or 'unknown'}"
+
+
+def _login_rate_limited(key: str) -> bool:
+    now = time.monotonic()
+    with _login_failure_lock:
+        recent = [value for value in _login_failures.get(key, []) if now - value < _LOGIN_FAILURE_WINDOW]
+        if recent:
+            _login_failures[key] = recent
+        else:
+            _login_failures.pop(key, None)
+        return len(recent) >= _LOGIN_FAILURE_LIMIT
+
+
+def _login_rate_failure(key: str) -> None:
+    now = time.monotonic()
+    with _login_failure_lock:
+        recent = [value for value in _login_failures.get(key, []) if now - value < _LOGIN_FAILURE_WINDOW]
+        recent.append(now)
+        _login_failures[key] = recent[-_LOGIN_FAILURE_LIMIT:]
+
+
+def _login_rate_success(key: str) -> None:
+    with _login_failure_lock:
+        _login_failures.pop(key, None)
+
 # ── Auth setup ───────────────────────────────────────────────────────────────
 
 login_manager = LoginManager(app)
@@ -443,12 +477,17 @@ def login():
     error = ""
     created = str(request.args.get("created") or "") == "1"
     if request.method == "POST":
+        rate_key = _login_rate_key("hub-login")
+        if _login_rate_limited(rate_key):
+            return render_template("login.html", error="For mange forsøg. Vent fem minutter.", created=created), 429
         username = str(request.form.get("username") or "").strip()
         password = str(request.form.get("password") or "")
         user = _auth.check_password(username, password)
         if user is None:
+            _login_rate_failure(rate_key)
             error = "Forkert brugernavn eller adgangskode."
         else:
+            _login_rate_success(rate_key)
             _login_on_device(user)
             if user.must_change_password:
                 return redirect(url_for("profile", force_password_change="1"))
@@ -1769,13 +1808,18 @@ def api_hub_app_authenticate():
     app_id, error_response = _require_app_key(data)
     if error_response:
         return error_response
+    rate_key = _login_rate_key(f"app-login:{app_id}")
+    if _login_rate_limited(rate_key):
+        return jsonify({"ok": False, "error": "For mange forsøg. Vent fem minutter."}), 429, {"Retry-After": "300"}
     username = str(data.get("username") or "").strip()
     password = str(data.get("password") or "")
     if not username or not password:
         return jsonify({"ok": False, "error": "Brugernavn og adgangskode påkrævet"}), 400
     user = _auth.authenticate_app_user(app_id, username, password)
     if not user:
+        _login_rate_failure(rate_key)
         return jsonify({"ok": False, "error": "Forkert login eller ingen adgang til appen"}), 401
+    _login_rate_success(rate_key)
     return jsonify({"ok": True, "user": user})
 
 

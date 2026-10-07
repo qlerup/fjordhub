@@ -267,6 +267,60 @@ class AppUrlTests(unittest.TestCase):
         self.assertEqual(client.get(f'/apps/{app_id}/sso-url?target=https://evil.example').status_code, 400)
         self.assertEqual(fjordhub._sso_tokens, {})
 
+    def test_hub_login_locks_after_five_failed_passwords(self):
+        fjordhub._auth.create_user("rate-limit-admin", "correct-password", role="admin")
+        with fjordhub._login_failure_lock:
+            fjordhub._login_failures.clear()
+        with fjordhub.app.test_client() as client:
+            for _ in range(5):
+                response = client.post(
+                    "/login",
+                    data={"username": "rate-limit-admin", "password": "wrong-password"},
+                    environ_base={"REMOTE_ADDR": "203.0.113.41"},
+                )
+                self.assertEqual(response.status_code, 200)
+            blocked = client.post(
+                "/login",
+                data={"username": "rate-limit-admin", "password": "correct-password"},
+                environ_base={"REMOTE_ADDR": "203.0.113.41"},
+            )
+            self.assertEqual(blocked.status_code, 429)
+            self.assertIn("For mange forsøg", blocked.get_data(as_text=True))
+            allowed = client.post(
+                "/login",
+                data={"username": "rate-limit-admin", "password": "correct-password"},
+                environ_base={"REMOTE_ADDR": "203.0.113.42"},
+            )
+            self.assertEqual(allowed.status_code, 302)
+
+    def test_app_authentication_api_locks_after_five_failures(self):
+        hub_key = "rate-limit-hub-key"
+        app_id = "orbitmap"
+        fjordhub._auth.save_hub_key(app_id, hub_key)
+        uid = fjordhub._auth.create_user("rate-app-user", "correct-password")
+        fjordhub._auth.set_user_app_access(uid, app_id, "user")
+        with fjordhub._login_failure_lock:
+            fjordhub._login_failures.clear()
+        headers={"X-Hub-Key": hub_key}
+        with fjordhub.app.test_client() as client:
+            for _ in range(5):
+                response = client.post(
+                    "/api/hub/apps/authenticate",
+                    headers=headers,
+                    json={"app_id": app_id, "username": "rate-app-user", "password": "wrong-password"},
+                    environ_base={"REMOTE_ADDR": "172.20.0.8"},
+                )
+                self.assertEqual(response.status_code, 401)
+            blocked = client.post(
+                "/api/hub/apps/authenticate",
+                headers=headers,
+                json={"app_id": app_id, "username": "rate-app-user", "password": "correct-password"},
+                environ_base={"REMOTE_ADDR": "172.20.0.8"},
+            )
+            self.assertEqual(blocked.status_code, 429)
+            self.assertEqual(blocked.headers.get("Retry-After"), "300")
+            self.assertIn("For mange forsøg", blocked.get_json()["error"])
+
     def test_app_users_api_imports_urban_explorer_argon2_hash(self):
         hub_key = "test-hub-key"
         fjordhub._auth.save_hub_key("urban-explorer", hub_key)
