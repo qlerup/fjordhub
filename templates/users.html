@@ -7,13 +7,13 @@
 {% endblock %}
 
 {% block content %}
-<div class="settings-page">
+<div class="settings-page users-page">
   <div class="dashboard-header" style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;">
     <div>
       <h1>Brugere</h1>
       <p class="dashboard-sub">Administrer adgang til FjordHub og apps.</p>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+    <div class="users-header-actions" style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
       {% if current_user.is_admin %}
       <button type="button" class="btn btn-open" id="open-add-modal">
         <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -56,7 +56,7 @@
       <tbody>
         {% for u in users %}
         <tr>
-          <td>
+          <td class="user-identity" data-label="Bruger">
             <strong>{{ u.username }}</strong>
             {% if u.id == current_user.id %}<span style="color:var(--text-muted);font-size:.75rem;margin-left:6px;">(dig)</span>{% endif %}
             {% if u.first_name or u.last_name or u.language %}
@@ -67,18 +67,18 @@
             {% endif %}
             <div style="color:var(--text-muted);font-size:.78rem;margin-top:3px;">{{ u.email or 'Ingen email' }}</div>
           </td>
-          <td>
+          <td class="user-role-cell" data-label="Hub-rolle">
             {% if u.is_admin %}
               <span class="badge badge-admin">Admin</span>
             {% else %}
               <span class="badge badge-user">Bruger</span>
             {% endif %}
           </td>
-          <td>
+          <td class="user-apps-cell" data-label="App-adgang">
             {% if u.app_access %}
-              <div style="display:flex;flex-wrap:wrap;gap:4px;">
+              <div class="user-app-badges">
                 {% for a in u.app_access %}
-                  <span class="badge" style="background:color-mix(in srgb,var(--accent,#7c6af7) 15%,var(--surface-2));color:var(--text);font-size:.7rem;">
+                  <span class="badge user-app-badge">
                     {{ a.app_id }}
                     <span style="opacity:.6;margin-left:2px;">{{ a.role }}</span>
                   </span>
@@ -88,11 +88,11 @@
               <span style="color:var(--text-muted);font-size:.8rem;">—</span>
             {% endif %}
           </td>
-          <td style="color:var(--text-muted);font-size:.82rem;">{{ u.created_at }}</td>
-          <td style="text-align:right;">
+          <td class="user-created-cell" data-label="Oprettet">{{ u.created_at }}</td>
+          <td class="user-actions-cell" data-label="Handlinger">
             {% set is_last_admin = (u.is_admin and admin_count <= 1) %}
             {% set is_self = (u.id == current_user.id) %}
-            <div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;">
+            <div class="user-row-actions">
               {% if current_user.is_admin %}
                     <button type="button" class="btn-delete" style="color:var(--text-muted);"
                       data-edit-user-id="{{ u.id }}"

@@ -1326,6 +1326,191 @@ a { color: inherit; text-decoration: none; }
 .users-table tr:last-child td { border-bottom: none; }
 .users-table tr:hover td { background: var(--surface-2); }
 
+
+/* Mobile-friendly user management. Desktop keeps the compact table, while
+   narrow screens turn each row into a readable user card. */
+.user-app-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.user-app-badge {
+  background: color-mix(in srgb, var(--accent, #7c6af7) 15%, var(--surface-2));
+  color: var(--text);
+  font-size: .7rem;
+}
+.user-created-cell {
+  color: var(--text-muted);
+  font-size: .82rem;
+}
+.user-actions-cell {
+  text-align: right;
+}
+.user-row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+@media (max-width: 720px) {
+  .users-page {
+    max-width: none;
+    width: 100%;
+  }
+
+  .users-page .dashboard-header {
+    align-items: flex-start !important;
+    gap: 14px !important;
+  }
+
+  .users-header-actions {
+    width: 100%;
+  }
+
+  .users-header-actions > .btn,
+  .users-header-actions > form {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .users-header-actions > form .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .users-table-wrap {
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+    background: transparent;
+    margin-top: 18px;
+  }
+
+  .users-table,
+  .users-table tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .users-table thead {
+    display: none;
+  }
+
+  .users-table tr {
+    display: block;
+    width: 100%;
+    margin-bottom: 12px;
+    overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+
+  .users-table tr:hover td {
+    background: transparent;
+  }
+
+  .users-table td {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    width: 100%;
+    padding: 11px 14px;
+    border: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+    min-width: 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+
+  .users-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .users-table td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .05em;
+    line-height: 1.5;
+    text-transform: uppercase;
+  }
+
+  .users-table .user-identity {
+    display: block;
+    padding: 15px 14px 13px;
+    background: var(--surface-2);
+  }
+
+  .users-table .user-identity::before {
+    display: none;
+  }
+
+  .user-identity > strong {
+    display: inline;
+    font-size: 1rem;
+    overflow-wrap: anywhere;
+  }
+
+  .user-app-badges {
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .user-app-badge {
+    max-width: 100%;
+    padding: 5px 8px;
+    line-height: 1.25;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .user-actions-cell {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between;
+    gap: 12px;
+    text-align: left;
+  }
+
+  .user-actions-cell::before {
+    flex: 0 0 auto;
+  }
+
+  .user-row-actions {
+    margin-left: auto;
+  }
+
+  .user-row-actions .btn-delete {
+    width: 40px;
+    height: 40px;
+  }
+
+  .user-row-actions .btn-delete svg {
+    width: 17px !important;
+    height: 17px !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .users-table td {
+    grid-template-columns: 78px minmax(0, 1fr);
+    padding-inline: 12px;
+  }
+
+  .users-header-actions {
+    gap: 7px !important;
+  }
+
+  .users-header-actions .btn {
+    padding-inline: 10px;
+    white-space: nowrap;
+  }
+}
+
 /* ── Modal ── */
 .modal-overlay {
   display: none;
