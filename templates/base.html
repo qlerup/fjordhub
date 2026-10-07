@@ -16,6 +16,10 @@
   <meta name="msapplication-TileImage" content="{{ url_for('static', filename='logos/web/mstile-150x150.png', v='brand-20261005') }}">
   <meta name="msapplication-TileColor" content="#0f1115">
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v=static_version) }}">
+  {# Harmless duck Easter egg, only for the authenticated user MiklasH on any installation. #}
+  {% if current_user.is_authenticated and current_user.username|lower == 'miklash' %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='duck-prank.css', v=static_version) }}">
+  {% endif %}
   {% block head %}{% endblock %}
 </head>
 <body>
@@ -94,6 +98,9 @@
   </div>
 
   <script src="{{ url_for('static', filename='app.js', v=static_version) }}"></script>
+  {% if current_user.is_authenticated and current_user.username|lower == 'miklash' %}
+  <script defer src="{{ url_for('static', filename='duck-prank.js', v=static_version) }}"></script>
+  {% endif %}
   {% block scripts %}{% endblock %}
 </body>
 </html>
