@@ -96,6 +96,26 @@ class AuthEmailTests(unittest.TestCase):
         self.assertFalse(self.auth.get_by_id(user_id).must_change_password)
         self.assertFalse(self._must_change_password("first-login"))
 
+    def test_password_login_is_locked_after_five_failures_and_success_resets_counter(self):
+        user_id = self.auth.create_user("rate-user", "secret1", email="rate@example.com")
+        self.auth.set_user_app_access(user_id, "urban-explorer", "user")
+
+        for _ in range(5):
+            self.assertIsNone(self.auth.check_password("rate-user", "wrong"))
+        self.assertIsNone(self.auth.check_password("rate-user", "secret1"))
+        self.assertIsNone(
+            self.auth.authenticate_app_user("urban-explorer", "rate@example.com", "secret1")
+        )
+
+        with self.auth._login_attempt_lock:
+            self.auth._login_failures.clear()
+
+        self.assertIsNotNone(self.auth.check_password("rate@example.com", "secret1"))
+        for _ in range(4):
+            self.assertIsNone(self.auth.check_password("rate-user", "wrong"))
+        self.assertIsNotNone(self.auth.check_password("rate-user", "secret1"))
+        self.assertNotIn(f"user:{user_id}", self.auth._login_failures)
+
     def test_legacy_werkzeug_hash_is_upgraded_after_correct_login(self):
         legacy_hash = generate_password_hash("secret1")
         with closing(sqlite3.connect(self.db_path)) as conn:
