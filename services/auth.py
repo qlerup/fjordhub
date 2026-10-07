@@ -468,6 +468,10 @@ class AuthService:
                     "UPDATE login_rate_limits SET attempts=attempts+1 WHERE key=?", (key,)
                 )
             else:
+                if row is None and conn.execute("SELECT COUNT(*) FROM login_rate_limits").fetchone()[0] >= 4096:
+                    conn.execute(
+                        "DELETE FROM login_rate_limits WHERE key=(SELECT key FROM login_rate_limits ORDER BY window_started LIMIT 1)"
+                    )
                 conn.execute(
                     "INSERT OR REPLACE INTO login_rate_limits(key,window_started,attempts) VALUES (?,?,1)",
                     (key, now),
