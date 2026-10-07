@@ -137,6 +137,29 @@ function hideUpdateRow(card) {
   row.style.display = 'none';
 }
 
+let _updateStatusChecksInFlight = 0;
+
+function syncUpdateButtonLock(btn) {
+  if (!btn) return;
+  const checking = _updateStatusChecksInFlight > 0;
+  const running = btn.dataset.updateRunning === '1';
+  const starting = btn.dataset.updateStarting === '1';
+  const available = btn.dataset.updateAvailable === '1';
+
+  btn.disabled = checking || running || starting;
+  if (running) btn.textContent = 'Opdaterer...';
+  else if (starting) btn.textContent = 'Starter...';
+  else if (checking && available) btn.textContent = 'Tjekker...';
+  else btn.textContent = 'Opdater';
+}
+
+function setUpdateStatusChecking(active) {
+  if (active) _updateStatusChecksInFlight += 1;
+  else _updateStatusChecksInFlight = Math.max(0, _updateStatusChecksInFlight - 1);
+
+  document.querySelectorAll('.btn-update').forEach(syncUpdateButtonLock);
+}
+
 function applyUpdateStatus(card, status) {
   const row = card.querySelector('.card-update-row');
   if (!row) return;
@@ -166,11 +189,13 @@ function applyUpdateStatus(card, status) {
   const canUpdate = state === 'update_available';
   const isRunning = state === 'updating' || status.running;
   btn.style.display = canUpdate || isRunning ? '' : 'none';
-  btn.disabled = isRunning;
-  btn.textContent = isRunning ? 'Opdaterer...' : 'Opdater';
+  btn.dataset.updateAvailable = canUpdate ? '1' : '0';
+  btn.dataset.updateRunning = isRunning ? '1' : '0';
+  syncUpdateButtonLock(btn);
 }
 
 async function fetchUpdateStatuses() {
+  setUpdateStatusChecking(true);
   try {
     const res = await fetch('/api/apps-updates');
     if (!res.ok) return;
@@ -196,7 +221,10 @@ async function fetchUpdateStatuses() {
       if (!s.running && !_terminalDone) finishUpdateModal(s.state);
     }
     if (hasRunningUpdate) setTimeout(fetchUpdateStatuses, 2500);
-  } catch (_) {}
+  } catch (_) {
+  } finally {
+    setUpdateStatusChecking(false);
+  }
 }
 
 // ── Update terminal modal ─────────────────────────────────────────────────
@@ -325,6 +353,7 @@ async function refreshRegistry() {
 
   btn.disabled = true;
   icon.classList.add('spinning');
+  setUpdateStatusChecking(true);
 
   try {
     // Tving samtidig et friskt opdaterings-tjek (git fetch) af alle installerede apps,
@@ -340,7 +369,7 @@ async function refreshRegistry() {
     const res  = await fetch('/api/registry/refresh', { method: 'POST' });
     const data = await res.json();
     await updateChecks;
-    fetchUpdateStatuses();
+    await fetchUpdateStatuses();
 
     showToast(data.ok ? `✓ ${data.message}` : `✗ ${data.message}`, data.ok ? 'ok' : 'err');
 
@@ -351,6 +380,7 @@ async function refreshRegistry() {
   } catch (_) {
     showToast('✗ Kunne ikke nå serveren', 'err');
   } finally {
+    setUpdateStatusChecking(false);
     btn.disabled = false;
     icon.classList.remove('spinning');
   }
@@ -456,34 +486,42 @@ async function toggleApp(card, action) {
 }
 
 async function startUpdate(card) {
+  if (_updateStatusChecksInFlight > 0) return;
   const id = card.dataset.appId;
   const name = card.querySelector('.card-name')?.textContent || id;
   const btn = card.querySelector('.btn-update');
   if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Starter...';
+    btn.dataset.updateStarting = '1';
+    syncUpdateButtonLock(btn);
   }
   try {
     const res = await fetch(`/apps/${id}/update/start`, { method: 'POST' });
     const data = await res.json();
     if (!data.ok && res.status !== 202) {
       showToast(`âœ— ${data.error || 'Kunne ikke starte opdatering'}`, 'err');
-      if (btn) btn.disabled = false;
+      if (btn) {
+        delete btn.dataset.updateStarting;
+        syncUpdateButtonLock(btn);
+      }
       return;
     }
+    if (btn) delete btn.dataset.updateStarting;
     openUpdateModal(id, name);
     applyUpdateStatus(card, { ...data, state: 'updating', running: true, label: 'Opdaterer...' });
     setTimeout(fetchUpdateStatuses, 1200);
     setTimeout(fetchStatuses, 4500);
   } catch (_) {
     showToast('âœ— NetvÃ¦rksfejl', 'err');
-    if (btn) btn.disabled = false;
+    if (btn) {
+      delete btn.dataset.updateStarting;
+      syncUpdateButtonLock(btn);
+    }
   }
 }
 
 document.getElementById('app-sections')?.addEventListener('click', e => {
   const updateBtn = e.target.closest('.btn-update');
-  if (updateBtn && !updateBtn.disabled) {
+  if (updateBtn && _updateStatusChecksInFlight === 0 && !updateBtn.disabled) {
     startUpdate(updateBtn.closest('.app-card'));
     return;
   }
