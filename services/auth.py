@@ -2,6 +2,8 @@ import hashlib
 import secrets
 import sqlite3
 import re
+import threading
+import time
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -145,6 +147,8 @@ class AuthService:
 
     def __init__(self, db_path: Path):
         self._db_path = db_path
+        self._login_attempt_lock = threading.Lock()
+        self._login_failures: dict[str, list[float]] = {}
         self._init_db()
 
     def _conn(self) -> sqlite3.Connection:
@@ -432,17 +436,53 @@ class AuthService:
             suffix += 1
         return candidate
 
+    def _login_key(self, row, login: str) -> str:
+        return f"user:{int(row['id'])}" if row is not None else f"login:{login.casefold()}"
+
+    def _login_locked(self, key: str) -> bool:
+        now = time.monotonic()
+        with self._login_attempt_lock:
+            recent = [stamp for stamp in self._login_failures.get(key, []) if now - stamp < 300]
+            if recent:
+                self._login_failures[key] = recent
+            else:
+                self._login_failures.pop(key, None)
+            return len(recent) >= 5
+
+    def _login_failed(self, key: str) -> None:
+        now = time.monotonic()
+        with self._login_attempt_lock:
+            if len(self._login_failures) > 4096:
+                cutoff = now - 300
+                for stale_key in list(self._login_failures):
+                    recent = [stamp for stamp in self._login_failures[stale_key] if stamp >= cutoff]
+                    if recent:
+                        self._login_failures[stale_key] = recent
+                    else:
+                        self._login_failures.pop(stale_key, None)
+            self._login_failures.setdefault(key, []).append(now)
+
+    def _login_succeeded(self, key: str) -> None:
+        with self._login_attempt_lock:
+            self._login_failures.pop(key, None)
+
     def check_password(self, username: str, password: str) -> Optional[User]:
         login = str(username or "").strip()
         with closing(self._conn()) as conn:
             row = conn.execute(
                 "SELECT * FROM users WHERE username=? OR email=?", (login, login)
             ).fetchone()
+            key = self._login_key(row, login)
+            if self._login_locked(key):
+                return None
             if row is None:
+                self._login_failed(key)
                 return None
             stored_hash = str(row["password_hash"] or "")
             if not _verify_password(stored_hash, password):
+                self._login_failed(key)
                 return None
+            self._login_succeeded(key)
             if _password_needs_rehash(stored_hash):
                 conn.execute(
                     "UPDATE users SET password_hash=? WHERE id=?",
