@@ -1015,7 +1015,9 @@ def api_docker_cleanup():
         "Starter Docker oprydning.",
         "Bevarer Docker volumes og monterede data-mapper.",
     ]
+    from services.cleanup_space import reclaimed_bytes
     ok = True
+    total_reclaimed = 0
     for label, command, timeout in DOCKER_CLEANUP_COMMANDS:
         log.extend(["", f"=== {label} ===", "$ " + " ".join(command)])
         try:
@@ -1044,6 +1046,8 @@ def api_docker_cleanup():
             continue
 
         output = "\n".join(part for part in (result.stdout.strip(), result.stderr.strip()) if part)
+        if 'prune' in command:
+            total_reclaimed += reclaimed_bytes(result.stdout)
         _append_command_output(log, output)
         if result.returncode != 0:
             ok = False
@@ -1051,7 +1055,8 @@ def api_docker_cleanup():
 
     log.extend(["", "Oprydning faerdig." if ok else "Oprydning sluttede med fejl."])
     message = "Docker oprydning faerdig." if ok else "Docker oprydning sluttede med fejl."
-    return jsonify({"ok": ok, "message": message, "log": log[-600:]}), 200 if ok else 500
+    return jsonify({"ok": ok, "message": message, "log": log[-600:],
+                    "reclaimed_bytes": total_reclaimed}), 200 if ok else 500
 
 
 # ── Settings ─────────────────────────────────────────────────────────────────

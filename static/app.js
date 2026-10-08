@@ -433,6 +433,13 @@ async function refreshRegistry() {
 
 // ── "Last updated" relative time ──────────────────────────────────────────
 
+function formatReclaimedSpace(bytes) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = Math.max(0, bytes), unit = 0;
+  while (value >= 1000 && unit < units.length - 1) { value /= 1000; unit += 1; }
+  return `${new Intl.NumberFormat('da-DK', {maximumFractionDigits: 2}).format(value)} ${units[unit]}`;
+}
+
 async function cleanupDocker() {
   const btn = document.getElementById('cleanup-btn');
   const icon = document.getElementById('cleanup-icon');
@@ -467,11 +474,14 @@ async function cleanupDocker() {
       ? data.log
       : [data.error || data.message || 'Docker oprydning fejlede.'];
     const message = data.message || (ok ? 'Docker oprydning faerdig.' : 'Docker oprydning fejlede.');
+    const total = Number.isFinite(data.reclaimed_bytes)
+      ? ` ${ok ? 'Frigjort i alt' : 'Bekræftet frigjort'}: ${formatReclaimedSpace(data.reclaimed_bytes)}.`
+      : '';
     finishUtilityLogModal(
       ok ? 'Docker oprydning faerdig' : 'Docker oprydning fejlede',
       ok,
       lines,
-      message
+      message + total
     );
     showToast(ok ? `OK ${message}` : `Fejl: ${message}`, ok ? 'ok' : 'err');
     setTimeout(fetchStatuses, 1000);
