@@ -260,6 +260,8 @@ a { color: inherit; text-decoration: none; }
 }
 
 .btn-update-all { margin-left: auto; white-space: nowrap; }
+#update-all-log-btn[hidden] { display: none; }
+.app-section-header { flex-wrap: wrap; }
 
 .section-count {
   min-width: 22px;

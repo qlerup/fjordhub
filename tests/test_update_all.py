@@ -31,6 +31,12 @@ class UpdateAllTests(unittest.TestCase):
             self.assertEqual(result['queued'], ['one', 'two'])
             self.assertEqual(result['skipped'], ['dirty'])
             self.assertTrue(self.manager.is_running('two'))
+            snapshot = self.manager.get_batch_status()
+            self.assertTrue(snapshot['running'])
+            self.assertEqual([item['id'] for item in snapshot['items']], ['one', 'two'])
+            self.manager._append_job_log('one', 'Building image')
+            self.assertEqual(snapshot['items'][0]['log'], [])
+            self.assertEqual(self.manager.get_batch_status()['items'][0]['log'], ['Building image'])
             self.assertEqual(self.manager.start_update({'id': 'two'})[1], 409)
             self.assertEqual(self.manager.start_all_updates(self.apps)[1], 409)
             visited = []
@@ -46,6 +52,8 @@ class UpdateAllTests(unittest.TestCase):
             self.assertEqual(visited, ['one', 'two'])
             self.assertFalse(self.manager.is_running('one'))
             self.assertFalse(self.manager._batch_lock.locked())
+            self.assertFalse(self.manager.get_batch_status()['running'])
+            self.assertEqual(self.manager.get_batch_status()['items'][0]['state'], 'failed')
 
     def test_empty_batch_releases_lock_without_worker(self):
         with patch.object(self.manager, 'get_status', return_value={'update_available': False}), \
@@ -59,6 +67,17 @@ class UpdateAllRouteTests(unittest.TestCase):
     setUp = fixtures.AccessTokenTests.setUp
     tearDown = fixtures.AccessTokenTests.tearDown
     login = fixtures.AccessTokenTests.login
+
+    def test_batch_status_requires_admin_and_never_checks_git(self):
+        with patch.object(hub._update_manager, 'get_status') as git_status:
+            self.assertEqual(self.client.get('/api/apps-updates/batch').status_code, 401)
+            self.login(self.user)
+            self.assertEqual(self.client.get('/api/apps-updates/batch').status_code, 403)
+            self.login(self.admin)
+            response = self.client.get('/api/apps-updates/batch')
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('items', response.json)
+            git_status.assert_not_called()
 
     def test_only_admin_can_start_queue(self):
         with patch.object(hub._update_manager, 'start_all_updates', return_value=({'ok': True, 'queued': ['fjordlens']}, 202)) as start:

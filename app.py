@@ -3216,6 +3216,13 @@ def start_all_app_updates():
     return jsonify(payload), status
 
 
+@app.get("/api/apps-updates/batch")
+def app_update_batch_status():
+    if not current_user.is_admin:
+        return jsonify({"ok": False, "error": "Kræver admin."}), 403
+    return jsonify(_update_manager.get_batch_status())
+
+
 @app.route("/apps/<app_id>/uninstall", methods=["POST"])
 def uninstall_app(app_id):
     app_id = canonical_app_id(app_id)

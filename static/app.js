@@ -140,6 +140,48 @@ function hideUpdateRow(card) {
 
 let _updateStatusChecksInFlight = 0;
 let _allUpdatesStarting = false;
+let _batchStatus = null, _batchTerminal = false, _batchPollTimer = null, _batchPolling = false;
+
+function openBatchUpdateModal() {
+  openUtilityLogModal('Opdater alle', ['Tjekker opdateringer og klargør køen...']);
+  _batchTerminal = true;
+  renderBatchUpdateStatus();
+  pollBatchUpdateStatus();
+}
+
+function renderBatchUpdateStatus() {
+  if (!_batchTerminal || _allUpdatesStarting || !_batchStatus?.items?.length) return;
+  const items = _batchStatus.items;
+  const done = items.filter(item => !item.running).length;
+  const failed = items.filter(item => item.state === 'failed').length;
+  const active = items.find(item => item.running && item.state !== 'queued');
+  const lines = items.flatMap(item => [
+    `=== ${item.name}: ${item.label || UPDATE_LABELS[item.state] || item.state} ===`,
+    ...(item.log || []), ...(item.error ? [`Fejl: ${item.error}`] : []), '',
+  ]);
+  const summary = `${done}/${items.length} afsluttet` + (failed ? ` · ${failed} fejlede` : '')
+    + (active ? ` · ${active.name} opdateres` : _batchStatus.running ? ' · Venter i kø' : ' · Køen er færdig');
+  finishUtilityLogModal('Opdater alle', !failed, lines, summary);
+  document.getElementById('update-log-done').textContent = _batchStatus.running ? 'Luk – fortsæt i baggrunden' : 'Færdig';
+}
+
+async function pollBatchUpdateStatus() {
+  if (!document.getElementById('update-all-btn') || _batchPolling) return;
+  clearTimeout(_batchPollTimer);
+  _batchPolling = true;
+  try {
+    const response = await fetch('/api/apps-updates/batch', {cache: 'no-store', signal: AbortSignal.timeout(8000)});
+    if (!response.ok) throw new Error('Status kunne ikke hentes');
+    _batchStatus = await response.json();
+    document.getElementById('update-all-log-btn').hidden = !_batchStatus.items?.length;
+    renderBatchUpdateStatus();
+  } catch (_) {
+    if (_batchTerminal) document.getElementById('update-log-footer').textContent = 'Forbindelsen til status er afbrudt. Prøver igen...';
+  } finally {
+    _batchPolling = false;
+    _batchPollTimer = setTimeout(pollBatchUpdateStatus, _batchStatus?.running || _batchTerminal ? 2000 : 15000);
+  }
+}
 
 function syncUpdateAllButton() {
   const btn = document.getElementById('update-all-btn');
@@ -155,23 +197,32 @@ async function startAllUpdates() {
   const btn = document.getElementById('update-all-btn');
   if (!btn || btn.disabled) return;
   _allUpdatesStarting = true;
+  _batchStatus = null;
+  openBatchUpdateModal();
   syncUpdateAllButton();
   try {
     const response = await fetch('/api/apps-updates/start-all', {method: 'POST'});
     const data = await response.json();
     if (!response.ok || !data.ok) throw new Error(data.error || 'Kunne ikke starte opdateringerne.');
     const queued = new Set(data.queued || []);
+    if (!queued.size) {
+      _batchTerminal = false;
+      finishUtilityLogModal('Opdater alle', true, ['Ingen apps klar til opdatering.'], 'Ingen opdateringer startet.');
+    }
     document.querySelectorAll('.app-card').forEach(card => {
       if (queued.has(card.dataset.appId)) applyUpdateStatus(card, {state: 'queued', running: true});
     });
     const skipped = data.skipped?.length ? ` ${data.skipped.length} sprunget over pga. lokale ændringer.` : '';
     showToast((queued.size ? `${queued.size} apps opdateres én ad gangen.` : 'Ingen apps klar til opdatering.') + skipped, data.skipped?.length ? 'err' : 'ok');
   } catch (error) {
+    _batchTerminal = false;
+    finishUtilityLogModal('Opdater alle', false, [error.message], 'Kunne ikke starte køen.');
     showToast(error.message || 'Netværksfejl', 'err');
   } finally {
     _allUpdatesStarting = false;
     syncUpdateAllButton();
     fetchUpdateStatuses();
+    pollBatchUpdateStatus();
   }
 }
 
@@ -305,6 +356,7 @@ function renderUpdateLog(lines) {
 }
 
 function openUpdateModal(appId, appName) {
+  _batchTerminal = false;
   _terminalAppId = appId;
   _terminalDone  = false;
   const overlay = document.getElementById('update-log-modal');
@@ -317,10 +369,12 @@ function openUpdateModal(appId, appName) {
   if (footer) { footer.textContent = ''; footer.className = 'terminal-footer'; }
   if (pre)    pre.innerHTML = '';
   if (doneBtn) doneBtn.style.display = 'none';
+  if (doneBtn) doneBtn.textContent = 'Færdig';
   overlay.classList.add('is-open');
 }
 
 function openUtilityLogModal(titleText, lines = []) {
+  _batchTerminal = false;
   _terminalAppId = null;
   _terminalDone = false;
   const overlay = document.getElementById('update-log-modal');
@@ -331,6 +385,7 @@ function openUtilityLogModal(titleText, lines = []) {
   if (title) title.textContent = titleText;
   if (footer) { footer.textContent = ''; footer.className = 'terminal-footer'; }
   if (doneBtn) doneBtn.style.display = 'none';
+  if (doneBtn) doneBtn.textContent = 'Færdig';
   renderUpdateLog(lines);
   overlay.classList.add('is-open');
 }
@@ -350,6 +405,7 @@ function finishUtilityLogModal(titleText, ok, lines, footerText) {
 }
 
 function closeUpdateModal() {
+  _batchTerminal = false;
   _terminalAppId = null;
   document.getElementById('update-log-modal')?.classList.remove('is-open');
 }
@@ -800,6 +856,7 @@ checkDockerHealth();
 // Resolve app statuses before the first update check: applyUpdateStatus needs
 // the status dots to tell unmanaged-but-running apps from uninstalled ones.
 fetchStatuses().then(fetchUpdateStatuses);
+pollBatchUpdateStatus();
 tickRelativeTime();
 
 setInterval(fetchStatuses,    8000);

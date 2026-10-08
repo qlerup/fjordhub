@@ -42,6 +42,16 @@ class UpdateManager:
         self._cache: dict[str, dict] = {}
         self._jobs: dict[str, dict] = {}
         self._batch_lock = threading.Lock()
+        self._batch_apps: list[dict] = []
+
+    def get_batch_status(self) -> dict:
+        # Read job snapshots only: terminal polling must never run git fetch.
+        with self._lock:
+            items = [{**self._jobs.get(app['id'], {}), 'id': app['id'],
+                      'name': app.get('name', app['id']),
+                      'log': list(self._jobs.get(app['id'], {}).get('log', []))}
+                     for app in self._batch_apps]
+        return {'items': items, 'running': any(item.get('running') for item in items)}
 
     def start_all_updates(self, app_defs: list[dict]) -> tuple[dict, int]:
         """Reserve eligible apps before starting one sequential background worker."""
@@ -75,6 +85,8 @@ class UpdateManager:
             if not queued:
                 self._batch_lock.release()
                 return {'ok': True, 'queued': [], 'skipped': skipped}, 200
+            with self._lock:
+                self._batch_apps = [dict(item[0]) for item in queued]
             threading.Thread(target=self._run_all_updates, args=(queued,), daemon=True).start()
             return {'ok': True, 'queued': [item[0]['id'] for item in queued], 'skipped': skipped}, 202
         except Exception:

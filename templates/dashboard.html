@@ -58,6 +58,7 @@
         <span class="section-count" id="installed-count"></span>
         {% if current_user.is_admin %}
         <button class="btn btn-update-all" id="update-all-btn" type="button" onclick="startAllUpdates()" disabled title="Opdater apps én ad gangen. FjordHub er ikke med.">Opdater alle</button>
+        <button class="btn btn-open" id="update-all-log-btn" type="button" onclick="openBatchUpdateModal()" hidden>Vis log</button>
         {% endif %}
       </div>
       <div class="app-grid" id="installed-grid"></div>
