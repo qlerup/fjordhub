@@ -308,7 +308,7 @@ async function fetchUpdateStatuses() {
     if (_terminalAppId && data[_terminalAppId]) {
       const s = data[_terminalAppId];
       if (s.log && s.log.length) renderUpdateLog(s.log);
-      if (!s.running && !_terminalDone) finishUpdateModal(s.state);
+      if (!s.running && !_terminalDone) finishUpdateModal(s.state, s.error);
     }
     if (hasRunningUpdate) setTimeout(fetchUpdateStatuses, 2500);
   } catch (_) {
@@ -410,7 +410,7 @@ function closeUpdateModal() {
   document.getElementById('update-log-modal')?.classList.remove('is-open');
 }
 
-function finishUpdateModal(state) {
+function finishUpdateModal(state, error = '') {
   _terminalDone = true;
   const footer  = document.getElementById('update-log-footer');
   const title   = document.getElementById('update-log-title');
@@ -418,6 +418,7 @@ function finishUpdateModal(state) {
   if (!footer) return;
   const ok = state === 'up_to_date' || state === 'updated';
   footer.textContent = ok ? '✓ Opdatering færdig' : '✗ Opdatering fejlede';
+  if (!ok && error) footer.textContent += ': ' + error;
   footer.className   = 'terminal-footer ' + (ok ? 'ok' : 'err');
   if (title) title.textContent = title.textContent.replace('Opdaterer', ok ? 'Opdateret' : 'Fejl —');
   if (doneBtn) doneBtn.style.display = '';

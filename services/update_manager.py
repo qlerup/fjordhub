@@ -122,7 +122,7 @@ class UpdateManager:
         with self._lock:
             job = self._jobs.get(app_id)
             if job and job.get("running"):
-                return dict(job)
+                return {**job, "log": list(job.get("log", []))}
             cached = self._cache.get(app_id)
 
         install_dir = self.install_state.get_install_dir(app_id)
@@ -139,11 +139,11 @@ class UpdateManager:
         if not fetch and cached:
             checked_at_epoch = float(cached.get("checked_at_epoch") or 0)
             if time.time() - checked_at_epoch < CHECK_TTL_SECONDS:
-                return dict(cached)
+                return {**cached, "log": self.get_log(app_id)}
 
         status = self._git_info(Path(install_dir), fetch=True)
         self._set_cache(app_id, status)
-        return status
+        return {**status, "log": self.get_log(app_id)}
 
     def get_log(self, app_id: str) -> list[str]:
         with self._lock:
