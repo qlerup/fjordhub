@@ -32,6 +32,10 @@
     {
       "id": "fjordvpn",
       "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordvpn/main/fjordhub.json"
+    },
+    {
+      "id": "fjordseed",
+      "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordseed/main/fjordhub.json"
     }
   ]
 }

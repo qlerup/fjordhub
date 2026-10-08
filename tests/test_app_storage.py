@@ -230,6 +230,36 @@ class StorageTransactionTests(unittest.TestCase):
         self.assertFalse(self.service.job('demo')['running'])
         self.assertEqual(self.service.job('demo')['error'], '')
 
+    def test_seed_worker_stops_before_copy_and_only_manager_is_restarted(self):
+        self.state.register('fjordseed',str(self.root))
+        self.service.save('fjordseed',id='seed-test',running=True)
+        self.service.active.add('fjordseed')
+        self.app={'id':'fjordseed','setup_steps':[{'fields':[{'key':'DOWNLOADS_DIR','type':'path'}]}]}
+        self.env.write_text('DOWNLOADS_DIR=/old/files\nDATA_DIR=/opt/seed\n')
+        self.service.configuration=lambda directory,extra=None:{'name':'seed','services':{'app':{'volumes':[
+            {'type':'bind','source':(extra or {}).get('DOWNLOADS_DIR','/old/files'),'target':'/downloads'},
+            {'type':'bind','source':'/opt/seed','target':'/data'}]}}}
+        parent=self.manager.client.containers.list.return_value[0]
+        parent.labels['com.docker.compose.project']='seed'
+        parent.attrs['Mounts']=[{'Type':'bind','Source':'/old/files','Destination':'/downloads'}]
+        child=MagicMock()
+        child.name='fjordseed-'+'a'*32+'-qbittorrent'
+        child.labels={'com.docker.compose.project':'seed','com.docker.compose.service':'qbittorrent','dk.fjordseed.owner':'a'*32}
+        child.status='running'
+        child.attrs={'Mounts':[{'Type':'bind','Source':'/opt/seed/qbit','Destination':'/config'},
+                               {'Type':'bind','Source':'/old/files','Destination':'/downloads'}]}
+        self.manager.client.containers.list.return_value=[parent,child]
+        events=[]
+        self.service.helper.side_effect=lambda a,b,mode:events.append(mode)
+        self.service.compose.side_effect=lambda directory,args,**kw:events.append(args)
+        child.stop.side_effect=lambda **kw:events.append('stop-worker')
+        self.service.run(self.app,'DOWNLOADS_DIR','/new/files','/old/files')
+        self.assertEqual(self.service.job('fjordseed')['error'],'')
+        self.assertLess(events.index('stop-worker'),events.index('copy'))
+        self.assertEqual(events[-1][-1],'app')
+        self.assertIn('--force-recreate',events[-1])
+        self.assertNotIn('qbittorrent',events[-1])
+
     def test_copy_failure_keeps_env_and_restarts_old_configuration(self):
         self.service.helper.side_effect = [{}, RuntimeError('Copy failed')]
         self.service.run(self.app, 'UPLOADS_HOST_DIR', '/new/files', '/old/files')

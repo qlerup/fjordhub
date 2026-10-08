@@ -1,0 +1,29 @@
+{
+  "id": "fjordseed",
+  "name": "FjordSeed",
+  "tagline": "Din seedbox bag FjordVPN",
+  "description": "qBittorrent installeres automatisk. Vælg en FjordVPN-profil, tilføj magnetlinks eller torrentfiler, og følg download og seeding. Torrentklienten kører kun i VPN-containerens netværk med binding til VPN-netkortet. Kræver opdateret FjordVPN på samme Docker-vært og administratoradgang.",
+  "icon": "download",
+  "accent": "#70dfb6",
+  "container_name": "fjordseed",
+  "default_port": 8099,
+  "health_path": "/healthz",
+  "compose_dir_env": "FJORDSEED_DIR",
+  "compose_file": "docker-compose.yml",
+  "source_url": "https://github.com/qlerup/fjordseed",
+  "icon_url": "https://raw.githubusercontent.com/qlerup/fjordseed/main/static/icon.svg",
+  "sort_order": 9,
+  "setup_steps": [
+    {"id":"basic","title":"Seedbox og VPN","fields":[
+      {"key":"APP_PORT","label":"Web-port","type":"number","default":"8099","hint":"FjordSeeds kontrolpanel. qBittorrent får ingen åben port på lokalnettet."},
+      {"key":"FJORDVPN_CONTAINER","label":"FjordVPN-container","type":"text","default":"fjordvpn","hint":"FjordVPN skal være installeret og opdateret på samme Docker-vært. VPN-profil vælges inde i FjordSeed."},
+      {"key":"UI_ALLOWED_HOSTS","label":"Tilladte webadresser (valgfri)","type":"text","default":"","hint":"Tom accepterer lokale IP-adresser. Ved eget domæne: angiv domænet og serverens IP, kommaadskilt."}
+    ]},
+    {"id":"storage","title":"Download og data","fields":[
+      {"key":"DATA_DIR","label":"Appdata","type":"path","default":"/opt/fjordseed-data","hint":"Gemte torrents, qBittorrent-indstillinger og login. Bevares ved opdatering."},
+      {"key":"DOWNLOADS_DIR","label":"Downloadmappe","type":"path","default":"/opt/fjordseed-downloads","hint":"Eksisterende lokal mappe eller monteret NAS-sti. Skal være skrivbar for UID/GID nedenfor."},
+      {"key":"PUID","label":"Filbruger (UID)","type":"number","default":"1000","hint":"qBittorrent kører som denne bruger. Minimum 1."},
+      {"key":"PGID","label":"Filgruppe (GID)","type":"number","default":"1000","hint":"Vælg samme gruppe som dine andre medieapps ved delte downloads."}
+    ]}
+  ]
+}

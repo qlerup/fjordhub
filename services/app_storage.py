@@ -60,6 +60,21 @@ def without_sources(config):
     return result
 
 
+def seed_worker(app_id, container, config):
+    """Recognize the app-managed client; Compose only starts its supervisor."""
+    if app_id != 'fjordseed' or container.labels.get('com.docker.compose.service') != 'qbittorrent':
+        return False
+    owner = container.labels.get('dk.fjordseed.owner', '')
+    if not re.fullmatch('[a-f0-9]{32}', owner) or container.name != f'fjordseed-{owner}-qbittorrent':
+        return False
+    mounts = {v['target']: v.get('source') for v in config['services']['app'].get('volumes', [])}
+    expected = {'/config': mounts['/data'] + '/qbit', '/downloads': mounts['/downloads']}
+    actual = {m['Destination']: m.get('Source') for m in container.attrs.get('Mounts', []) if m.get('Type') == 'bind'}
+    if any(actual.get(target) != source for target, source in expected.items()):
+        raise ValueError('qBittorrent bruger andre mapper end FjordSeed. Stop appen og kontrollér placeringen først.')
+    return True
+
+
 class AppStorage:
     def __init__(self, manager, state):
         self.manager, self.state = manager, state
@@ -315,8 +330,12 @@ class AppStorage:
             containers = client.containers.list(all=True, filters={'label': 'com.docker.compose.project=' + current['name']})
             if media_move:
                 validate_media_containers(current, containers)
+            managed_workers = []
             for container in containers:
                 service = container.labels.get('com.docker.compose.service')
+                if seed_worker(app_id, container, current):
+                    managed_workers.append(container)
+                    continue
                 if service not in current['services']:
                     raise ValueError('Projektet indeholder en ukendt service. Kontrollér Compose-konfigurationen først.')
                 for mapping in location['mounts']:
@@ -345,6 +364,12 @@ class AppStorage:
             self.save(app_id, phase='copying', message='Pauser appen og kopierer filerne. Den gamle mappe bevares…')
             stopped = True
             self.compose(directory, ['stop'], timeout=180)
+            # The manager normally stops its child on SIGTERM. Also stop explicitly
+            # before copying if it was already stopped or had crashed.
+            for container in managed_workers:
+                container.reload()
+                if container.status == 'running':
+                    container.stop(timeout=30)
             copied = self.helper(source, destination, 'prepare-move' if mode == 'move' else 'copy')
             if mode == 'move':
                 self.save(app_id, manifest_sha256=copied['manifest_sha256'])
