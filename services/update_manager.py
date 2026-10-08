@@ -5,6 +5,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 from services.compose_env import build_compose_env, enable_fjordlens_memory_guard
 from services.install_state import InstallState
@@ -54,7 +55,7 @@ class UpdateManager:
         return {'items': items, 'running': any(item.get('running') for item in items)}
 
     def start_all_updates(self, app_defs: list[dict]) -> tuple[dict, int]:
-        """Reserve eligible apps before starting one sequential background worker."""
+        """Reserve eligible apps before starting a pool of two update workers."""
         if not self._batch_lock.acquire(blocking=False):
             return {"ok": False, "error": "Opdater alle kører allerede."}, 409
         queued = []
@@ -97,18 +98,24 @@ class UpdateManager:
 
     def _run_all_updates(self, queued: list) -> None:
         try:
-            for app_def, install_dir in queued:
-                app_id = app_def['id']
-                self._set_job(app_id, {'state': 'updating', 'label': 'Opdaterer...', 'started_at': _now_iso()})
-                try:
-                    self._run_update(app_def, install_dir)
-                except Exception as exc:
-                    failed = {**self._error_status(str(exc)), 'state': 'failed', 'running': False,
-                              'label': 'Opdatering fejlede', 'error': str(exc), 'finished_at': _now_iso()}
-                    self._set_cache(app_id, failed)
-                    self._set_job(app_id, failed)
+            with ThreadPoolExecutor(max_workers=2, thread_name_prefix='app-update') as pool:
+                futures = [pool.submit(self._run_batch_item, app_def, install_dir)
+                           for app_def, install_dir in queued]
+                for future in futures:
+                    future.result()
         finally:
             self._batch_lock.release()
+
+    def _run_batch_item(self, app_def: dict, install_dir: Path) -> None:
+        app_id = app_def['id']
+        self._set_job(app_id, {'state': 'updating', 'label': 'Opdaterer...', 'started_at': _now_iso()})
+        try:
+            self._run_update(app_def, install_dir)
+        except Exception as exc:
+            failed = {**self._error_status(str(exc)), 'state': 'failed', 'running': False,
+                      'label': 'Opdatering fejlede', 'error': str(exc), 'finished_at': _now_iso()}
+            self._set_cache(app_id, failed)
+            self._set_job(app_id, failed)
 
     def get_status(self, app_def: dict, fetch: bool = False) -> dict:
         app_id = app_def["id"]

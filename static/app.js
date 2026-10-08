@@ -154,13 +154,13 @@ function renderBatchUpdateStatus() {
   const items = _batchStatus.items;
   const done = items.filter(item => !item.running).length;
   const failed = items.filter(item => item.state === 'failed').length;
-  const active = items.find(item => item.running && item.state !== 'queued');
+  const active = items.filter(item => item.running && item.state !== 'queued');
   const lines = items.flatMap(item => [
     `=== ${item.name}: ${item.label || UPDATE_LABELS[item.state] || item.state} ===`,
     ...(item.log || []), ...(item.error ? [`Fejl: ${item.error}`] : []), '',
   ]);
   const summary = `${done}/${items.length} afsluttet` + (failed ? ` · ${failed} fejlede` : '')
-    + (active ? ` · ${active.name} opdateres` : _batchStatus.running ? ' · Venter i kø' : ' · Køen er færdig');
+    + (active.length ? ` · ${active.map(item => item.name).join(' og ')} opdateres` : _batchStatus.running ? ' · Venter i kø' : ' · Køen er færdig');
   finishUtilityLogModal('Opdater alle', !failed, lines, summary);
   document.getElementById('update-log-done').textContent = _batchStatus.running ? 'Luk – fortsæt i baggrunden' : 'Færdig';
 }
@@ -213,7 +213,7 @@ async function startAllUpdates() {
       if (queued.has(card.dataset.appId)) applyUpdateStatus(card, {state: 'queued', running: true});
     });
     const skipped = data.skipped?.length ? ` ${data.skipped.length} sprunget over pga. lokale ændringer.` : '';
-    showToast((queued.size ? `${queued.size} apps opdateres én ad gangen.` : 'Ingen apps klar til opdatering.') + skipped, data.skipped?.length ? 'err' : 'ok');
+    showToast((queued.size ? `${queued.size} apps opdateres, højst to ad gangen.` : 'Ingen apps klar til opdatering.') + skipped, data.skipped?.length ? 'err' : 'ok');
   } catch (error) {
     _batchTerminal = false;
     finishUtilityLogModal('Opdater alle', false, [error.message], 'Kunne ikke starte køen.');
