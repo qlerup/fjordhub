@@ -11,6 +11,7 @@ const STATUS_LABELS = {
 };
 
 const UPDATE_LABELS = {
+  queued:           'Venter i kø...',
   update_available: 'Ny opdatering klar',
   up_to_date:       'Ingen opdatering',
   updating:         'Opdaterer...',
@@ -138,6 +139,41 @@ function hideUpdateRow(card) {
 }
 
 let _updateStatusChecksInFlight = 0;
+let _allUpdatesStarting = false;
+
+function syncUpdateAllButton() {
+  const btn = document.getElementById('update-all-btn');
+  if (!btn) return;
+  const buttons = [...document.querySelectorAll('.app-card:not([data-app-id="fjordhub"]) .btn-update')];
+  const count = buttons.filter(item => item.dataset.updateAvailable === '1').length;
+  const running = buttons.filter(item => item.dataset.updateRunning === '1').length;
+  btn.disabled = _allUpdatesStarting || _updateStatusChecksInFlight > 0 || running > 0 || count === 0;
+  btn.textContent = _allUpdatesStarting ? 'Starter kø...' : running ? `Opdaterer (${running} tilbage)` : count ? `Opdater alle (${count})` : 'Opdater alle';
+}
+
+async function startAllUpdates() {
+  const btn = document.getElementById('update-all-btn');
+  if (!btn || btn.disabled) return;
+  _allUpdatesStarting = true;
+  syncUpdateAllButton();
+  try {
+    const response = await fetch('/api/apps-updates/start-all', {method: 'POST'});
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || 'Kunne ikke starte opdateringerne.');
+    const queued = new Set(data.queued || []);
+    document.querySelectorAll('.app-card').forEach(card => {
+      if (queued.has(card.dataset.appId)) applyUpdateStatus(card, {state: 'queued', running: true});
+    });
+    const skipped = data.skipped?.length ? ` ${data.skipped.length} sprunget over pga. lokale ændringer.` : '';
+    showToast((queued.size ? `${queued.size} apps opdateres én ad gangen.` : 'Ingen apps klar til opdatering.') + skipped, data.skipped?.length ? 'err' : 'ok');
+  } catch (error) {
+    showToast(error.message || 'Netværksfejl', 'err');
+  } finally {
+    _allUpdatesStarting = false;
+    syncUpdateAllButton();
+    fetchUpdateStatuses();
+  }
+}
 
 function syncUpdateButtonLock(btn) {
   if (!btn) return;
@@ -147,7 +183,7 @@ function syncUpdateButtonLock(btn) {
   const available = btn.dataset.updateAvailable === '1';
 
   btn.disabled = checking || running || starting;
-  if (running) btn.textContent = 'Opdaterer...';
+  if (running) btn.textContent = btn.dataset.updateQueued === '1' ? 'I kø' : 'Opdaterer...';
   else if (starting) btn.textContent = 'Starter...';
   else if (checking && available) btn.textContent = 'Tjekker...';
   else btn.textContent = 'Opdater';
@@ -158,6 +194,7 @@ function setUpdateStatusChecking(active) {
   else _updateStatusChecksInFlight = Math.max(0, _updateStatusChecksInFlight - 1);
 
   document.querySelectorAll('.btn-update').forEach(syncUpdateButtonLock);
+  syncUpdateAllButton();
 }
 
 function applyUpdateStatus(card, status) {
@@ -191,7 +228,9 @@ function applyUpdateStatus(card, status) {
   btn.style.display = canUpdate || isRunning ? '' : 'none';
   btn.dataset.updateAvailable = canUpdate ? '1' : '0';
   btn.dataset.updateRunning = isRunning ? '1' : '0';
+  btn.dataset.updateQueued = state === 'queued' ? '1' : '0';
   syncUpdateButtonLock(btn);
+  syncUpdateAllButton();
 }
 
 async function fetchUpdateStatuses() {

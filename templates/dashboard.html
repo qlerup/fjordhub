@@ -56,6 +56,9 @@
       <div class="app-section-header">
         <h2>Installeret</h2>
         <span class="section-count" id="installed-count"></span>
+        {% if current_user.is_admin %}
+        <button class="btn btn-update-all" id="update-all-btn" type="button" onclick="startAllUpdates()" disabled title="Opdater apps én ad gangen. FjordHub er ikke med.">Opdater alle</button>
+        {% endif %}
       </div>
       <div class="app-grid" id="installed-grid"></div>
     </section>

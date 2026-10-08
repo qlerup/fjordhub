@@ -3203,6 +3203,14 @@ def start_app_update(app_id):
     return jsonify(payload), status
 
 
+@app.route("/api/apps-updates/start-all", methods=["POST"])
+def start_all_app_updates():
+    if not current_user.is_admin:
+        return jsonify({"ok": False, "error": "Kræver admin."}), 403
+    payload, status = _update_manager.start_all_updates(_get_apps())
+    return jsonify(payload), status
+
+
 @app.route("/apps/<app_id>/uninstall", methods=["POST"])
 def uninstall_app(app_id):
     app_id = canonical_app_id(app_id)

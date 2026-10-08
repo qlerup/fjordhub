@@ -41,6 +41,62 @@ class UpdateManager:
         self._lock = threading.Lock()
         self._cache: dict[str, dict] = {}
         self._jobs: dict[str, dict] = {}
+        self._batch_lock = threading.Lock()
+
+    def start_all_updates(self, app_defs: list[dict]) -> tuple[dict, int]:
+        """Reserve eligible apps before starting one sequential background worker."""
+        if not self._batch_lock.acquire(blocking=False):
+            return {"ok": False, "error": "Opdater alle kører allerede."}, 409
+        queued = []
+        skipped = []
+        try:
+            for app_def in app_defs:
+                app_id = app_def['id']
+                if app_id == 'fjordhub':
+                    continue
+                install_dir = self.install_state.get_install_dir(app_id)
+                if not install_dir:
+                    continue
+                status = self.get_status(app_def)
+                if not status.get('update_available') or status.get('running'):
+                    continue
+                if status.get('dirty'):
+                    skipped.append(app_id)
+                    continue
+                with self._lock:
+                    if self._jobs.get(app_id, {}).get('running'):
+                        continue
+                    self._jobs[app_id] = {
+                        'state': 'queued', 'available': True, 'running': True,
+                        'update_available': False, 'label': 'Venter i kø...',
+                        'started_at': '', 'finished_at': '', 'error': '', 'log': [],
+                    }
+                queued.append((app_def, Path(install_dir)))
+            if not queued:
+                self._batch_lock.release()
+                return {'ok': True, 'queued': [], 'skipped': skipped}, 200
+            threading.Thread(target=self._run_all_updates, args=(queued,), daemon=True).start()
+            return {'ok': True, 'queued': [item[0]['id'] for item in queued], 'skipped': skipped}, 202
+        except Exception:
+            for app_def, _ in queued:
+                self._set_job(app_def['id'], {'running': False, 'state': 'failed', 'label': 'Køen kunne ikke startes'})
+            self._batch_lock.release()
+            raise
+
+    def _run_all_updates(self, queued: list) -> None:
+        try:
+            for app_def, install_dir in queued:
+                app_id = app_def['id']
+                self._set_job(app_id, {'state': 'updating', 'label': 'Opdaterer...', 'started_at': _now_iso()})
+                try:
+                    self._run_update(app_def, install_dir)
+                except Exception as exc:
+                    failed = {**self._error_status(str(exc)), 'state': 'failed', 'running': False,
+                              'label': 'Opdatering fejlede', 'error': str(exc), 'finished_at': _now_iso()}
+                    self._set_cache(app_id, failed)
+                    self._set_job(app_id, failed)
+        finally:
+            self._batch_lock.release()
 
     def get_status(self, app_def: dict, fetch: bool = False) -> dict:
         app_id = app_def["id"]
