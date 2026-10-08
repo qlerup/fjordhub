@@ -15,7 +15,7 @@ class HostStorage:
             ipaddress.IPv4Address(host)
         except ValueError:
             raise ValueError('FjordHubs værtsadresse er ugyldig.') from None
-        if action not in ('inventory', 'connect'):
+        if action not in ('inventory', 'connect', 'vpn_tun'):
             raise ValueError('Handlingen er ikke tilladt.')
         if action == 'connect' and (not isinstance(pool_id, str) or not re.fullmatch(r'[a-f0-9]{20}', pool_id)):
             raise ValueError('Vælg et lager fra oversigten.')
@@ -46,3 +46,6 @@ class HostStorage:
 
     def connect(self, pool_id):
         return self.call('connect', pool_id)
+
+    def ensure_vpn_tun(self):
+        return self.call('vpn_tun')

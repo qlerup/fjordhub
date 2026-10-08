@@ -3,6 +3,7 @@
 
 The installer fixes one CTID in authorized_keys. Only supported mounted filesystems
 below approved media roots can be attached, always read-only at a fixed target.
+VPN installation can also grant only /dev/net/tun to that same fixed CTID.
 """
 import contextlib
 import hashlib
@@ -138,6 +139,43 @@ class Agent:
             state = {**state, 'state': 'interrupted', 'message': 'Tilslutningen blev afbrudt. Værtsadministratoren skal kontrollere jobbet og monteringen på Proxmox.'}
         return {'ctid': self.ctid, 'pools': pools, 'job': state}
 
+    def ensure_vpn_tun(self):
+        """Grant only the fixed TUN device to the installer's fixed LXC."""
+        with self.locked():
+            if self.state().get('state') in ('queued', 'applying', 'restarting'):
+                raise ValueError('Vent til lageropsætningen er færdig, før VPN installeres.')
+            run(['modprobe', 'tun'])
+            path = Path(f'/etc/pve/lxc/{self.ctid}.conf')
+            original = path.read_text()
+            lines = original.splitlines()
+            has_device = any(re.fullmatch(r'dev\d+:\s*/dev/net/tun(?:,.*)?', line) for line in lines)
+            additions = []
+            if not has_device:
+                expected = 'lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file'
+                matches = [line for line in lines if line.startswith('lxc.mount.entry:') and
+                           'dev/net/tun' in line.split()]
+                if matches and not any(line.split()[1:3] == ['/dev/net/tun', 'dev/net/tun'] for line in matches):
+                    raise ValueError('Der findes en anden TUN-montering. Kontrollér LXC-konfigurationen.')
+                if not matches:
+                    additions.append(expected)
+                permission = 'lxc.cgroup2.devices.allow: c 10:200 rwm'
+                if permission not in lines:
+                    additions.append(permission)
+            if additions:
+                backup = self.folder / ('before-vpn-tun-' + uuid.uuid4().hex + '.conf')
+                backup.write_text(original); backup.chmod(0o600)
+                if path.read_text() != original:
+                    raise ValueError('LXC-konfigurationen blev ændret. Prøv installationen igen.')
+                path.write_text(original.rstrip() + '\n' + '\n'.join(additions) + '\n')
+            probe = ['pct', 'exec', self.ctid, '--', 'python3', '-c',
+                     "import os; fd=os.open('/dev/net/tun',os.O_RDWR); os.close(fd)"]
+            try:
+                run(probe)
+            except ValueError:
+                run(['lxc-device', '-n', self.ctid, 'add', '/dev/net/tun'])
+                run(probe)
+            return {'ctid': self.ctid, 'ready': True, 'changed': bool(additions)}
+
     def connect(self, identifier):
         if not isinstance(identifier, str) or not re.fullmatch(r'[a-f0-9]{20}', identifier):
             raise ValueError('Vælg en pool fra lageroversigten.')
@@ -225,6 +263,8 @@ def dispatch(agent, request):
         return agent.inventory()
     if request.get('action') == 'connect':
         return agent.connect(request.get('pool_id'))
+    if request == {'action': 'vpn_tun'}:
+        return agent.ensure_vpn_tun()
     raise ValueError('Handlingen er ikke tilladt.')
 
 

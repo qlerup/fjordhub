@@ -191,6 +191,10 @@ class Installer:
         try:
             env_values = self._resolve_env_values(app_def, env_values)
 
+            if app_id == 'fjordvpn':
+                from services.vpn_setup import ensure_vpn_tun
+                ensure_vpn_tun(log)
+
             if _is_truthy(env_values.get("ENABLE_GPU_COMPOSE")):
                 log("Tester fælles GPU-adgang før installation...")
                 gpu = probe_gpu(require_video=bool(app_def.get('gpu_video')))
