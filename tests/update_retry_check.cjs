@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-const source=fs.readFileSync(path.join(__dirname,'../static/app.js'),'utf8');
+const source=fs.readFileSync(path.join(__dirname,'../static/app.js'),'utf8').replace(/\r\n/g,'\n');
 function extract(name){const start=source.indexOf('function '+name+'(');return source.slice(start,source.indexOf('\n}\n',start)+3);}
 const btn={style:{},dataset:{}},label={},dot={dataset:{}};
 const row={style:{},querySelector:s=>({'.btn-update':btn,'.update-label':label,'.update-dot':dot}[s])};
