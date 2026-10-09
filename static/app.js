@@ -237,7 +237,7 @@ function syncUpdateButtonLock(btn) {
   if (running) btn.textContent = btn.dataset.updateQueued === '1' ? 'I kø' : 'Opdaterer...';
   else if (starting) btn.textContent = 'Starter...';
   else if (checking && available) btn.textContent = 'Tjekker...';
-  else btn.textContent = 'Opdater';
+  else btn.textContent = btn.dataset.updateRetry === '1' ? 'Pr\u00f8v igen' : 'Opdater';
 }
 
 function setUpdateStatusChecking(active) {
@@ -275,8 +275,10 @@ function applyUpdateStatus(card, status) {
   label.textContent = status.label || UPDATE_LABELS[state] || state;
 
   const canUpdate = state === 'update_available';
+  const canRetry = state === 'failed';
   const isRunning = state === 'updating' || status.running;
-  btn.style.display = canUpdate || isRunning ? '' : 'none';
+  btn.style.display = canUpdate || canRetry || isRunning ? '' : 'none';
+  btn.dataset.updateRetry = canRetry ? '1' : '0';
   btn.dataset.updateAvailable = canUpdate ? '1' : '0';
   btn.dataset.updateRunning = isRunning ? '1' : '0';
   btn.dataset.updateQueued = state === 'queued' ? '1' : '0';
