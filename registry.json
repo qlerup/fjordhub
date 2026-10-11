@@ -36,6 +36,10 @@
     {
       "id": "fjordseed",
       "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordseed/main/fjordhub.json"
+    },
+    {
+      "id": "fjordcasino",
+      "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordcasino/main/fjordhub.json"
     }
   ]
 }

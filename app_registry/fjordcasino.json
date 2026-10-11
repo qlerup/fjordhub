@@ -1,0 +1,43 @@
+{
+  "id": "fjordcasino",
+  "name": "FjordCasino",
+  "tagline": "Ren spilleglæde med virtuelle mønter",
+  "description": "Tre spilleautomater, to rouletteborde og blackjack — med ænder, daglige mønter og din egen gemte saldo. Kun for sjov, ingen rigtige penge. Fælles FjordHub-login.",
+  "icon": "gamepad-2",
+  "accent": "#c7ad74",
+  "container_name": "fjordcasino",
+  "default_port": 8070,
+  "health_path": "/api/health",
+  "compose_file": "docker-compose.fjordhub.yml",
+  "compose_dir_env": "FJORDCASINO_DIR",
+  "source_url": "https://github.com/qlerup/fjordcasino",
+  "icon_url": "https://raw.githubusercontent.com/qlerup/fjordcasino/main/static/logos/icon-512.png?v=1",
+  "sort_order": 10,
+  "setup_steps": [
+    {
+      "id": "basic",
+      "title": "Installation",
+      "fields": [
+        {
+          "key": "APP_PORT",
+          "label": "Web-port",
+          "type": "number",
+          "default": "8070"
+        },
+        {
+          "key": "DATA_DIR",
+          "label": "Data-mappe",
+          "type": "path",
+          "default": "/opt/fjordcasino-data",
+          "hint": "Saldi, spilhistorik og sessionsnøgle. Medtag hele mappen i backup."
+        },
+        {
+          "key": "TZ",
+          "label": "Tidszone for daglige mønter",
+          "type": "text",
+          "default": "Europe/Copenhagen"
+        }
+      ]
+    }
+  ]
+}
