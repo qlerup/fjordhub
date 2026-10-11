@@ -3,6 +3,7 @@ import os
 import subprocess
 import threading
 import time
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -37,13 +38,37 @@ def _short_sha(value: str) -> str:
 
 
 class UpdateManager:
-    def __init__(self, install_state: InstallState):
+    def __init__(self, install_state: InstallState, operation_guard=None):
         self.install_state = install_state
         self._lock = threading.Lock()
         self._cache: dict[str, dict] = {}
         self._jobs: dict[str, dict] = {}
         self._batch_lock = threading.Lock()
         self._batch_apps: list[dict] = []
+        self._operation_guard = operation_guard or (lambda app_id: nullcontext())
+        self._reservations = {}
+
+    def _reserve(self, app_id):
+        guard = self._operation_guard(app_id)
+        guard.__enter__()
+        if not self.install_state.get_install_dir(app_id):
+            guard.__exit__(None, None, None)
+            raise RuntimeError('Appen er ikke længere installeret.')
+        self._reservations[app_id] = guard
+
+    def _release(self, app_id, expected_guard=None):
+        with self._lock:
+            if expected_guard is not None and self._reservations.get(app_id) is not expected_guard:
+                return
+            guard = self._reservations.pop(app_id, None)
+        if guard:
+            guard.__exit__(None, None, None)
+
+    def _run_reserved_update(self, app_def, install_dir):
+        try:
+            self._run_update(app_def, install_dir)
+        finally:
+            self._release(app_def['id'])
 
     def get_batch_status(self) -> dict:
         # Read job snapshots only: terminal polling must never run git fetch.
@@ -77,6 +102,11 @@ class UpdateManager:
                 with self._lock:
                     if self._jobs.get(app_id, {}).get('running'):
                         continue
+                    try:
+                        self._reserve(app_id)
+                    except RuntimeError:
+                        skipped.append(app_id)
+                        continue
                     self._jobs[app_id] = {
                         'state': 'queued', 'available': True, 'running': True,
                         'update_available': False, 'label': 'Venter i kø...',
@@ -93,10 +123,13 @@ class UpdateManager:
         except Exception:
             for app_def, _ in queued:
                 self._set_job(app_def['id'], {'running': False, 'state': 'failed', 'label': 'Køen kunne ikke startes'})
+                self._release(app_def['id'])
             self._batch_lock.release()
             raise
 
     def _run_all_updates(self, queued: list) -> None:
+        with self._lock:
+            guards={a['id']:self._reservations.get(a['id']) for a,_ in queued}
         try:
             with ThreadPoolExecutor(max_workers=2, thread_name_prefix='app-update') as pool:
                 futures = [pool.submit(self._run_batch_item, app_def, install_dir)
@@ -104,13 +137,17 @@ class UpdateManager:
                 for future in futures:
                     future.result()
         finally:
+            for app_def, _ in queued:
+                guard=guards.get(app_def['id'])
+                if guard is not None:
+                    self._release(app_def['id'],guard)
             self._batch_lock.release()
 
     def _run_batch_item(self, app_def: dict, install_dir: Path) -> None:
         app_id = app_def['id']
         self._set_job(app_id, {'state': 'updating', 'label': 'Opdaterer...', 'started_at': _now_iso()})
         try:
-            self._run_update(app_def, install_dir)
+            self._run_reserved_update(app_def, install_dir)
         except Exception as exc:
             failed = {**self._error_status(str(exc)), 'state': 'failed', 'running': False,
                       'label': 'Opdatering fejlede', 'error': str(exc), 'finished_at': _now_iso()}
@@ -198,6 +235,11 @@ class UpdateManager:
             if job and job.get("running"):
                 return {"ok": False, "error": "Opdatering kører allerede.", **job}, 409
 
+            try:
+                self._reserve(app_id)
+            except RuntimeError as exc:
+                return {"ok": False, "error": str(exc)}, 409
+
             job = {
                 "state": "updating",
                 "available": True,
@@ -211,12 +253,17 @@ class UpdateManager:
             }
             self._jobs[app_id] = job
 
-        thread = threading.Thread(
-            target=self._run_update,
-            args=(app_def, Path(install_dir)),
-            daemon=True,
-        )
-        thread.start()
+        try:
+            thread = threading.Thread(
+                target=self._run_reserved_update,
+                args=(app_def, Path(install_dir)),
+                daemon=True,
+            )
+            thread.start()
+        except Exception:
+            self._release(app_id)
+            self._set_job(app_id, {'running': False, 'state': 'failed', 'label': 'Opdateringen kunne ikke startes'})
+            raise
         return {"ok": True, **job}, 202
 
     def _set_cache(self, app_id: str, status: dict) -> None:

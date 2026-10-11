@@ -110,7 +110,7 @@ _local_registry  = AppRegistry(Path(__file__).parent / "app_registry")
 _remote_registry = RemoteRegistry(DATA_DIR, REGISTRY_URL)
 _install_state   = InstallState(DATA_DIR)
 _installer       = Installer(_install_state)
-_update_manager  = UpdateManager(_install_state)
+_update_manager  = UpdateManager(_install_state, operation_guard=_installer.reserve_operation)
 docker_mgr       = DockerManager()
 media_gateway    = MediaGateway(docker_mgr, _install_state)
 app_storage      = AppStorage(docker_mgr, _install_state)
@@ -3212,7 +3212,13 @@ def start_app(app_id):
     a = _get_app(app_id)
     if not a:
         return jsonify({"error": "Unknown app"}), 404
-    ok, msg = docker_mgr.start(_with_compose_dir(a, app_id))
+    try:
+        with _installer.reserve_operation(app_id):
+            if docker_mgr.get_status(a).get('state')=='not_installed':
+                return jsonify(ok=False, message='Appen er afinstalleret. Brug Installer for at installere den igen.'),409
+            ok, msg = docker_mgr.start(_with_compose_dir(a, app_id))
+    except RuntimeError as exc:
+        return jsonify(ok=False, message=str(exc)),409
     return jsonify({"ok": ok, "message": msg})
 
 
@@ -3222,7 +3228,11 @@ def stop_app(app_id):
     a = _get_app(app_id)
     if not a:
         return jsonify({"error": "Unknown app"}), 404
-    ok, msg = docker_mgr.stop(_with_compose_dir(a, app_id))
+    try:
+        with _installer.reserve_operation(app_id):
+            ok, msg = docker_mgr.stop(_with_compose_dir(a, app_id))
+    except RuntimeError as exc:
+        return jsonify(ok=False, message=str(exc)),409
     return jsonify({"ok": ok, "message": msg})
 
 
@@ -3272,7 +3282,11 @@ def uninstall_app(app_id):
         with _installer.reserve_operation(app_id):
             if _install_state.get(app_id).get("storage_job", {}).get("running"):
                 raise RuntimeError("En dataflytning kører. Vent til den er færdig.")
-            remove_runtime(a, compose_dir)
+            protected={'fjordhub','fjordhub-updater','fjordhub-traefik','fjordhub-media-gateway'}
+            for other in _get_apps():
+                if other.get('id')!=app_id:
+                    protected.update(n for n in [other.get('container_name'),*other.get('legacy_container_names',[])] if isinstance(n,str))
+            remove_runtime(a, compose_dir, protected_containers=protected)
             # Only forget the app once Docker has confirmed that its containers
             # are gone. Keep the checkout/.env: either can contain user data.
             _auth.delete_hub_key(app_id)

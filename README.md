@@ -315,6 +315,18 @@ configuration files and VPN keys in the data directory.
 
 ## Updates
 
+App uninstallation validates the Compose directory against the catalog container
+names, removes its project containers (including helper services and dynamic
+orphans), and verifies that neither those names nor project networks remain.
+Projects shared with another catalog app or FjordHub itself are rejected before
+removal to protect the other app.
+Installation, updates, start/stop and uninstallation share a per-app reservation,
+so an update or stale Start request cannot recreate an app during removal. The
+dashboard keeps actions disabled until removal completes. Persistent files,
+databases, volumes, mounted media and the checkout with settings are preserved;
+the app's registration and integration key are forgotten only after successful
+runtime cleanup. Failures keep the registration for repair and retry.
+
 - **Apps** — the dashboard checks each installed app's repository for new commits. Updating pulls the latest code and re-runs compose for that app only.
 - **The hub itself** — Settings → Update triggers the `fjordhub-updater` sidecar, which pulls this repository, rebuilds the hub image and restarts the hub container. Progress and logs are shown in the UI and persisted under `DATA_DIR/fjordhub-updater`.
 

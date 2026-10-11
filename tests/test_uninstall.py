@@ -18,8 +18,8 @@ def test_runtime_removal_preserves_all_files_and_never_removes_volumes(tmp_path)
     env = tmp_path / '.env'
     env.write_text('DATA_DIR=./data\n')
     with patch('services.uninstaller.subprocess.run', side_effect=[
-        response(json.dumps({'name': 'fjordflix-hub'})),
-        response('container-id fjordflix-hub'), response(), response(),
+        response(json.dumps({'name': 'fjordflix-hub','services':{'app':{'container_name':'fjordflix'}}})),
+        response('container-id fjordflix-hub'), response(), response(), response(), response(),
     ]) as run:
         remove_runtime({'container_name': 'fjordflix'}, tmp_path)
     commands = [call.args[0] for call in run.call_args_list]
@@ -43,11 +43,11 @@ def test_uninstall_keeps_writable_mounts_and_permission_overrides(tmp_path, name
     env = directory / '.env'
     env.write_text('COMPOSE_FILE=docker-compose.yml:docker-compose.fjordhub-library.yml\n')
     original = {p: p.read_bytes() for p in (movie, override, env)}
-    config = {'name': name, 'services': {'app': {'volumes': [
+    config = {'name': name, 'services': {'app': {'container_name':name,'volumes': [
         {'type': 'bind', 'source': str(external), 'target': '/library/server/Film', 'read_only': False},
         {'type': 'volume', 'source': 'persistent', 'target': '/data'}]}}}
     with patch('services.uninstaller.subprocess.run', side_effect=[
-        response(json.dumps(config)), response('id ' + name), response(), response(),
+        response(json.dumps(config)), response('id ' + name), response(), response(), response(), response(),
     ]) as run:
         remove_runtime({'container_name': name}, directory)
     for path, contents in original.items():
@@ -89,7 +89,7 @@ def test_hub_uninstall_rejects_another_apps_compose_directory(tmp_path):
 @pytest.mark.parametrize('existing', ['container-id other-project', 'container-id'])
 def test_foreign_or_unlabelled_container_is_not_removed(tmp_path, existing):
     with patch('services.uninstaller.subprocess.run', side_effect=[
-        response('{"name":"fjordflix-hub"}'), response(existing),
+        response('{"name":"fjordflix-hub","services":{"app":{"container_name":"fjordflix"}}}'), response(existing),
     ]) as run:
         with pytest.raises(RuntimeError, match='anden eller ukendt'):
             remove_runtime({'container_name': 'fjordflix'}, tmp_path)
@@ -105,7 +105,7 @@ def test_missing_compose_directory_fails_without_docker(tmp_path):
 
 @pytest.mark.parametrize('failure', ['docker', 'timeout', 'remaining'])
 def test_cleanup_must_be_verified(tmp_path, failure):
-    results = [response('{"name":"fjordflix-hub"}'), response()]
+    results = [response('{"name":"fjordflix-hub","services":{"app":{"container_name":"fjordflix"}}}'), response()]
     if failure == 'docker':
         results += [response(code=1)]
     elif failure == 'timeout':
@@ -118,7 +118,8 @@ def test_cleanup_must_be_verified(tmp_path, failure):
 
 
 @pytest.mark.parametrize('failure', [None, 'docker', 'busy', 'storage'])
-def test_endpoint_preserves_registration_and_key_until_success(tmp_path, failure):
+@pytest.mark.parametrize('app_id',['fjord3d','fjordbudget','fjordcasino','fjordflix','fjordlens','fjordparcel','fjordseed','fjordvpn','orbitmap','urban-explorer'])
+def test_endpoint_preserves_registration_and_key_until_success(tmp_path, failure, app_id):
     import app as hub
     from services.auth import AuthService
     from services.installer import Installer
@@ -126,35 +127,35 @@ def test_endpoint_preserves_registration_and_key_until_success(tmp_path, failure
 
     auth = AuthService(tmp_path / 'auth.db')
     auth.create_user('delete-admin', 'test-password', role='admin')
-    auth.save_hub_key('fjordflix', 'existing-app-key')
+    auth.save_hub_key(app_id, 'existing-app-key')
     state = InstallState(tmp_path)
-    state.register('fjordflix', str(tmp_path))
+    state.register(app_id, str(tmp_path))
     installer = Installer(state)
     if failure == 'busy':
-        installer._active_installs.add('fjordflix')
+        installer._active_installs.add(app_id)
     if failure == 'storage':
-        state.set_storage_job('fjordflix', {'running': True})
+        state.set_storage_job(app_id, {'running': True})
     with patch.object(hub, '_auth', auth), patch.object(hub, '_install_state', state), \
          patch.object(hub, '_installer', installer), \
-         patch.object(hub, '_get_app', return_value={'id': 'fjordflix'}), \
+         patch.object(hub, '_get_app', return_value={'id': app_id}), \
          patch.object(hub, 'remove_runtime', side_effect=RuntimeError('Docker failed') if failure == 'docker' else None) as remove:
         with hub.app.test_client() as client:
             client.post('/login', data={'username': 'delete-admin', 'password': 'test-password'})
-            result = client.post('/apps/fjordflix/uninstall')
+            result = client.post('/apps/'+app_id+'/uninstall')
     if failure:
         assert result.status_code == 409
         assert not result.json['ok']
-        assert state.get_install_dir('fjordflix') == str(tmp_path)
-        assert auth.verify_hub_key('fjordflix', 'existing-app-key')
+        assert state.get_install_dir(app_id) == str(tmp_path)
+        assert auth.verify_hub_key(app_id, 'existing-app-key')
         if failure != 'docker':
             remove.assert_not_called()
     else:
         assert result.status_code == 200
         assert result.json['data_preserved']
-        assert state.get('fjordflix') == {}
-        assert not auth.get_hub_key('fjordflix')
+        assert state.get(app_id) == {}
+        assert not auth.get_hub_key(app_id)
         assert tmp_path.is_dir()
-    assert ('fjordflix' in installer._active_installs) == (failure == 'busy')
+    assert (app_id in installer._active_installs) == (failure == 'busy')
 
 
 def test_uninstall_reservation_blocks_installer_and_releases_after_error(tmp_path):

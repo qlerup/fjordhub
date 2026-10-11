@@ -141,7 +141,7 @@ class Installer:
     def reserve_operation(self, app_id):
         with self._start_lock:
             if app_id in self._active_installs:
-                raise RuntimeError('En installation eller afinstallation kører allerede. Vent til den er færdig.')
+                raise RuntimeError('En anden handling på appen kører allerede. Vent til den er færdig.')
             self._active_installs.add(app_id)
         try:
             yield

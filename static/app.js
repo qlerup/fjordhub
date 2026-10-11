@@ -30,6 +30,7 @@ function getAppUrl(port) {
 // ── App status polling ────────────────────────────────────────────────────
 
 function applyStatus(card, status) {
+  if (card.dataset.uninstalling === 'true') return;
   const dot    = card.querySelector('.status-dot');
   const label  = card.querySelector('.status-label');
   const uptime = card.querySelector('.uptime-label');
@@ -255,6 +256,7 @@ function setUpdateStatusChecking(active) {
 }
 
 function applyUpdateStatus(card, status) {
+  if (card.dataset.uninstalling === 'true') return;
   const row = card.querySelector('.card-update-row');
   if (!row) return;
 
@@ -792,6 +794,10 @@ async function confirmUninstall(card) {
   const id   = card.dataset.appId;
   const name = card.querySelector('.card-name')?.textContent || id;
   if (!confirm(`Afinstallér ${name}?\n\nDette stopper og fjerner appens containere og egne Docker-netværk.\nMediefiler, databaser, Docker-volumes og installationsmappen med indstillinger bevares.\nFiler på tilsluttede mounts bevares også — selv hvis du har givet fuld skriveadgang.`)) return;
+  if (card.dataset.uninstalling === 'true') return;
+  card.dataset.uninstalling = 'true';
+  const actionButtons = [...card.querySelectorAll('button')].map(button => ({button,disabled:button.disabled}));
+  actionButtons.forEach(({button}) => { button.disabled = true; });
 
   const delBtn = card.querySelector('.btn-delete');
   const btn    = card.querySelector('.btn-toggle');
@@ -801,9 +807,11 @@ async function confirmUninstall(card) {
   try {
     const res  = await fetch(`/apps/${id}/uninstall`, { method: 'POST' });
     const data = await res.json();
-    if (data.ok) {
+    if (res.ok && data.ok) {
       showToast(`✓ ${name} afinstalleret — data bevaret`, 'ok');
-      setTimeout(fetchStatuses, 1500);
+      delete card.dataset.uninstalling;
+      applyStatus(card, {state:'not_installed'});
+      await fetchStatuses();
     } else {
       showToast(`✗ Fejl: ${(data.errors || []).join(', ')}`, 'err');
       if (delBtn) delBtn.disabled = false;
@@ -813,6 +821,9 @@ async function confirmUninstall(card) {
     showToast('✗ Netværksfejl', 'err');
     if (delBtn) delBtn.disabled = false;
     if (btn)    btn.disabled    = false;
+  } finally {
+    delete card.dataset.uninstalling;
+    actionButtons.forEach(({button,disabled}) => { button.disabled = disabled; });
   }
 }
 
