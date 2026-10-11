@@ -56,13 +56,16 @@ def test_standalone_docker_host_needs_no_proxmox_connection(monkeypatch):
     client.close.assert_called_once()
 
 
-def test_failed_host_setup_never_proceeds_to_docker_probe(monkeypatch):
+@pytest.mark.parametrize('result,message',[
+    ({'ready':False},'Proxmox kunne ikke'),
+    ({'ready':False,'restart_required':True},'LXC’en skal genstartes')])
+def test_failed_host_setup_never_proceeds_to_docker_probe(monkeypatch,result,message):
     client=Mock();client.containers.get.return_value.attrs={'Image':'hub-image'}
     monkeypatch.setenv('HOSTNAME','hub')
     monkeypatch.setenv('FJORDHUB_STORAGE_SSH_HOST','192.168.1.250')
     monkeypatch.setattr(vpn_setup.docker,'from_env',Mock(return_value=client))
-    monkeypatch.setattr(vpn_setup.HostStorage,'ensure_vpn_tun',Mock(return_value={'ready':False}))
-    with pytest.raises(RuntimeError,match='Proxmox kunne ikke'):
+    monkeypatch.setattr(vpn_setup.HostStorage,'ensure_vpn_tun',Mock(return_value=result))
+    with pytest.raises(RuntimeError,match=message):
         vpn_setup.ensure_vpn_tun(Mock())
     client.containers.run.assert_not_called()
     client.close.assert_called_once()
@@ -92,7 +95,8 @@ def test_vpn_installer_preflight_failure_never_starts_compose(tmp_path,monkeypat
     assert state.get('fjordvpn')['state']=='failed'
 
 
-def test_fixed_host_action_persists_only_tun_and_hotplugs_without_restart(tmp_path,monkeypatch):
+@pytest.mark.parametrize('hotplug_failed',[False,True,'missing','probe_failed'])
+def test_fixed_host_action_persists_only_tun_and_hotplugs_without_restart(tmp_path,monkeypatch,hotplug_failed):
     monkeypatch.setattr(storage,'ROOT',tmp_path)
     monkeypatch.setattr(storage,'TUN_MODULES',tmp_path/'modules-load/tun.conf')
     monkeypatch.setattr(storage.Agent,'locked',lambda self:contextlib.nullcontext())
@@ -105,10 +109,16 @@ def test_fixed_host_action_persists_only_tun_and_hotplugs_without_restart(tmp_pa
     calls=[]
     def run(args):
         calls.append(args)
-        if args[0]=='pct' and sum(c[0]=='pct' for c in calls)==1:raise ValueError('missing')
+        if 'inspect' in args:return 'sha256:'+'a'*64
+        if args[0]=='pct' and 'run' in args and sum(c[0]=='pct' and 'run' in c for c in calls)==1:raise ValueError('missing')
+        if args[0]=='lxc-device' and hotplug_failed=='missing':raise FileNotFoundError('missing lxc-device')
+        if args[0]=='lxc-device' and hotplug_failed is True:raise ValueError('not allowed')
+        if args[0]=='pct' and 'run' in args and hotplug_failed=='probe_failed':raise ValueError('device still inaccessible')
         return ''
     monkeypatch.setattr(storage,'run',run)
-    assert storage.dispatch(agent,{'action':'vpn_tun'})['ready']
+    result=storage.dispatch(agent,{'action':'vpn_tun'})
+    assert result['ready'] is (not hotplug_failed)
+    if hotplug_failed:assert result['restart_required'] is True
     assert config.read_text().startswith(original)
     assert config.read_text().count('c 10:200 rwm')==1
     assert ['lxc-device','-n','1000','add','/dev/net/tun'] in calls
@@ -116,6 +126,7 @@ def test_fixed_host_action_persists_only_tun_and_hotplugs_without_restart(tmp_pa
     assert list(agent.folder.glob('before-vpn-tun-*.conf'))[0].read_text()==original
     assert storage.dispatch(agent,{'action':'vpn_tun'})['changed'] is False
     assert storage.TUN_MODULES.read_text()=='tun\n'
+    assert not any(args[:5]==['pct','exec','1000','--','python3'] for args in calls)
     for request in [{'action':'vpn_tun','ctid':'1013'}, {'action':'vpn_tun','pool_id':'x'}]:
         with pytest.raises(ValueError):storage.dispatch(agent,request)
 
@@ -139,7 +150,7 @@ def test_existing_tun_is_reused_and_only_missing_lxc_mount_is_added(tmp_path,mon
     monkeypatch.setattr(storage,'Path',path)
     monkeypatch.setattr(storage.os,'major',lambda _:10,raising=False)
     monkeypatch.setattr(storage.os,'minor',lambda _:200,raising=False)
-    calls=[];monkeypatch.setattr(storage,'run',lambda args:calls.append(args) or '')
+    calls=[];monkeypatch.setattr(storage,'run',lambda args:calls.append(args) or ('sha256:'+'a'*64 if 'inspect' in args else ''))
     result=agent.ensure_vpn_tun()
     assert result['ready'] and result['changed'] is not configured
     assert not any(args[0] in ('modprobe','lxc-device') for args in calls)

@@ -180,13 +180,26 @@ class Agent:
                 if path.read_text() != original:
                     raise ValueError('LXC-konfigurationen blev ændret. Prøv installationen igen.')
                 path.write_text(original.rstrip() + '\n' + '\n'.join(additions) + '\n')
-            probe = ['pct', 'exec', self.ctid, '--', 'python3', '-c',
-                     "import os; fd=os.open('/dev/net/tun',os.O_RDWR); os.close(fd)"]
+            try:
+                image=run(['pct','exec',self.ctid,'--','docker','inspect','fjordhub','--format','{{.Image}}']).strip()
+            except ValueError:
+                raise ValueError('Docker/FjordHub kunne ikke kontaktes i LXC '+self.ctid+'. Kontrollér, at FjordHub kører, før TUN opsættes.') from None
+            if not re.fullmatch(r'sha256:[a-f0-9]{64}',image):
+                raise ValueError('FjordHubs Docker-image kunne ikke identificeres. Kontrollér, at FjordHub kører i denne LXC.')
+            # Python is supplied by the Hub image; the LXC host need not have it.
+            probe = ['pct','exec',self.ctid,'--','docker','run','--rm','--network','none',
+                     '--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true',
+                     '--device','/dev/net/tun:/dev/net/tun:rwm','--entrypoint','python',image,'-c',
+                     "import os,stat; s=os.stat('/dev/net/tun'); assert stat.S_ISCHR(s.st_mode) and (os.major(s.st_rdev),os.minor(s.st_rdev))==(10,200); fd=os.open('/dev/net/tun',os.O_RDWR); os.close(fd)"]
             try:
                 run(probe)
             except ValueError:
-                run(['lxc-device', '-n', self.ctid, 'add', '/dev/net/tun'])
-                run(probe)
+                try:
+                    run(['lxc-device', '-n', self.ctid, 'add', '/dev/net/tun'])
+                    run(probe)
+                except (ValueError, FileNotFoundError):
+                    return {'ctid':self.ctid,'ready':False,'changed':bool(additions),
+                            'restart_required':True,'message':'TUN-opsætningen er gemt, men adgang i den kørende LXC kunne ikke aktiveres. Genstart LXC '+self.ctid+' og prøv igen.'}
             return {'ctid': self.ctid, 'ready': True, 'changed': bool(additions)}
 
     def connect(self, identifier):

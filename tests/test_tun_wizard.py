@@ -1,4 +1,5 @@
 import json
+import io
 from unittest.mock import Mock, patch
 
 import pytest
@@ -60,14 +61,14 @@ def test_setup_persists_tun_before_bootstrap_and_verifies_docker(monkeypatch):
     target={'ctid':'1234','host':'192.168.1.250','directory':'/opt/custom-hub'}
     monkeypatch.setattr(setup,'discover',Mock(return_value=target))
     order=[]
-    monkeypatch.setattr(Agent,'ensure_vpn_tun',lambda self:order.append('tun'))
+    monkeypatch.setattr(Agent,'ensure_vpn_tun',lambda self:order.append('tun') or {'ready':True})
     def bootstrap():
         import sys
         assert sys.argv==['configure_proxmox.py','1234','--host','192.168.1.250','--directory','/opt/custom-hub']
         order.append('bootstrap')
     monkeypatch.setattr(configure_proxmox,'main',bootstrap)
     monkeypatch.setattr(Agent,'__init__',lambda self,ctid:None)
-    monkeypatch.setattr(setup,'run',lambda args:order.append('probe'))
+    monkeypatch.setattr(setup,'run',lambda args, **kwargs:order.append('probe'))
     setup.main()
     assert order==['tun','bootstrap','probe']
 
@@ -143,3 +144,83 @@ def test_checker_requires_administrator(tmp_path):
             client.post('/login',data={'username':'admin','password':'test-password'})
             assert client.get('/apps/fjordvpn/tun/check').json['ready'] is True
         check.assert_called_once()
+
+
+@pytest.mark.parametrize('consent',[False,True])
+def test_restart_fallback_requires_explicit_terminal_consent(monkeypatch,consent):
+    from scripts import configure_proxmox
+    from host_agent.storage import Agent
+    monkeypatch.setattr(setup.os,'geteuid',lambda:0,raising=False)
+    monkeypatch.setattr(setup.Path,'is_dir',lambda _:True)
+    monkeypatch.setattr('sys.argv',['setup_vpn_tun.py','--hub-container',IDENT])
+    monkeypatch.setattr(setup,'discover',Mock(return_value={'ctid':'1234','host':'192.168.1.250','directory':'/opt/fjordhub'}))
+    monkeypatch.setattr(Agent,'__init__',lambda self,ctid:None)
+    ensure=Mock(side_effect=[{'ready':False,'restart_required':True},{'ready':True}])
+    monkeypatch.setattr(Agent,'ensure_vpn_tun',ensure)
+    monkeypatch.setattr(setup,'confirm_restart',Mock(return_value=consent))
+    restart=Mock(return_value=Mock(returncode=0));monkeypatch.setattr(setup.subprocess,'run',restart)
+    wait=Mock();monkeypatch.setattr(setup,'wait_for_hub',wait)
+    bootstrap=Mock();monkeypatch.setattr(configure_proxmox,'main',bootstrap)
+    monkeypatch.setattr(setup,'run',Mock(return_value=''))
+    if consent:
+        setup.main()
+        assert restart.call_args.args[0]==['pct','reboot','1234','--timeout','60']
+        wait.assert_called_once_with('1234')
+        bootstrap.assert_called_once();assert ensure.call_count==2
+    else:
+        with pytest.raises(SystemExit,match='Genstart LXC 1234'):setup.main()
+        restart.assert_not_called();wait.assert_not_called();bootstrap.assert_not_called()
+
+
+@pytest.mark.parametrize('answer,expected',[('ja\n',True),('Y\n',True),('\n',False),('nej\n',False),('',False)])
+def test_restart_prompt_reads_nonseekable_terminal(monkeypatch,answer,expected):
+    reader=Mock(wraps=io.StringIO(answer));writer=Mock()
+    def open_terminal(path,mode):
+        assert path=='/dev/tty'
+        # TTYs reject the buffered random access used by r+.
+        if mode not in ('r','w'):raise OSError('not seekable')
+        stream=reader if mode=='r' else writer
+        context=Mock();context.__enter__=Mock(return_value=stream);context.__exit__=Mock(return_value=False)
+        return context
+    monkeypatch.setattr('builtins.open',open_terminal)
+    assert setup.confirm_restart('1234') is expected
+    assert 'ALLE apps' in writer.write.call_args.args[0]
+    writer.flush.assert_called_once()
+
+
+def test_restart_without_terminal_is_declined(monkeypatch):
+    monkeypatch.setattr('builtins.open',Mock(side_effect=OSError('no terminal')))
+    assert setup.confirm_restart('1234') is False
+
+
+@pytest.mark.parametrize('failure',['reboot','not_running','tun_unavailable'])
+def test_restart_failure_stops_before_bootstrap(monkeypatch,failure):
+    from scripts import configure_proxmox
+    from host_agent.storage import Agent
+    monkeypatch.setattr(setup.os,'geteuid',lambda:0,raising=False)
+    monkeypatch.setattr(setup.Path,'is_dir',lambda _:True)
+    monkeypatch.setattr('sys.argv',['setup_vpn_tun.py','--hub-container',IDENT])
+    monkeypatch.setattr(setup,'discover',Mock(return_value={'ctid':'1234','host':'192.168.1.250','directory':'/opt/fjordhub'}))
+    monkeypatch.setattr(Agent,'__init__',lambda self,ctid:None)
+    ensure=Mock(side_effect=[{'ready':False,'restart_required':True},{'ready':False,'restart_required':True}])
+    monkeypatch.setattr(Agent,'ensure_vpn_tun',ensure)
+    monkeypatch.setattr(setup,'confirm_restart',Mock(return_value=True))
+    reboot=Mock(return_value=Mock(returncode=1 if failure=='reboot' else 0))
+    monkeypatch.setattr(setup.subprocess,'run',reboot)
+    monkeypatch.setattr(setup,'wait_for_hub',Mock(side_effect=ValueError('not running') if failure=='not_running' else None))
+    bootstrap=Mock();monkeypatch.setattr(configure_proxmox,'main',bootstrap)
+    with pytest.raises(SystemExit):setup.main()
+    bootstrap.assert_not_called()
+    assert reboot.call_count==1
+
+
+def test_wait_for_hub_checks_readiness_and_stops_on_deadline(monkeypatch):
+    monkeypatch.setattr(setup.time,'sleep',Mock())
+    clock=Mock(side_effect=[0,0,2,4])
+    monkeypatch.setattr(setup.time,'monotonic',clock)
+    probe=Mock(side_effect=[ValueError('starting'),'false','true'])
+    monkeypatch.setattr(setup,'run',probe)
+    setup.wait_for_hub('1234')
+    assert probe.call_count==3
+    monkeypatch.setattr(setup.time,'monotonic',Mock(side_effect=[0,121]))
+    with pytest.raises(ValueError,match='ikke klar'):setup.wait_for_hub('1234')

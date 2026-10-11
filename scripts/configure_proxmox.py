@@ -43,6 +43,9 @@ def main():
     data = next((m['Source'] for m in mounts if m['Destination'] == '/data' and m['Type'] == 'bind'), None)
     if not data or not data.startswith('/'):
         raise SystemExit('FjordHub needs a persistent /data bind mount before setup.')
+    image=run(execute+['docker','inspect','fjordhub','--format','{{.Image}}']).strip()
+    if not re.fullmatch(r'sha256:[a-f0-9]{64}',image):
+        raise SystemExit('FjordHub image could not be identified safely.')
     helper = Path('/usr/local/lib/fjordhub/storage.py')
     helper.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
     helper.write_bytes((Path(__file__).resolve().parents[1] / 'host_agent' / 'storage.py').read_bytes())
@@ -99,7 +102,11 @@ tmp=p.with_name('.env.proxmox-new')
 tmp.write_text('\\n'.join(lines+[key+'='+value for key,value in values.items()])+'\\n')
 tmp.chmod(0o600); tmp.replace(p)
 '''
-        run(execute + ['python3', '-c', update_env, args.directory], json.dumps(config))
+        # Use the Hub image's Python; only Docker is required in the LXC.
+        run(execute + ['docker','run','--rm','-i','--network','none','--read-only',
+                      '--cap-drop','ALL','--cap-add','DAC_OVERRIDE','--cap-add','FOWNER',
+                      '--security-opt','no-new-privileges:true','--volume',args.directory+':/work',
+                      '--entrypoint','python',image,'-c',update_env,'/work'], json.dumps(config))
     run(execute + ['sh', '-c', 'cd "$1" && docker compose up -d --build --wait --wait-timeout 180 fjordhub', 'sh', args.directory])
     # Verify the restricted channel from inside the rebuilt hub, not just on the host.
     run(execute + ['docker', 'exec', 'fjordhub', 'python', '-c',

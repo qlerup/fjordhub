@@ -304,9 +304,11 @@ FjordVPN can be installed from the catalog with a web port, allowed private LAN
 subnets and a persistent data directory. It accepts Proton WireGuard uploads and
 creates independent VPN/relay containers only when a profile is started. The Docker
 host needs `/dev/net/tun`. On a hub with the restricted Proxmox connection,
-installation ensures persistent TUN passthrough for the hub's fixed LXC, makes
-the device available without restarting the LXC, and verifies it inside Docker
-before starting FjordVPN. Older hubs need the one-time Proxmox setup described
+installation ensures persistent TUN passthrough for the hub's fixed LXC and tries
+to attach the device without a restart. If live attachment fails, the TUN setup
+command offers an LXC restart after explicit terminal confirmation, then checks
+TUN again. Restarting briefly interrupts all apps in that LXC. Docker access is
+verified before starting FjordVPN. Older hubs need the one-time Proxmox setup described
 in `docs/proxmox-storage.md`; reinstalling the hub is not required. Standalone
 Docker hosts must provide TUN themselves. Managed login uses FjordHub SSO and requires administrator
 access. Existing VPN installations are not imported or modified. App stop shuts

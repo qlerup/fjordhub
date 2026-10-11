@@ -8,12 +8,13 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 
 
-def run(args):
-    result=subprocess.run(args,capture_output=True,text=True,timeout=20)
+def run(args, timeout=20):
+    result=subprocess.run(args,capture_output=True,text=True,timeout=timeout)
     if result.returncode:
         raise ValueError('Kommandoen fejlede: '+args[0]+'. Kontrollér værtens opsætning.')
     return result.stdout
@@ -46,6 +47,28 @@ def discover(hub_id):
     return matches[0]
 
 
+def confirm_restart(ctid):
+    try:
+        # A terminal is not seekable: text mode r+ would fail before prompting.
+        # Read from the terminal because stdin contains the copied shell script.
+        with open('/dev/tty','r') as reader, open('/dev/tty','w') as writer:
+            writer.write('TUN kræver genstart af LXC '+ctid+'. FjordHub og ALLE apps i LXC’en bliver kortvarigt afbrudt. Genstart nu? [j/N] ')
+            writer.flush()
+            return reader.readline().strip().lower() in ('j','ja','y','yes')
+    except OSError:
+        return False
+
+
+def wait_for_hub(ctid):
+    deadline=time.monotonic()+120
+    while time.monotonic()<deadline:
+        try:
+            if run(['pct','exec',ctid,'--','docker','inspect','fjordhub','--format','{{.State.Running}}']).strip()=='true':return
+        except (ValueError,subprocess.TimeoutExpired):pass
+        time.sleep(2)
+    raise ValueError('FjordHub blev ikke klar efter LXC-genstart. Kontrollér containerens status på Proxmox.')
+
+
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--hub-container',required=True)
@@ -63,12 +86,29 @@ def main():
         print(json.dumps(target));return
     print('Opsætter TUN for FjordHub i LXC '+target['ctid']+'.',flush=True)
     from host_agent.storage import Agent
-    Agent(target['ctid']).ensure_vpn_tun()
+    agent=Agent(target['ctid'])
+    try:
+        result=agent.ensure_vpn_tun()
+        if result.get('restart_required'):
+            if not confirm_restart(target['ctid']):
+                raise ValueError('TUN-opsætningen er gemt. Genstart LXC '+target['ctid']+' på Proxmox og kør kommandoen igen, når FjordHub er startet.')
+            # Reboot can take longer than the ordinary discovery commands.
+            result_restart=subprocess.run(['pct','reboot',target['ctid'],'--timeout','60'],capture_output=True,text=True,timeout=90)
+            if result_restart.returncode:raise ValueError('LXC-genstarten fejlede. Kontrollér status på Proxmox.')
+            wait_for_hub(target['ctid'])
+            result=agent.ensure_vpn_tun()
+        if result.get('ready') is not True:
+            raise ValueError('TUN kunne stadig ikke åbnes efter opsætningen. Kontrollér LXC-konfigurationen og Docker-adgangen på Proxmox.')
+    except (ValueError,OSError,subprocess.TimeoutExpired) as exc:
+        raise SystemExit(str(exc) if isinstance(exc,ValueError) else 'TUN-opsætningen blev afbrudt. Kontrollér LXC-status på Proxmox.') from None
     from scripts import configure_proxmox
     sys.argv=['configure_proxmox.py',target['ctid'],'--host',target['host'],'--directory',target['directory']]
     configure_proxmox.main()
-    run(['pct','exec',target['ctid'],'--','docker','exec','fjordhub','python','-c',
-         'from services.vpn_setup import ensure_vpn_tun; ensure_vpn_tun(print)'])
+    try:
+        run(['pct','exec',target['ctid'],'--','docker','exec','fjordhub','python','-c',
+             'from services.vpn_setup import ensure_vpn_tun; ensure_vpn_tun(print)'], timeout=90)
+    except (ValueError,OSError,subprocess.TimeoutExpired):
+        raise SystemExit('Den afsluttende TUN-test i FjordHub fejlede. Kontrollér TUN-status i guiden, før installationen fortsættes.') from None
     print('TUN er klar. Genindlæs FjordVPN-guiden og fortsæt installationen.')
 
 

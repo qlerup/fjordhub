@@ -46,7 +46,14 @@ MediaHubs egen installer bruger endnu ikke denne FjordHub-installer automatisk.
 Når Proxmox-forbindelsen er sat op, gør installation af FjordVPN
 automatisk `/dev/net/tun` tilgængelig i FjordHubs faste LXC. Den begrænsede
 værtskommando indlæser TUN, gemmer den nødvendige enhedstilladelse og montering
-i LXC-konfigurationen og gør enheden tilgængelig i den kørende LXC uden genstart.
+i LXC-konfigurationen og forsøger at tilslutte enheden i den kørende LXC.
+Hvis dette ikke er muligt, gemmes opsætningen, og installationen stopper med
+besked om den nødvendige LXC-genstart. Kommandoen fra TUN-guiden tilbyder
+genstart efter et udtrykkeligt ja i terminalen. Det afbryder kortvarigt FjordHub
+og alle apps i den pågældende LXC. Ved nej eller manglende terminal genstartes
+intet. Efter genstart ventes på FjordHub, og TUN testes igen i Docker.
+Testen og forbindelsesopsætningen bruger Python fra FjordHubs Docker-image;
+Python behøver ikke være installeret i selve LXC’en.
 Den permanente opsætning kontrolleres også, hvis TUN allerede virker, så en
 midlertidig manuel tilslutning ikke forsvinder efter genstart. Installationen
 tester derefter, at Docker faktisk kan åbne TUN, før FjordVPN startes. Hvis

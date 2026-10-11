@@ -101,6 +101,8 @@ def ensure_vpn_tun(log):
             log('Sikrer permanent TUN-adgang på FjordHubs Proxmox-LXC…')
             result = HostStorage().ensure_vpn_tun()
             if result.get('ready') is not True:
+                if result.get('restart_required'):
+                    raise RuntimeError('TUN-opsætningen er gemt. LXC’en skal genstartes på Proxmox, før TUN kan bruges. Kør kommandoen fra TUN netværksopsætning; den tilbyder genstart.')
                 raise RuntimeError('Proxmox kunne ikke gøre VPN-adgangen klar.')
         try:
             probe_tun(client,image)

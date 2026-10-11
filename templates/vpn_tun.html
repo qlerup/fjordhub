@@ -17,6 +17,7 @@
 </div>
 <p class="field-hint">Kommandoen gælder denne FjordHub-installation. Den genopretter FjordHub-containeren med Proxmox-forbindelsen, så webgrænsefladen kan være kortvarigt utilgængelig. Data bevares. Når kommandoen er færdig, genindlæs guiden og fortsæt installationen.</p>
 <p class="field-hint">Hvis TUN allerede findes, genbruges den. Kun manglende LXC-adgang og montering tilføjes; eksisterende VPN-profiler og data bevares.</p>
+<p class="field-hint">Hvis enheden ikke kan tilsluttes i den kørende LXC, spørger kommandoen, om LXC’en må genstartes. Det afbryder kortvarigt <strong>FjordHub og alle apps i LXC’en</strong>. Ingen LXC-genstart udføres uden dit svar.</p>
 {% else %}
 <div class="info-note">FjordHub kunne ikke identificere sin Docker-container. Kontrollér FjordHubs Docker-forbindelse og genindlæs guiden; en installationskommando kan først dannes, når den rigtige container er kendt.</div>
 {% endif %}

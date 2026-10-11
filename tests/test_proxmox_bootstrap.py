@@ -29,6 +29,7 @@ def test_bootstrap_pins_host_and_delivers_only_forced_key(monkeypatch, tmp_path)
             key = real_path(args[-1]); key.write_text('TEST PRIVATE KEY')
             key.with_suffix('.pub').write_text('ssh-ed25519 PUBLICKEY generated')
         if 'inspect' in args:
+            if args[-1]=='{{.Image}}':return 'sha256:'+'a'*64
             return json.dumps([{'Source':'/opt/fjordhub/data','Destination':'/data','Type':'bind'}])
         if args[:2] == ['pct','push']:
             delivered[args[4]] = real_path(args[3]).read_text()
@@ -51,3 +52,6 @@ def test_bootstrap_pins_host_and_delivers_only_forced_key(monkeypatch, tmp_path)
     assert len(acl) == 2 and all('PVEAuditor' in args for args in acl)
     assert not any(args[:2] == ['pct','reboot'] for args in calls)
     assert 'HostStorage' in calls[-1][-1]
+    assert not any(args[0]=='pct' and 'python3' in args for args in calls)
+    update=next(args for args in calls if '--volume' in args)
+    assert '/opt/fjordhub:/work' in update and '--network' in update
