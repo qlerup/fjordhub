@@ -27,6 +27,65 @@ FjordHub is a lightweight control panel for a small fleet of self-hosted apps. I
 
 It is built for the home-lab case: one Linux host (bare metal, VM or Proxmox LXC) running Docker, administered by one or a few people.
 
+## Optional public HTTPS
+
+FjordHub works over HTTP on a home network without a domain or certificate.
+Leave `FJORDHUB_PUBLIC_URL` blank for this default. A domain by itself does not
+enable HTTPS; arrange working TLS at your reverse proxy or tunnel first.
+
+If you have a public HTTPS address, configure its origin in `.env`:
+
+```dotenv
+FJORDHUB_PUBLIC_URL=https://hub.example.com
+FJORDHUB_TRUSTED_PROXIES=
+```
+
+Use only the origin, without a path, credentials, query or fragment. A custom
+HTTPS port is allowed. FjordHub redirects HTTP requests **for that hostname**
+to this fixed HTTPS address, preserving their path and query before processing
+login or other actions. Other hostnames and direct LAN-IP access retain HTTP.
+Internal app API calls and the loopback health check therefore keep working.
+Only the configured hostname is protected; other public aliases need their own
+edge redirect or must not expose the service.
+
+For TLS termination at a proxy, set `FJORDHUB_TRUSTED_PROXIES` to the actual
+last-hop proxy addresses seen by FjordHub, as comma-separated IPs or CIDRs.
+For example, `172.20.0.5/32` is appropriate **only if that is your proxy's
+actual address**. Prefer a pinned proxy address or an isolated proxy network;
+do not trust all LAN clients or a network shared with untrusted apps. The proxy
+must overwrite `X-Forwarded-Proto` with one value reflecting the browser's
+original scheme. FjordHub ignores it from other peers and rejects ambiguous
+comma-separated chains. It does not trust `X-Forwarded-Host` or `CF-Visitor`.
+If another proxy sits between the TLS terminator and FjordHub, configure that
+chain to preserve the verified scheme. Otherwise HTTPS redirects will loop.
+
+For Cloudflare, also configure an HTTP-to-HTTPS redirect at the edge for this
+hostname. [Always Use HTTPS](https://developers.cloudflare.com/ssl/edge-certificates/additional-options/always-use-https/)
+affects the zone's hostnames; a hostname-specific redirect is preferable when
+other apps must retain their current behavior. The application setting does not
+edit Cloudflare or provision certificates, and an origin redirect cannot prevent
+an initial HTTP request from already transmitting an old cookie or password.
+
+Recreate the hub after changing these environment variables:
+
+```sh
+docker compose up -d --build fjordhub
+```
+
+On the configured HTTPS hostname, sessions use a separate `__Host-` cookie with
+`Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/` and no cookie domain. Enabling this
+requires a fresh login on that hostname; the old cookie is ignored and cleared.
+This prevents automatic reuse in the browser, rather than revoking a previously
+stolen signed session. LAN-IP login remains separate and does not receive a
+Secure-only cookie. Public HTTPS responses include one-year HSTS for this
+hostname, without `includeSubDomains` or preload. Keep TLS working after enabling
+it; changing the setting back does not clear HSTS already remembered by browsers.
+
+After deployment, check HTTP redirect, normal HTTPS login/logout and app SSO,
+then check direct LAN-IP login separately. The login `next` parameter permits
+only internal paths, so crafted login links cannot redirect users to another
+website after authentication.
+
 ## FjordLens storage during installation
 
 In the storage step, choose **Samme lager** (default) for one upload folder, or

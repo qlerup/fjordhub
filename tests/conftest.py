@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 _data = tempfile.TemporaryDirectory(prefix='fjordhub-tests-')
 os.environ.update(DATA_DIR=_data.name, APPS_DIR=str(Path(_data.name) / 'apps'),
                   FJORDHUB_SRC_DIR='', FJORDHUB_MEMORY_RECONCILE='0',
+                  FJORDHUB_PUBLIC_URL='', FJORDHUB_TRUSTED_PROXIES='',
                   SECRET_KEY='synthetic-pytest-session-key-not-production')
 from services.remote_registry import RemoteRegistry
 from services.package_catalog import PackageCatalog

@@ -52,6 +52,8 @@ services:
       APP_PORT: ${APP_PORT:-8091}
       TZ: ${TZ:-Europe/Copenhagen}
       SECRET_KEY: ${SECRET_KEY:-}
+      FJORDHUB_PUBLIC_URL: ${FJORDHUB_PUBLIC_URL:-}
+      FJORDHUB_TRUSTED_PROXIES: ${FJORDHUB_TRUSTED_PROXIES:-}
       FJORDHUB_UPDATER_TOKEN_FILE: /run/fjordhub-control/updater_token
       # URL to registry.json in FjordHub's GitHub repo (raw content URL)
       REGISTRY_URL: ${REGISTRY_URL:-https://raw.githubusercontent.com/qlerup/fjordhub/main/registry.json}

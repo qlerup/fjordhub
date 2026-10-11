@@ -40,6 +40,8 @@ from services.storage_mount import MountRequired
 from services.media_library import MediaLibrary
 from services.host_storage import HostStorage
 from services.web_security import csrf_token, check_csrf
+from services.transport_security import configure_transport
+from services.redirects import safe_login_next
 from services.security_config import load_session_secret, load_updater_token
 from services.install_validation import validate_install_values
 
@@ -83,6 +85,7 @@ app.config.update(
     SESSION_REFRESH_EACH_REQUEST=False,
     SESSION_COOKIE_SAMESITE='Lax',
 )
+configure_transport(app)
 
 
 def _static_version() -> str:
@@ -519,10 +522,7 @@ def login():
                 return redirect(url_for("profile", force_password_change="1"))
             if _auth.onboarding_pending(user.id):
                 return redirect(url_for("onboarding"))
-            next_url = str(request.args.get("next") or "") or url_for("dashboard")
-            if not next_url.startswith("/"):
-                next_url = url_for("dashboard")
-            return redirect(next_url)
+            return redirect(safe_login_next(request.args.get("next")))
     return render_template("login.html", error=error, created=created)
 
 
