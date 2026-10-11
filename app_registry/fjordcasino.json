@@ -2,7 +2,7 @@
   "id": "fjordcasino",
   "name": "FjordCasino",
   "tagline": "Ren spilleglæde med virtuelle mønter",
-  "description": "Tre spilleautomater, to rouletteborde og blackjack — med ænder, daglige mønter og din egen gemte saldo. Kun for sjov, ingen rigtige penge. Fælles FjordHub-login.",
+  "description": "Slots, roulette, blackjack og Texas Hold’em med venner på tværs af installationer. Virtuelle mønter, egen saldo og 500 mønter pr. kvarter med kasinoet åbent. Fælles FjordHub-login.",
   "icon": "gamepad-2",
   "accent": "#c7ad74",
   "container_name": "fjordcasino",
@@ -33,7 +33,7 @@
         },
         {
           "key": "TZ",
-          "label": "Tidszone for daglige mønter",
+          "label": "Tidszone",
           "type": "text",
           "default": "Europe/Copenhagen"
         }
