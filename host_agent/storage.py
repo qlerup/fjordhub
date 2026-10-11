@@ -12,12 +12,14 @@ import os
 from pathlib import Path
 import re
 import socket
+import stat
 import subprocess
 import sys
 import time
 import uuid
 
 ROOT = Path('/var/lib/fjordhub-storage')
+TUN_MODULES = Path('/etc/modules-load.d/fjordhub-tun.conf')
 MEDIA_ROOTS = (Path('/mnt'), Path('/media'), Path('/srv'))
 FILESYSTEMS = {'fuse.mergerfs', 'mergerfs', 'ext4', 'xfs', 'btrfs', 'zfs', 'nfs', 'nfs4', 'cifs'}
 
@@ -144,7 +146,18 @@ class Agent:
         with self.locked():
             if self.state().get('state') in ('queued', 'applying', 'restarting'):
                 raise ValueError('Vent til lageropsætningen er færdig, før VPN installeres.')
-            run(['modprobe', 'tun'])
+            if not Path('/dev/net/tun').exists():
+                run(['modprobe', 'tun'])
+            else:
+                device=Path('/dev/net/tun').stat()
+                if not stat.S_ISCHR(device.st_mode) or (os.major(device.st_rdev),os.minor(device.st_rdev))!=(10,200):
+                    raise ValueError('/dev/net/tun findes, men er ikke den forventede TUN-enhed. Intet overskrives.')
+            # The persisted LXC bind must also work after a Proxmox reboot.
+            module_config=TUN_MODULES.read_text() if TUN_MODULES.exists() else ''
+            if not any(line.partition('#')[0].strip()=='tun' for line in module_config.splitlines()):
+                TUN_MODULES.parent.mkdir(parents=True,exist_ok=True)
+                TUN_MODULES.write_text(module_config.rstrip()+'\ntun\n' if module_config else 'tun\n')
+                TUN_MODULES.chmod(0o644)
             path = Path(f'/etc/pve/lxc/{self.ctid}.conf')
             original = path.read_text()
             lines = original.splitlines()

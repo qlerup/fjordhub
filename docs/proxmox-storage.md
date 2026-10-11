@@ -52,6 +52,18 @@ midlertidig manuel tilslutning ikke forsvinder efter genstart. Installationen
 tester derefter, at Docker faktisk kan åbne TUN, før FjordVPN startes. Hvis
 kontrollen fejler, stoppes installationen med en forklaring.
 
+FjordVPN-guiden har trinnet **TUN netværksopsætning** med en løbende checker for
+den begrænsede Proxmox-forbindelse og den faktiske TUN-adgang i Docker. Checkeren
+viser de to resultater separat og ændrer ikke værtens opsætning. Kopiknappen giver
+en kommando bundet til netop denne FjordHubs container-ID. På Proxmox finder
+`scripts/setup_vpn_tun.py` selv LXC-ID, installationsmappe og den relevante
+værts-IP. Eksisterende TUN genbruges; kun manglende LXC-adgang/montering tilføjes.
+TUN-modulet sættes også til at blive indlæst ved værtens genstart, så den
+permanente LXC-montering fortsat kan finde enheden efter en Proxmox-genstart.
+Kommandoen opretter den begrænsede forbindelse, genopretter FjordHub og tester
+derefter TUN fra Docker. Genindlæs guiden, når den er færdig. `--detect-only`
+viser de fundne oplysninger uden at ændre opsætningen.
+
 ## Vælg medier i FjordFlix
 
 Opdatér også FjordFlix. Åbn **Indstillinger → Bibliotek → Proxmox-diske og storage**.

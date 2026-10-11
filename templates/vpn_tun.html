@@ -1,0 +1,23 @@
+<p>FjordVPN skal have adgang til TUN-netværksenheden for at kunne oprette VPN-forbindelser.</p>
+<div class="info-note" id="tun-checker" aria-live="polite">
+  <p>FjordHub → Proxmox: <strong id="tun-proxmox-status">Kontrollerer…</strong></p>
+  <p>TUN i Docker: <strong id="tun-device-status">Kontrollerer…</strong></p>
+  <p id="tun-check-message">Kontrollerer forbindelsen og om Docker kan åbne TUN.</p>
+  <button type="button" class="btn btn-toggle" id="tun-check-btn" onclick="checkTunSetup()">Kontrollér igen</button>
+</div>
+{% if tun_setup.configured %}
+<div class="info-note">Proxmox-forbindelsen er konfigureret. Installationen kontrollerer og opsætter TUN automatisk. Kommandoen nedenfor kan bruges til at reparere opsætningen.</div>
+{% else %}
+<div class="info-note">På Proxmox: kopiér kommandoen og kør den som <strong>root i Proxmox-værtens Shell</strong>. Den finder denne FjordHubs LXC, værtens IP og installationsmappe automatisk og sætter TUN og den begrænsede Proxmox-forbindelse op.</div>
+{% endif %}
+{% if tun_setup.command %}
+<div class="nfs-code-section">
+  <div class="nfs-section-header"><span>Proxmox-vært · engangsopsætning</span><button type="button" class="btn-nfs-copy-section" id="tun-copy-btn" onclick="copySectionCommands(this)">Kopiér TUN-opsætning</button></div>
+  <pre class="nfs-code-block" id="tun-setup-code" style="display:block;white-space:pre-wrap;overflow-wrap:anywhere;">{{ tun_setup.command }}</pre>
+</div>
+<p class="field-hint">Kommandoen gælder denne FjordHub-installation. Den genopretter FjordHub-containeren med Proxmox-forbindelsen, så webgrænsefladen kan være kortvarigt utilgængelig. Data bevares. Når kommandoen er færdig, genindlæs guiden og fortsæt installationen.</p>
+<p class="field-hint">Hvis TUN allerede findes, genbruges den. Kun manglende LXC-adgang og montering tilføjes; eksisterende VPN-profiler og data bevares.</p>
+{% else %}
+<div class="info-note">FjordHub kunne ikke identificere sin Docker-container. Kontrollér FjordHubs Docker-forbindelse og genindlæs guiden; en installationskommando kan først dannes, når den rigtige container er kendt.</div>
+{% endif %}
+<p class="field-hint">På en almindelig Linux-vært uden Proxmox skal Docker-værten selv have <code>/dev/net/tun</code>. Kør ikke Proxmox-kommandoen på andre værter.</p>

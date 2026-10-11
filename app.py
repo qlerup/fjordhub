@@ -3312,6 +3312,15 @@ def app_gpu_setup(app_id):
     return render_template('wizard.html', app=definition, pregenerated={}, steps=[],
                            nfs_runtime=_nfs_runtime_info(), gpu_only=True)
 
+@app.get('/apps/fjordvpn/tun/check')
+@login_required
+def vpn_tun_check():
+    if not current_user.is_admin:
+        return jsonify(ok=False,error='Kræver administrator.'),403
+    from services.vpn_setup import cached_check_vpn_tun
+    return jsonify(cached_check_vpn_tun())
+
+
 @app.route("/apps/<app_id>/wizard")
 def install_wizard(app_id):
     app_id = canonical_app_id(app_id)
@@ -3325,6 +3334,11 @@ def install_wizard(app_id):
             if field.get("type") == "auto_secret":
                 pregenerated[field["key"]] = generate_secret()
     steps = list(a.get("setup_steps", []))
+    tun_setup=None
+    if app_id=='fjordvpn':
+        from services.vpn_setup import wizard_setup
+        tun_setup=wizard_setup()
+        steps.insert(0,{'id':'vpn_tun','title':'TUN netværksopsætning','fields':[]})
     if app_id == 'fjordflix':
         steps.append({'id':'media_gateway', 'title':'Adgang og Cloudflare', 'fields':[]})
     return render_template(
@@ -3333,6 +3347,7 @@ def install_wizard(app_id):
         pregenerated=pregenerated,
         steps=steps,
         nfs_runtime=_nfs_runtime_info(),
+        tun_setup=tun_setup,
     )
 
 

@@ -66,6 +66,7 @@
     {% for step in steps %}
     <div class="wizard-panel" id="panel-{{ loop.index }}">
       <h2>{{ step.title }}</h2>
+      {% if step.id == 'vpn_tun' %}{% include 'vpn_tun.html' %}{% endif %}
       {% if step.id == 'media_gateway' %}{% include 'media_gateway.html' %}{% endif %}
       {% set path_fields = step.fields | selectattr('type', 'equalto', 'path') | list %}
       {% if path_fields %}
@@ -474,6 +475,7 @@ function showPanel(step) {
 
   const panel = document.getElementById(`panel-${step}`);
   if (panel) panel.classList.add('active');
+  if (panel?.querySelector('#tun-checker')) checkTunSetup();
   if (panel?.querySelector('[data-gpu-helper]') && !panel.dataset.gpuChecked) {
     panel.dataset.gpuChecked = '1';
     openGpuHelper();
@@ -1532,6 +1534,27 @@ function _copyText(text, btn, label) {
     _copyFallback(text, confirm);
   }
 }
+
+let tunChecking=false;
+async function checkTunSetup() {
+  const root=document.getElementById('tun-checker');
+  if (!root || tunChecking) return;
+  tunChecking=true;
+  const button=document.getElementById('tun-check-btn');button.disabled=true;
+  try {
+    const response=await fetch('/apps/fjordvpn/tun/check',{cache:'no-store'});
+    if (!response.ok) throw new Error();
+    const status=await response.json();
+    document.getElementById('tun-proxmox-status').textContent=({connected:'Forbundet',unconfigured:'Ikke sat op',unavailable:'Kan ikke forbindes'})[status.proxmox]||'Ukendt';
+    document.getElementById('tun-device-status').textContent=({ready:'TUN er klar',unavailable:'TUN mangler eller adgang er afvist',unknown:'Kunne ikke kontrolleres'})[status.tun]||'Ukendt';
+    document.getElementById('tun-check-message').textContent=status.message;
+  } catch (_) {
+    document.getElementById('tun-proxmox-status').textContent='Kunne ikke kontrolleres';
+    document.getElementById('tun-device-status').textContent='Kunne ikke kontrolleres';
+    document.getElementById('tun-check-message').textContent='Kontrollen kunne ikke gennemføres. Genindlæs guiden, når opsætningskommandoen er færdig.';
+  } finally {tunChecking=false;button.disabled=false;}
+}
+setInterval(()=>{if(!document.hidden&&document.querySelector('.wizard-panel.active #tun-checker'))checkTunSetup();},10000);
 
 function copyNfsCommands() {
   const blocks = document.querySelectorAll('#nfs-code-block .nfs-code-block');

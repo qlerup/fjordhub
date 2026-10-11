@@ -1,4 +1,5 @@
 import contextlib
+import stat
 from pathlib import Path
 from unittest.mock import Mock
 import docker
@@ -93,6 +94,7 @@ def test_vpn_installer_preflight_failure_never_starts_compose(tmp_path,monkeypat
 
 def test_fixed_host_action_persists_only_tun_and_hotplugs_without_restart(tmp_path,monkeypatch):
     monkeypatch.setattr(storage,'ROOT',tmp_path)
+    monkeypatch.setattr(storage,'TUN_MODULES',tmp_path/'modules-load/tun.conf')
     monkeypatch.setattr(storage.Agent,'locked',lambda self:contextlib.nullcontext())
     agent=storage.Agent('1000')
     config=tmp_path/'ct.conf'
@@ -113,5 +115,35 @@ def test_fixed_host_action_persists_only_tun_and_hotplugs_without_restart(tmp_pa
     assert not any('reboot' in args or 'restart' in args for args in calls)
     assert list(agent.folder.glob('before-vpn-tun-*.conf'))[0].read_text()==original
     assert storage.dispatch(agent,{'action':'vpn_tun'})['changed'] is False
+    assert storage.TUN_MODULES.read_text()=='tun\n'
     for request in [{'action':'vpn_tun','ctid':'1013'}, {'action':'vpn_tun','pool_id':'x'}]:
         with pytest.raises(ValueError):storage.dispatch(agent,request)
+
+
+@pytest.mark.parametrize('configured',[False,True])
+def test_existing_tun_is_reused_and_only_missing_lxc_mount_is_added(tmp_path,monkeypatch,configured):
+    monkeypatch.setattr(storage,'ROOT',tmp_path)
+    monkeypatch.setattr(storage,'TUN_MODULES',tmp_path/'modules-load/tun.conf')
+    monkeypatch.setattr(storage.Agent,'locked',lambda self:contextlib.nullcontext())
+    agent=storage.Agent('1000');config=tmp_path/'ct.conf'
+    existing='hostname: hub\n'
+    if configured:existing+='lxc.mount.entry: /dev/net/tun dev/net/tun none bind,create=file\nlxc.cgroup2.devices.allow: c 10:200 rwm\n'
+    config.write_text(existing)
+    tun=Mock();tun.exists.return_value=True
+    tun.stat.return_value=Mock(st_mode=stat.S_IFCHR,st_rdev=123)
+    real_path=Path
+    def path(value):
+        if str(value)=='/dev/net/tun':return tun
+        if str(value)=='/etc/pve/lxc/1000.conf':return config
+        return real_path(value)
+    monkeypatch.setattr(storage,'Path',path)
+    monkeypatch.setattr(storage.os,'major',lambda _:10,raising=False)
+    monkeypatch.setattr(storage.os,'minor',lambda _:200,raising=False)
+    calls=[];monkeypatch.setattr(storage,'run',lambda args:calls.append(args) or '')
+    result=agent.ensure_vpn_tun()
+    assert result['ready'] and result['changed'] is not configured
+    assert not any(args[0] in ('modprobe','lxc-device') for args in calls)
+    assert config.read_text().count('lxc.mount.entry: /dev/net/tun')==1
+    assert config.read_text().count('c 10:200 rwm')==1
+    if configured:assert config.read_text()==existing
+    assert storage.TUN_MODULES.read_text()=='tun\n'
