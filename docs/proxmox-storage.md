@@ -41,6 +41,17 @@ lagres privat; de vises ikke i guiden. Scriptet kræver en eksisterende FjordHub
 med persistent `/data` bind-mount. Proxmox' SSH-port skal kunne nås fra LXC'en.
 MediaHubs egen installer bruger endnu ikke denne FjordHub-installer automatisk.
 
+## VPN-adgang ved installation
+
+Når Proxmox-forbindelsen er sat op, gør installation af FjordVPN
+automatisk `/dev/net/tun` tilgængelig i FjordHubs faste LXC. Den begrænsede
+værtskommando indlæser TUN, gemmer den nødvendige enhedstilladelse og montering
+i LXC-konfigurationen og gør enheden tilgængelig i den kørende LXC uden genstart.
+Den permanente opsætning kontrolleres også, hvis TUN allerede virker, så en
+midlertidig manuel tilslutning ikke forsvinder efter genstart. Installationen
+tester derefter, at Docker faktisk kan åbne TUN, før FjordVPN startes. Hvis
+kontrollen fejler, stoppes installationen med en forklaring.
+
 ## Vælg medier i FjordFlix
 
 Opdatér også FjordFlix. Åbn **Indstillinger → Bibliotek → Proxmox-diske og storage**.

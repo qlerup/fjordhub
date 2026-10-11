@@ -303,8 +303,12 @@ The FjordFlix wizard offers CPU or NVIDIA transcoding, separate movie and databa
 FjordVPN can be installed from the catalog with a web port, allowed private LAN
 subnets and a persistent data directory. It accepts Proton WireGuard uploads and
 creates independent VPN/relay containers only when a profile is started. The Docker
-host needs `/dev/net/tun`; Proxmox TUN passthrough is a host prerequisite and is not
-changed by the app. Managed login uses FjordHub SSO and requires administrator
+host needs `/dev/net/tun`. On a hub with the restricted Proxmox connection,
+installation ensures persistent TUN passthrough for the hub's fixed LXC, makes
+the device available without restarting the LXC, and verifies it inside Docker
+before starting FjordVPN. Older hubs need the one-time Proxmox setup described
+in `docs/proxmox-storage.md`; reinstalling the hub is not required. Standalone
+Docker hosts must provide TUN themselves. Managed login uses FjordHub SSO and requires administrator
 access. Existing VPN installations are not imported or modified. App stop shuts
 down its own tunnels; uninstall removes its labelled runtime while preserving
 configuration files and VPN keys in the data directory.

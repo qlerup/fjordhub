@@ -9,23 +9,61 @@ from services.installer import Installer
 from services.install_state import InstallState
 
 
-@pytest.mark.parametrize('missing',[False,True])
-def test_installer_checks_docker_host_and_only_repairs_if_needed(monkeypatch,missing):
+def test_installer_persists_proxmox_access_even_when_device_already_works(monkeypatch):
     client=Mock()
     client.containers.get.return_value.attrs={'Image':'hub-image'}
-    if missing:client.containers.run.side_effect=[docker.errors.DockerException('missing tun'),b'']
     monkeypatch.setenv('HOSTNAME','hub')
     monkeypatch.setenv('FJORDHUB_STORAGE_SSH_HOST','192.168.1.250')
     monkeypatch.setattr(vpn_setup.docker,'from_env',Mock(return_value=client))
     repair=Mock(return_value={'ready':True})
     monkeypatch.setattr(vpn_setup.HostStorage,'ensure_vpn_tun',repair)
     vpn_setup.ensure_vpn_tun(Mock())
-    assert repair.call_count==int(missing)
-    assert client.containers.run.call_count==1+int(missing)
+    repair.assert_called_once()
+    assert client.containers.run.call_count==1
     args=client.containers.run.call_args
     assert args.args==('hub-image',)
     assert args.kwargs['devices']==['/dev/net/tun:/dev/net/tun:rwm']
     assert args.kwargs['network_mode']=='none' and args.kwargs['cap_drop']==['ALL']
+    client.close.assert_called_once()
+
+
+def test_proxmox_setup_is_followed_by_real_docker_probe(monkeypatch):
+    client=Mock()
+    client.containers.get.return_value.attrs={'Image':'hub-image'}
+    client.containers.run.side_effect=docker.errors.DockerException('still unavailable')
+    monkeypatch.setenv('HOSTNAME','hub')
+    monkeypatch.setenv('FJORDHUB_STORAGE_SSH_HOST','192.168.1.250')
+    monkeypatch.setattr(vpn_setup.docker,'from_env',Mock(return_value=client))
+    repair=Mock(return_value={'ready':True})
+    monkeypatch.setattr(vpn_setup.HostStorage,'ensure_vpn_tun',repair)
+    with pytest.raises(RuntimeError,match='Docker kan ikke åbne'):
+        vpn_setup.ensure_vpn_tun(Mock())
+    repair.assert_called_once()
+    client.containers.run.assert_called_once()
+    client.close.assert_called_once()
+
+
+def test_standalone_docker_host_needs_no_proxmox_connection(monkeypatch):
+    client=Mock();client.containers.get.return_value.attrs={'Image':'hub-image'}
+    monkeypatch.setenv('HOSTNAME','hub')
+    monkeypatch.delenv('FJORDHUB_STORAGE_SSH_HOST',raising=False)
+    monkeypatch.setattr(vpn_setup.docker,'from_env',Mock(return_value=client))
+    repair=Mock();monkeypatch.setattr(vpn_setup.HostStorage,'ensure_vpn_tun',repair)
+    vpn_setup.ensure_vpn_tun(Mock())
+    repair.assert_not_called()
+    client.containers.run.assert_called_once()
+    client.close.assert_called_once()
+
+
+def test_failed_host_setup_never_proceeds_to_docker_probe(monkeypatch):
+    client=Mock();client.containers.get.return_value.attrs={'Image':'hub-image'}
+    monkeypatch.setenv('HOSTNAME','hub')
+    monkeypatch.setenv('FJORDHUB_STORAGE_SSH_HOST','192.168.1.250')
+    monkeypatch.setattr(vpn_setup.docker,'from_env',Mock(return_value=client))
+    monkeypatch.setattr(vpn_setup.HostStorage,'ensure_vpn_tun',Mock(return_value={'ready':False}))
+    with pytest.raises(RuntimeError,match='Proxmox kunne ikke'):
+        vpn_setup.ensure_vpn_tun(Mock())
+    client.containers.run.assert_not_called()
     client.close.assert_called_once()
 
 

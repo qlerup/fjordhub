@@ -15,16 +15,19 @@ def ensure_vpn_tun(log):
                 remove=True, read_only=True, cap_drop=['ALL'],
                 security_opt=['no-new-privileges:true'])
         log('Kontrollerer VPN-adgang til TUN på Docker-værten…')
+        if os.getenv('FJORDHUB_STORAGE_SSH_HOST'):
+            # A working device may have been hotplugged manually. Persist the
+            # exact LXC grant as well, so it remains available after reboot.
+            log('Sikrer permanent TUN-adgang på FjordHubs Proxmox-LXC…')
+            result = HostStorage().ensure_vpn_tun()
+            if result.get('ready') is not True:
+                raise RuntimeError('Proxmox kunne ikke gøre VPN-adgangen klar.')
         try:
             probe()
         except docker.errors.DockerException:
             if not os.getenv('FJORDHUB_STORAGE_SSH_HOST'):
                 raise RuntimeError('TUN mangler på Docker-værten. Aktivér FjordHubs Proxmox-forbindelse, så installationen kan sætte VPN-adgangen op automatisk.') from None
-            log('Opsætter TUN automatisk på FjordHubs Proxmox-LXC…')
-            result = HostStorage().ensure_vpn_tun()
-            if result.get('ready') is not True:
-                raise RuntimeError('Proxmox kunne ikke gøre VPN-adgangen klar.')
-            probe()
+            raise RuntimeError('Proxmox har opsat TUN, men Docker kan ikke åbne enheden. Kontrollér LXC-adgangen på værten og prøv installationen igen.') from None
         log('VPN-adgang er klar. TUN-test bestået i Docker.')
     finally:
         client.close()
