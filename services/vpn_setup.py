@@ -68,9 +68,21 @@ def wizard_setup():
         client=docker.from_env(timeout=5)
         ident=client.containers.get(os.environ['HOSTNAME']).attrs.get('Id')
         if isinstance(ident,str) and re.fullmatch('[a-f0-9]{64}',ident):
-            result['command']=('setup_dir=$(mktemp -d /tmp/fjordhub-tun.XXXXXX)\n'
+            result['command']=("bash <<'FJORDHUB_TUN_SETUP'\n"
+                'set -euo pipefail\n'
+                'if [ "$(id -u)" -ne 0 ] || [ ! -d /etc/pve ]; then\n'
+                '  echo "Kør koden som root i Proxmox-værtens Shell." >&2\n'
+                '  exit 1\n'
+                'fi\n'
+                'if ! command -v git >/dev/null 2>&1 || ! command -v python3 >/dev/null 2>&1; then\n'
+                '  apt-get update\n'
+                '  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git python3 ca-certificates\n'
+                'fi\n'
+                'setup_dir=$(mktemp -d /tmp/fjordhub-tun.XXXXXX)\n'
+                "trap 'rm -rf -- \"$setup_dir\"' EXIT\n"
                 'git clone --depth 1 https://github.com/qlerup/fjordhub.git "$setup_dir"\n'
-                'python3 "$setup_dir/scripts/setup_vpn_tun.py" --hub-container '+ident)
+                'python3 "$setup_dir/scripts/setup_vpn_tun.py" --hub-container '+ident+'\n'
+                'FJORDHUB_TUN_SETUP\n')
     except Exception:
         pass
     finally:

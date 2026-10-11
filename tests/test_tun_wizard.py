@@ -18,6 +18,9 @@ def test_command_is_bound_to_exact_hub_without_guessing_addresses(monkeypatch):
     assert info['configured'] is False
     assert '--hub-container '+IDENT in info['command']
     assert '192.168.' not in info['command'] and '<CTID>' not in info['command']
+    assert 'apt-get install -y --no-install-recommends git python3 ca-certificates' in info['command']
+    assert 'set -euo pipefail' in info['command']
+    assert info['command'].startswith("bash <<'FJORDHUB_TUN_SETUP'")
     client.close.assert_called_once()
 
 
