@@ -192,11 +192,12 @@ class AuthEmailTests(unittest.TestCase):
 
         self.assertEqual(imported["username"], "imported-2")
 
-    def test_app_user_import_reuses_an_existing_email_account(self):
+    def test_app_user_import_reuses_an_existing_linked_email_account(self):
         existing_id = self.auth.create_user(
             "existing-user", "secret1", email="existing@example.com"
         )
 
+        self.auth.set_user_app_access(existing_id, "urban-explorer")
         imported = self.auth.create_or_grant_app_user(
             "urban-explorer",
             "",

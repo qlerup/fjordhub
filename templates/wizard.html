@@ -1095,6 +1095,11 @@ let _nfsPathFields = []; // [{key, label, recommended}, ...]
 let _nfsLxcPrivileged = null;
 let _nfsVmid = null;
 
+function _setNfsStatus(element, text, color) {
+  element.textContent = text;
+  element.style.color = color;
+}
+
 function _escapeHtml(text) {
   return String(text ?? '').replace(/[&<>"']/g, ch => ({
     '&': '&amp;',
@@ -1254,11 +1259,11 @@ async function autoMountNfs() {
     });
     const data = await res.json();
     if (data.ok) {
-      statusEl.innerHTML = `<span style="color:#22c55e">✓ Mountet — ${data.path}</span>`;
+      _setNfsStatus(statusEl, `✓ Mountet — ${data.path}`, '#22c55e');
       btn.textContent = '✓ Monteret';
       _onMountConfirmed();
     } else {
-      statusEl.innerHTML = `<span style="color:#ef4444">✗ ${data.error}</span>`;
+      _setNfsStatus(statusEl, `✗ ${data.error}`, '#ef4444');
       btn.disabled = false;
       btn.textContent = '⚡ Montér automatisk';
     }
@@ -1312,7 +1317,7 @@ function renderNfsCommands() {
   const s = isWSL2 ? 'sudo ' : '';
 
   const finalPath = subdir ? `${root.replace(/\/$/, '')}/${subdir}` : root;
-  const c = t => `<span class="nfs-code-comment">${t}</span>`;
+  const c = text => ({comment: true, text});
   const linuxNfsInstallLines = [
     c('# 0. Installer NFS-klient (kun foerste gang)'),
     'if command -v apt-get >/dev/null 2>&1; then apt-get update && apt-get install -y nfs-common; elif command -v apk >/dev/null 2>&1; then apk add --no-cache nfs-utils util-linux; elif command -v dnf >/dev/null 2>&1; then dnf install -y nfs-utils; elif command -v yum >/dev/null 2>&1; then yum install -y nfs-utils; elif command -v zypper >/dev/null 2>&1; then zypper --non-interactive install nfs-client; else echo "Installer nfs-common/nfs-utils manuelt"; fi',
@@ -1399,15 +1404,37 @@ function renderNfsCommands() {
         </div>
       </div>`;
   } else {
-    block.innerHTML = sections.map((sec) =>
-      `<div class="nfs-code-section">
-        <div class="nfs-section-header">
-          <span class="nfs-block-location">📍 ${sec.location}</span>
-          <button type="button" class="btn-nfs-copy-section" onclick="copySectionCommands(this)">Kopiér</button>
-        </div>
-        <div class="nfs-code-block">${sec.lines.join('\n')}</div>
-      </div>`
-    ).join('');
+    block.replaceChildren();
+    sections.forEach(sec => {
+      const section = document.createElement('div');
+      section.className = 'nfs-code-section';
+      const header = document.createElement('div');
+      header.className = 'nfs-section-header';
+      const location = document.createElement('span');
+      location.className = 'nfs-block-location';
+      location.textContent = `📍 ${sec.location}`;
+      const copyButton = document.createElement('button');
+      copyButton.type = 'button';
+      copyButton.className = 'btn-nfs-copy-section';
+      copyButton.textContent = 'Kopiér';
+      copyButton.addEventListener('click', () => copySectionCommands(copyButton));
+      header.append(location, copyButton);
+      const code = document.createElement('div');
+      code.className = 'nfs-code-block';
+      sec.lines.forEach((line, index) => {
+        if (index) code.append(document.createTextNode('\n'));
+        if (line.comment) {
+          const comment = document.createElement('span');
+          comment.className = 'nfs-code-comment';
+          comment.textContent = line.text;
+          code.append(comment);
+        } else {
+          code.append(document.createTextNode(line));
+        }
+      });
+      section.append(header, code);
+      block.append(section);
+    });
   }
 
   startMountPolling(root);
@@ -1473,18 +1500,18 @@ async function fetchNfsExports() {
     const data = await res.json();
     resultEl.style.display = '';
     if (data.exports && data.exports.length > 0) {
-      sel.innerHTML = '<option value="">— Vælg export —</option>' +
-        data.exports.map(e => `<option value="${e}">${e}</option>`).join('');
+      sel.replaceChildren(new Option('— Vælg export —', ''));
+      data.exports.forEach(exportPath => sel.append(new Option(exportPath, exportPath)));
       _nfsSetConnected(true);
-      resultEl.innerHTML = `<span style="color:#22c55e">✓ Forbundet — ${data.exports.length} export(s) fundet</span>`;
+      _setNfsStatus(resultEl, `✓ Forbundet — ${data.exports.length} export(s) fundet`, '#22c55e');
     } else {
       sel.innerHTML = '<option value="">Ingen exports fundet</option>';
-      resultEl.innerHTML = `<span style="color:#ef4444">✗ ${data.error || 'Ingen exports på denne server'}</span>`;
+      _setNfsStatus(resultEl, `✗ ${data.error || 'Ingen exports på denne server'}`, '#ef4444');
     }
   } catch(e) {
     sel.innerHTML = '<option value="">Fejl ved hentning</option>';
     resultEl.style.display = '';
-    resultEl.innerHTML = `<span style="color:#ef4444">✗ Fejl: ${e.message}</span>`;
+    _setNfsStatus(resultEl, `✗ Fejl: ${e.message}`, '#ef4444');
   } finally {
     btn.textContent = 'Connect';
     btn.disabled = false;

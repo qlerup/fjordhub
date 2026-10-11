@@ -39,6 +39,9 @@ from services.app_storage import AppStorage
 from services.storage_mount import MountRequired
 from services.media_library import MediaLibrary
 from services.host_storage import HostStorage
+from services.web_security import csrf_token, check_csrf
+from services.security_config import load_session_secret, load_updater_token
+from services.install_validation import validate_install_values
 
 APP_PORT = int(os.environ.get("APP_PORT", 8080))
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data")).resolve()
@@ -73,11 +76,12 @@ def _normalize_language(value: str) -> str:
     return lang if lang in LANGUAGE_VALUES else "da"
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+app.secret_key = load_session_secret(DATA_DIR)
 app.config.update(
     SESSION_COOKIE_NAME=os.environ.get("SESSION_COOKIE_NAME", "fjordhub_session"),
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
     SESSION_REFRESH_EACH_REQUEST=False,
+    SESSION_COOKIE_SAMESITE='Lax',
 )
 
 
@@ -95,7 +99,7 @@ STATIC_VERSION = _static_version()
 
 @app.context_processor
 def _inject_static_version():
-    return {"static_version": STATIC_VERSION}
+    return {"static_version": STATIC_VERSION, "hub_csrf_token": csrf_token}
 
 _auth            = AuthService(AUTH_DB_PATH)
 _password_reset  = PasswordResetService(AUTH_DB_PATH, app.secret_key, _auth)
@@ -164,7 +168,7 @@ def _login_on_device(user):
 @login_manager.user_loader
 def _load_user(user_id: str):
     try:
-        return _auth.get_by_id(int(user_id))
+        return _auth.get_by_session_id(user_id)
     except Exception:
         return None
 
@@ -278,6 +282,28 @@ def _auth_gate():
             return jsonify({"ok": False, "error": "Adgangskoden skal ændres først.", "password_change_required": True}), 403
         return redirect(url_for("profile", force_password_change="1"))
     return None
+
+
+_USER_ENDPOINTS = {
+    'dashboard', 'packages', 'app_store', 'open_package', 'package_asset',
+    'logout', 'profile', 'profile_info', 'api_hub_sso_token', 'app_sso_url',
+    'api_apps_status', 'api_apps_updates', 'api_registry_status',
+}
+# Only these public endpoints use browser sessions/forms. All other auth-exempt
+# operations authenticate their own app key or bearer token, never the cookie.
+_PUBLIC_FORM_ENDPOINTS = {'setup', 'login', 'forgot_password'}
+
+
+@app.before_request
+def _browser_security_gate():
+    endpoint = request.endpoint
+    if endpoint is None:
+        return None
+    if endpoint in _AUTH_EXEMPT and endpoint not in _PUBLIC_FORM_ENDPOINTS:
+        return None
+    if endpoint not in _USER_ENDPOINTS | _PUBLIC_FORM_ENDPOINTS and not current_user.is_admin:
+        return jsonify(ok=False, error='Kræver administratoradgang.'), 403
+    return check_csrf()
 
 
 def _with_nfs_recommendations(app_def: dict) -> dict:
@@ -1391,10 +1417,11 @@ def _hub_update_proxy(path: str, method: str = "GET", payload: dict | None = Non
 
     url = f"{FJORDHUB_UPDATER_URL}/{str(path or '').strip('/')}"
     try:
+        headers = {'Authorization': 'Bearer ' + load_updater_token(DATA_DIR)}
         if method.upper() == "POST":
-            response = requests.post(url, json=payload or {}, timeout=timeout)
+            response = requests.post(url, json=payload or {}, timeout=timeout, headers=headers, allow_redirects=False)
         else:
-            response = requests.get(url, timeout=timeout)
+            response = requests.get(url, timeout=timeout, headers=headers, allow_redirects=False)
         try:
             data = response.json()
         except Exception:
@@ -1477,6 +1504,7 @@ def profile():
         else:
             try:
                 _auth.change_password(current_user.id, new_pw)
+                _login_on_device(_auth.get_by_id(current_user.id))
                 return redirect(url_for("profile", password_changed="1"))
             except ValueError as exc:
                 pw_error = str(exc)
@@ -1672,6 +1700,8 @@ def edit_user(user_id: int):
             if app_role not in _auth.app_roles(aid):
                 app_role = "user"
             _auth.set_user_app_access(user_id, aid, app_role)
+        if editing_self:
+            _login_on_device(_auth.get_by_id(user_id))
         return redirect(url_for("users", msg="2"))
     except ValueError as exc:
         return render_template(
@@ -1981,6 +2011,7 @@ def _create_app_sso_token(app_id: str) -> tuple[str, object | None]:
     role = app_role or ("admin" if user.is_admin else "user")
     token = generate_secret(32)
     _sso_tokens[token] = {
+        "session_id": user.get_id(),
         "username": user.username,
         "id": user.id,
         "first_name": getattr(user, "first_name", ""),
@@ -2392,16 +2423,22 @@ def api_hub_sso_verify():
         return jsonify({"ok": False, "error": "Token tilhører en anden app"}), 401
     if time.time() > entry["expires_at"]:
         return jsonify({"ok": False, "error": "Token er udløbet"}), 401
+    user = _auth.get_by_session_id(entry.get('session_id', ''))
+    if user is None or user.must_change_password:
+        return jsonify(ok=False, error='Login er tilbagekaldt.'), 401
+    app_role = _auth.get_user_app_role(user.id, app_id)
+    if not user.is_admin and app_role is None:
+        return jsonify(ok=False, error='Appadgangen er tilbagekaldt.'), 401
     return jsonify({
         "ok": True,
-        "username": entry["username"],
-        "id": entry["id"],
-        "first_name": entry.get("first_name", ""),
-        "last_name": entry.get("last_name", ""),
-        "email": entry.get("email", ""),
-        "language": _normalize_language(entry.get("language")),
-        "role": entry["role"],
-        "hub_role": entry.get("hub_role", entry["role"]),
+        "username": user.username,
+        "id": user.id,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "email": user.email,
+        "language": _normalize_language(user.language),
+        "role": app_role or 'admin',
+        "hub_role": user.role,
     })
 
 
@@ -3293,8 +3330,10 @@ def install_app(app_id):
         return jsonify({"error": "Unknown app"}), 404
     body = request.get_json(silent=True) or {}
     env_values = body.get("env", {})
-    if not isinstance(env_values, dict):
-        return jsonify({"error": "env must be an object"}), 400
+    try:
+        env_values = validate_install_values(a, env_values)
+    except ValueError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
     media_choice = body.get('media_gateway') if app_id == 'fjordflix' else None
     if media_choice:
         try:

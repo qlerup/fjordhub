@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="csrf-token" content="{{ hub_csrf_token() }}">
+  <script src="{{ url_for('static', filename='csrf.js', v=static_version) }}"></script>
   <title>{% block title %}FjordHub{% endblock %}</title>
   <link rel="icon" href="{{ url_for('static', filename='logos/web/favicon.ico', v='brand-20261005') }}" sizes="any">
   <link rel="icon" href="{{ url_for('static', filename='logos/web/favicon-32x32.png', v='brand-20261005') }}" type="image/png" sizes="32x32">
@@ -81,6 +83,7 @@
       </div>
       <div class="sidebar-bottom">
         <form action="{{ url_for('logout') }}" method="post">
+      <input type="hidden" name="csrf_token" value="{{ hub_csrf_token() }}">
           <button type="submit" class="sidebar-item" title="Log ud" style="background:none;border:none;cursor:pointer;color:var(--text-muted);">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>

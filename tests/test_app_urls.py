@@ -73,7 +73,9 @@ class AppUrlTests(unittest.TestCase):
     def test_sso_verify_returns_the_users_email(self):
         hub_key = "test-hub-key"
         fjordhub._auth.save_hub_key("urban-explorer", hub_key)
+        uid = fjordhub._auth.create_user('qlerup', 'test-password', role='admin', email='sso@example.test')
         fjordhub._sso_tokens["test-token"] = {
+            "session_id": fjordhub._auth.get_by_id(uid).get_id(),
             "username": "qlerup",
             "id": 42,
             "first_name": "Christian",
@@ -93,7 +95,7 @@ class AppUrlTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()["email"], "k3dd3@hotmail.dk")
+        self.assertEqual(response.get_json()["email"], "sso@example.test")
 
     def test_app_config_requires_own_key(self):
         fjordhub._auth.save_hub_key('fjordflix', 'flix-key')
@@ -239,7 +241,7 @@ class AppUrlTests(unittest.TestCase):
         os.environ['HOST_LAN_IP'] = '10.10.0.50'
         client = fjordhub.app.test_client()
         with client.session_transaction() as session:
-            session['_user_id'] = str(uid)
+            session['_user_id'] = fjordhub._auth.get_by_id(uid).get_id()
             session['_fresh'] = True
         normal = client.get(f'/apps/{app_id}/sso-url')
         local = client.get(f'/apps/{app_id}/sso-url?target=local')
@@ -261,7 +263,7 @@ class AppUrlTests(unittest.TestCase):
         uid = fjordhub._auth.create_user('no-app-access', 'test-password')
         fjordhub._auth.save_hub_key(app_id, 'test-key')
         with client.session_transaction() as session:
-            session['_user_id'] = str(uid)
+            session['_user_id'] = fjordhub._auth.get_by_id(uid).get_id()
             session['_fresh'] = True
         self.assertEqual(client.get(f'/apps/{app_id}/sso-url?target=local').status_code, 403)
         self.assertEqual(client.get(f'/apps/{app_id}/sso-url?target=https://evil.example').status_code, 400)
@@ -286,11 +288,18 @@ class AppUrlTests(unittest.TestCase):
             )
             self.assertEqual(blocked.status_code, 429)
             self.assertIn("For mange forsøg", blocked.get_data(as_text=True))
-            allowed = client.post(
+            account_blocked = client.post(
                 "/login",
                 data={"username": "rate-limit-admin", "password": "correct-password"},
                 environ_base={"REMOTE_ADDR": "203.0.113.42"},
             )
+            # Account throttling persists across caller IP changes as well as
+            # the independent per-IP gate tested above.
+            self.assertEqual(account_blocked.status_code, 200)
+            self.assertIn('Forkert brugernavn eller adgangskode', account_blocked.get_data(as_text=True))
+            fjordhub._auth.create_user('other-admin', 'other-password', role='admin')
+            allowed = client.post('/login', data={'username':'other-admin','password':'other-password'},
+                                  environ_base={'REMOTE_ADDR':'203.0.113.42'})
             self.assertEqual(allowed.status_code, 302)
 
     def test_app_authentication_api_locks_after_five_failures(self):

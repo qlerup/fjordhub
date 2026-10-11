@@ -28,6 +28,7 @@ class User(UserMixin):
         email: str = "",
         language: str = "da",
         must_change_password: bool = False,
+        session_version: int = 1,
     ):
         self.id = id
         self.username = username
@@ -38,6 +39,10 @@ class User(UserMixin):
         self.email = email
         self.language = language
         self.must_change_password = bool(must_change_password)
+        self.session_version = int(session_version)
+
+    def get_id(self) -> str:
+        return f"{self.id}:{self.session_version}"
 
     @property
     def is_admin(self) -> bool:
@@ -57,6 +62,7 @@ def _row_to_user(row) -> Optional[User]:
         email=str(row["email"] or ""),
         language=_normalize_language(row["language"]),
         must_change_password=bool(int(row["must_change_password"] or 0)),
+        session_version=int(row["session_version"]),
     )
 
 
@@ -218,6 +224,8 @@ class AuthService:
             if "api_key_hash" not in cols:
                 conn.execute("ALTER TABLE app_hub_keys ADD COLUMN api_key_hash TEXT")
             user_cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+            if "session_version" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 1")
             if "first_name" not in user_cols:
                 conn.execute("ALTER TABLE users ADD COLUMN first_name TEXT NOT NULL DEFAULT ''")
             if "last_name" not in user_cols:
@@ -414,6 +422,23 @@ class AuthService:
             row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
             return _row_to_user(row)
 
+    def get_by_session_id(self, session_id: str) -> Optional[User]:
+        """Resolve a login cookie only while its persisted generation is current.
+
+        Numeric IDs from older releases deliberately require a fresh login.
+        """
+        if not isinstance(session_id, str) or not re.fullmatch(r"[1-9][0-9]{0,18}:[1-9][0-9]{0,18}", session_id):
+            return None
+        user_id, version = map(int, session_id.split(":"))
+        if max(user_id, version) > 9223372036854775807:
+            return None
+        with closing(self._conn()) as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE id=? AND session_version=?",
+                (user_id, version),
+            ).fetchone()
+            return _row_to_user(row)
+
     def get_by_username(self, username: str) -> Optional[User]:
         with closing(self._conn()) as conn:
             row = conn.execute("SELECT * FROM users WHERE username=?", (username.strip(),)).fetchone()
@@ -501,11 +526,14 @@ class AuthService:
                 return None
             self._login_succeeded(key)
             if _password_needs_rehash(stored_hash):
-                conn.execute(
-                    "UPDATE users SET password_hash=? WHERE id=?",
-                    (_hash_password(password), int(row["id"])),
+                updated = conn.execute(
+                    "UPDATE users SET password_hash=? WHERE id=? AND password_hash=?",
+                    (_hash_password(password), int(row["id"]), stored_hash),
                 )
                 conn.commit()
+                if updated.rowcount != 1:
+                    # A concurrent reset wins over transparent hash migration.
+                    return None
         return _row_to_user(row)
 
     def create_user(
@@ -650,9 +678,10 @@ class AuthService:
         with closing(self._conn()) as conn:
             try:
                 conn.execute(
-                    """UPDATE users SET username=?, first_name=?, last_name=?, email=?, language=?, role=?
+                    """UPDATE users SET session_version=session_version + CASE WHEN role <> ? THEN 1 ELSE 0 END,
+                       username=?, first_name=?, last_name=?, email=?, language=?, role=?
                        WHERE id=?""",
-                    (username, first_name, last_name, email, language, role, int(user_id)),
+                    (role, username, first_name, last_name, email, language, role, int(user_id)),
                 )
                 conn.commit()
             except sqlite3.IntegrityError:
@@ -693,7 +722,7 @@ class AuthService:
         pw_hash = _hash_password(new_password)
         with closing(self._conn()) as conn:
             conn.execute(
-                "UPDATE users SET password_hash=?, must_change_password=0 WHERE id=?", (pw_hash, user_id)
+                "UPDATE users SET password_hash=?, must_change_password=0, session_version=session_version+1 WHERE id=?", (pw_hash, user_id)
             )
             conn.commit()
 
@@ -918,22 +947,29 @@ class AuthService:
         last_name = str(last_name or "").strip()
         email = _normalize_email(email)
         raw_language = str(language or "").strip()
-        metadata_provided = bool(first_name or last_name or email or raw_language)
         language = _normalize_language(raw_language) if raw_language else "da"
         if role not in self.app_roles(app_id):
             role = "user"
         user = self.get_by_username(username) if username else None
-        if user is None and email:
-            user = self.get_by_email(email)
+        email_user = self.get_by_email(email) if email else None
+        if user and email_user and user.id != email_user.id:
+            raise ValueError("Brugernavn og email tilhører forskellige konti.")
+        if user is None:
+            user = email_user
         if user:
             user_id = user.id
             username = user.username
-            if metadata_provided:
-                user = self.update_user(
-                    user_id, username=user.username, first_name=first_name or user.first_name,
-                    last_name=last_name or user.last_name, email=email or user.email,
-                    language=language, role=user.role,
-                ) or user
+            # App keys manage only their existing app membership. Linking a hub
+            # identity requires approval in the hub; central profile/recovery
+            # fields and credentials are never writable through app sync.
+            with closing(self._conn()) as conn:
+                updated = conn.execute(
+                    "UPDATE user_app_access SET role=?, synced_at=? WHERE user_id=? AND app_id=?",
+                    (role, datetime.utcnow().strftime("%Y-%m-%d %H:%M"), user_id, app_id),
+                )
+                if updated.rowcount != 1:
+                    raise ValueError("Eksisterende konti skal først tildeles appadgang i FjordHub.")
+                conn.commit()
         else:
             if not username:
                 if not email:
@@ -962,7 +998,7 @@ class AuthService:
                     require_password_change=True,
                 )
             user = self.get_by_id(user_id)
-        self.set_user_app_access(user_id, app_id, role)
+            self.set_user_app_access(user_id, app_id, role)
         return {
             "id": int(user_id),
             "username": username if user is None else user.username,

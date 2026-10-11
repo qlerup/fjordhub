@@ -90,7 +90,7 @@ def test_existing_users_and_new_regular_accounts_are_not_enrolled(client):
         uid = hub._auth.create_user(name, 'temporary-pass', role=role)
         assert not hub._auth.onboarding_pending(uid)
         with client.session_transaction() as session:
-            session['_user_id'] = str(uid)
+            session['_user_id'] = hub._auth.get_by_id(uid).get_id()
             session['_fresh'] = True
         assert client.get('/setup/preferences').status_code == (302 if role == 'admin' else 403)
 

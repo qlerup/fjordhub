@@ -3,6 +3,8 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="action" value="save">
         <label class="onboarding-checkbox"><input type="checkbox" name="enabled" value="1" {% if mail_enabled %}checked{% endif %}> Tillad “Glemt adgangskode?” på login-siden</label>
+        {% else %}
+        <input type="hidden" name="csrf_token" value="{{ hub_csrf_token() }}">
         {% endif %}
         <div class="auth-field"><label for="smtp_from">Afsender-email</label><input id="smtp_from" name="smtp_from" type="email" value="{{ smtp_from }}" placeholder="noreply@dit-domæne.dk" autocomplete="off" autocapitalize="none" spellcheck="false" required></div>
         <div class="settings-mail-grid">

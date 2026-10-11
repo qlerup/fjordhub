@@ -11,6 +11,7 @@
   {% endif %}
 
   <form method="post" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ hub_csrf_token() }}">
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;">
       <div class="auth-field">
         <label for="first-name">Navn</label>

@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory() as tmp:
     state.register('fjordflix', str(root))
     client = hub.app.test_client()
     with client.session_transaction() as session:
-        session['_user_id'] = str(admin)
+        session['_user_id'] = auth.get_by_id(admin).get_id()
         session['_fresh'] = True
     with patch.object(hub, '_auth', auth), patch.object(hub, '_install_state', state), sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)

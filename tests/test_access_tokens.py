@@ -31,7 +31,7 @@ class AccessTokenTests(unittest.TestCase):
 
     def login(self, user_id):
         with self.client.session_transaction() as session:
-            session['_user_id'] = str(user_id)
+            session['_user_id'] = self.auth.get_by_id(user_id).get_id()
             session['_fresh'] = True
             session['access_token_csrf'] = 'csrf-test'
 

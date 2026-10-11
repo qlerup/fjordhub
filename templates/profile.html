@@ -39,6 +39,7 @@
   {% endif %}
 
   <form method="post" action="{{ url_for('profile_info') }}" autocomplete="off" style="max-width:520px;">
+      <input type="hidden" name="csrf_token" value="{{ hub_csrf_token() }}">
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
       <div class="auth-field">
         <label for="profile-first-name">Navn</label>
@@ -80,6 +81,7 @@
   {% endif %}
 
   <form method="post" action="{{ url_for('profile') }}" autocomplete="off" style="max-width:360px;">
+      <input type="hidden" name="csrf_token" value="{{ hub_csrf_token() }}">
     <div class="auth-field">
       <label for="current-pw">Nuværende adgangskode</label>
       <input id="current-pw" name="current_password" type="password" autocomplete="current-password" required>

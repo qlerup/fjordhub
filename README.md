@@ -158,7 +158,7 @@ Requirements: a Linux host with Docker and the Docker Compose plugin.
 git clone https://github.com/qlerup/fjordhub.git /opt/fjordhub
 cd /opt/fjordhub
 cp .env.example .env
-# edit .env — at minimum set a real SECRET_KEY
+# edit .env for your host; a blank SECRET_KEY generates a persistent random key
 docker compose up -d --build
 ```
 
@@ -172,9 +172,8 @@ All configuration is environment variables, read from `.env` (see [.env.example]
 |---|---|---|
 | `APP_PORT` | `8888` | Direct port for the hub, bypassing Traefik. |
 | `TRAEFIK_HTTP_PORT` | `80` | Traefik's HTTP entrypoint — the port you normally browse to. |
-| `TRAEFIK_DASHBOARD_PORT` | `8080` | Traefik's own dashboard. |
 | `DATA_DIR` | `./data` | Hub state: SQLite database, install state, updater logs. |
-| `SECRET_KEY` | — | Flask session secret. **Set this to a long random value.** |
+| `SECRET_KEY` | generated | Session and SMTP encryption key. Blank generates `DATA_DIR/security/session_key`; preserve existing custom values on upgrades. |
 | `TZ` | `Europe/Copenhagen` | Timezone for the hub and default for installed apps. |
 | `REGISTRY_URL` | this repo's `registry.json` | Raw URL of the app registry. Point it at your own fork to curate your own catalog. |
 | `FJORDHUB_HOST_DIR` | `/opt/fjordhub` | Host path of this repository — required for self-update. |
@@ -303,8 +302,21 @@ What to do *inside* the container afterwards depends on what it runs:
 ## Security notes
 
 - The hub container mounts `/var/run/docker.sock`, which is equivalent to root on the host. Treat the hub as an admin tool: run it on a trusted network and put it behind a VPN or an authenticated tunnel if you expose it to the internet.
-- Set a strong `SECRET_KEY` before first start — sessions are signed with it.
-- The Traefik dashboard is enabled in insecure mode by default for convenience on a LAN. Close `TRAEFIK_DASHBOARD_PORT` in your firewall or disable it if that doesn't fit your setup.
+- An unset/blank `SECRET_KEY` generates a random 256-bit key persisted under `DATA_DIR/security/session_key`. Known example values are rejected at startup. An existing custom key is preserved exactly, including for SMTP encryption. Back up the generated file with the database and restrict access to both.
+- The updater authenticates every status/control request with a separate random bearer token. Compose stores it in the private `fjordhub-control-secrets` volume, mounted only by the hub and updater. It is independent of `SECRET_KEY`. The updater joins only `fjord-control`; installed apps and Traefik remain on `fjord-net`. The control network permits outbound traffic for Git updates and Docker access still uses the host socket. Do not attach untrusted containers to it or mount the credential volume into apps.
+- Traefik's dashboard and insecure API are disabled, with no port 8080 publication. Regular app routing on the web entrypoint remains available. If dashboard access is needed, configure a separate authenticated TLS router to `api@internal`; do not re-enable insecure mode.
+
+### Upgrading existing installations to the secured control plane
+
+Preserve a custom `SECRET_KEY` in the existing `.env`. If it contains a known example value, schedule an explicit key replacement before rollout: generate a long random key, update `.env`, and plan to log existing sessions out and re-enter encrypted SMTP credentials. Removing an existing key also changes the SMTP encryption key; do not silently clear it during upgrades. Never print the old key or commit `.env`.
+
+The regular Settings self-update rebuilds only the hub. This change also requires recreating the updater and Traefik from the host so the new code, network, shared credential volume and closed dashboard take effect:
+
+```bash
+docker compose up -d --build fjordhub fjordhub-updater traefik
+```
+
+Run that command as a separately scheduled deployment, after preserving the database, configuration and keys. Keep the named control volume on subsequent updates (do not use `down -v`). For a non-Compose installation set `FJORDHUB_UPDATER_TOKEN_FILE` in both processes to the same private file on persistent storage, and isolate the updater's listener from app workloads. After rollout, verify Settings can read updater status and check updates, app routing still works, and an anonymous LAN request to the old Traefik dashboard port is refused. A source change alone does not close an already-running port.
 
 ## Repository layout
 
@@ -437,6 +449,24 @@ The command verifies the Compose service identity before removing anything.
 This is not an LXC-destruction command. Deleting a whole LXC or storage volume in
 Proxmox is a separate operation and is not covered by this storage-preserving
 uninstaller.
+
+## Security update compatibility
+
+App installation, lifecycle management and host setup now require a hub administrator.
+Ordinary users retain access to their assigned apps. Installation accepts only fields
+declared in the app manifest and refuses system directories and process/Compose overrides.
+
+Browser forms and same-origin JSON mutations require a session-bound CSRF token.
+Custom browser clients should obtain the token from the page's `csrf-token` meta tag
+and send `X-CSRF-Token`. App-key and bearer-token APIs retain their existing authentication.
+
+Existing browser sessions require a fresh login after upgrading. Password resets and
+password/role changes revoke prior sessions and pending SSO handoffs. An already established
+session inside another app follows that app's own revocation policy.
+
+App sync can create new users and update an already granted app role, but cannot edit
+central identity/recovery fields or attach an existing account without a prior hub grant.
+Grant existing users access under **Users** before importing/synchronizing them from an app.
 
 ## Fjord3D identity migration
 

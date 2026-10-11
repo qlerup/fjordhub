@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory() as tmp:
                            'fallback_url': f'http://10.10.0.50:{port}'}
     client = hub.app.test_client()
     with client.session_transaction() as session:
-        session['_user_id'] = str(uid)
+        session['_user_id'] = auth.get_by_id(uid).get_id()
         session['_fresh'] = True
     with patch.object(hub, '_auth', auth), patch.object(hub, '_install_state', state), \
          patch.object(hub, '_get_apps', return_value=apps), \

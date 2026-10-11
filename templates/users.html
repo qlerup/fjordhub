@@ -23,6 +23,7 @@
       </button>
       {% endif %}
       <form action="{{ url_for('logout') }}" method="post" style="margin:0;">
+      <input type="hidden" name="csrf_token" value="{{ hub_csrf_token() }}">
         <button type="submit" class="btn btn-open" style="color:var(--red);border-color:color-mix(in srgb,var(--red) 35%,var(--border));">
           <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -111,6 +112,7 @@
                 </button>
               {% else %}
                 <form method="post" action="{{ url_for('delete_user', user_id=u.id) }}" style="margin:0;" onsubmit="return confirm('Slet bruger &quot;{{ u.username }}&quot;?');">
+      <input type="hidden" name="csrf_token" value="{{ hub_csrf_token() }}">
                   <button type="submit" class="btn-delete">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
                       <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
@@ -144,6 +146,7 @@
     {% endif %}
 
     <form method="post" action="{{ url_for('create_user') }}" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ hub_csrf_token() }}">
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
         <div class="auth-field">
           <label for="new-first-name">Navn</label>
@@ -233,6 +236,7 @@
     {% endif %}
 
     <form method="post" id="edit-form" action="" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ hub_csrf_token() }}">
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
         <div class="auth-field">
           <label for="edit-first-name">Navn</label>

@@ -120,7 +120,7 @@ class PackageRouteTests(unittest.TestCase):
         self.admin = fjordhub._auth.get_by_id(admin_id)
         self.client = fjordhub.app.test_client()
         with self.client.session_transaction() as session:
-            session["_user_id"] = str(self.admin.id)
+            session["_user_id"] = self.admin.get_id()
             session["_fresh"] = True
 
     def tearDown(self):

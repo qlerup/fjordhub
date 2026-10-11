@@ -1,4 +1,5 @@
 import json
+import hmac
 import os
 import signal
 import subprocess
@@ -10,6 +11,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
+
+from services.security_config import load_updater_token
 
 
 APP_DIR = Path(os.environ.get("APP_DIR", "/repo")).resolve()
@@ -501,11 +504,21 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args: Any) -> None:
         return
 
+    def authenticated(self) -> bool:
+        expected = "Bearer " + load_updater_token(STATE_DIR)
+        supplied = self.headers.get("Authorization", "")
+        if hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
+            return True
+        self.close_connection = True
+        self.send_json({"ok": False, "error": "Unauthorized"}, 401)
+        return False
+
     def send_json(self, payload: Dict[str, Any], status: int = 200) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
@@ -513,6 +526,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/health":
             self.send_json({"ok": True, "service": "fjordhub-updater", "time": now_iso()})
+            return
+        if not self.authenticated():
             return
         if path == "/status":
             state = read_state()
@@ -525,6 +540,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json({"ok": False, "error": "Not found"}, 404)
 
     def do_POST(self) -> None:
+        if not self.authenticated():
+            return
         path = urlparse(self.path).path
         body = parse_json_body(self)
         if path == "/check":
@@ -545,6 +562,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    load_updater_token(STATE_DIR)  # Fail closed before listening if credentials cannot load.
     ensure_state_dir()
     ensure_git_safe_dir()
     write_json(STATE_PATH, normalize_state(read_state()))

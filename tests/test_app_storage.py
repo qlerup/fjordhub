@@ -369,7 +369,7 @@ class StorageEndpointTests(unittest.TestCase):
 
     def login(self, uid):
         with self.client.session_transaction() as session:
-            session['_user_id'], session['_fresh'] = str(uid), True
+            session['_user_id'], session['_fresh'] = self.auth.get_by_id(uid).get_id(), True
 
     def test_only_admin_can_read_or_change_paths(self):
         self.login(self.user)

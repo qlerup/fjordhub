@@ -53,9 +53,11 @@ function applyStatus(card, status) {
     open.href = openUrl;
     open.style.opacity = '';
     open.style.pointerEvents = '';
-    btn.textContent    = 'Stop';
-    btn.dataset.action = 'stop';
-    btn.disabled       = false;
+    if (btn) {
+      btn.textContent = 'Stop';
+      btn.dataset.action = 'stop';
+      btn.disabled = false;
+    }
     if (delBtn) delBtn.style.display = '';
     if (settingsBtn) settingsBtn.style.display = '';
   } else if (state === 'not_installed') {
@@ -63,10 +65,12 @@ function applyStatus(card, status) {
     open.href = '#';
     open.style.opacity = '0.4';
     open.style.pointerEvents = 'none';
-    btn.textContent    = 'Installer';
-    btn.dataset.action = 'install';
-    btn.disabled       = false;
-    btn.dataset.wizardUrl = `/apps/${id}/wizard`;
+    if (btn) {
+      btn.textContent = 'Installer';
+      btn.dataset.action = 'install';
+      btn.disabled = false;
+      btn.dataset.wizardUrl = `/apps/${id}/wizard`;
+    }
     if (delBtn) delBtn.style.display = 'none';
     if (linkBtn) linkBtn.style.display = 'none';
     if (settingsBtn) settingsBtn.style.display = 'none';
@@ -76,9 +80,11 @@ function applyStatus(card, status) {
     open.href = openUrl;
     open.style.opacity = '0.5';
     open.style.pointerEvents = '';
-    btn.textContent    = 'Start';
-    btn.dataset.action = 'start';
-    btn.disabled       = false;
+    if (btn) {
+      btn.textContent = 'Start';
+      btn.dataset.action = 'start';
+      btn.disabled = false;
+    }
     if (delBtn) delBtn.style.display = '';
     if (settingsBtn) settingsBtn.style.display = '';
   }

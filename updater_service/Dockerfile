@@ -11,6 +11,7 @@ RUN apk add --no-cache \
 WORKDIR /service
 
 COPY updater_service/app.py /service/app.py
+COPY services/security_config.py /service/services/security_config.py
 
 EXPOSE 8090
 

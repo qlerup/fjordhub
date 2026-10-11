@@ -82,7 +82,7 @@ class ManagerEndpointTests(unittest.TestCase):
         uid = fjordhub._auth.create_user('manager', 'test-password')
         fjordhub._auth.set_user_app_access(uid, 'fjordlens', 'manager')
         with self.client.session_transaction() as session:
-            session['_user_id'], session['_fresh'] = str(uid), True
+            session['_user_id'], session['_fresh'] = fjordhub._auth.get_by_id(uid).get_id(), True
         response = self.client.get('/api/hub/sso-token?app_id=fjordlens')
         self.assertEqual(response.status_code, 200, response.json)
         token = response.json['token']
@@ -91,7 +91,7 @@ class ManagerEndpointTests(unittest.TestCase):
 
     def test_hub_user_forms_accept_the_manager_app_role(self):
         with self.client.session_transaction() as session:
-            session['_user_id'], session['_fresh'] = '1', True
+            session['_user_id'], session['_fresh'] = fjordhub._auth.get_by_id(1).get_id(), True
         data = dict(username='form-user', password='test-password', email='manager@example.com', role='user',
                     app_access='fjordlens', app_role_fjordlens='manager')
         response = self.client.post('/users/create', data=data)

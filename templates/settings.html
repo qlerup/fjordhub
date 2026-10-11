@@ -33,6 +33,7 @@
       <p style="color:var(--text-muted);font-size:.86rem;margin-bottom:18px">Fx Gmail eller Resend. FjordHub bruger opsætningen for både hubben og hub-styrede apps.</p>
 
       <form method="post" action="{{ url_for('toggle_forgot_password') }}" style="margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--border,#2a2f3a);">
+      <input type="hidden" name="csrf_token" value="{{ hub_csrf_token() }}">
         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
           <input type="checkbox" name="enabled" value="1" onchange="this.form.requestSubmit()" {% if forgot_password_enabled %}checked{% endif %}>
           <span>Tillad "Glemt adgangskode?" på FjordHub's login-side</span>
