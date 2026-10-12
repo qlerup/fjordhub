@@ -1871,7 +1871,8 @@ def api_hub_app_authenticate():
     password = str(data.get("password") or "")
     if not username or not password:
         return jsonify({"ok": False, "error": "Brugernavn og adgangskode påkrævet"}), 400
-    user = _auth.authenticate_app_user(app_id, username, password, str(data.get('first_login_email') or ''))
+    user = _auth.authenticate_app_user(app_id, username, password, str(data.get('first_login_email') or ''),
+        str(data.get('first_login_password') or ''), str(data.get('first_login_password_confirm') or ''))
     if not user:
         _login_rate_failure(rate_key)
         return jsonify({"ok": False, "error": "Forkert login eller ingen adgang til appen"}), 401

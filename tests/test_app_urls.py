@@ -538,6 +538,32 @@ class AppUrlTests(unittest.TestCase):
                 self.assertFalse(result['email_required'])
                 self.assertEqual(result['email'], 'new@example.com')
 
+    def test_each_app_completes_first_login_email_and_password_atomically(self):
+        auth = fjordhub._auth
+        auth.create_user('taken', 'secret1', email='taken@example.com')
+        for app_id in ('fjordseed','fjordvpn','fjordflix','fjordcasino','fjordbudget',
+                       'fjordlens','fjord3d','fjordparcel','orbitmap','urban-explorer'):
+            with self.subTest(app_id=app_id), fjordhub.app.test_client() as client:
+                uid = auth.create_user(app_id, 'temporary', require_password_change=True)
+                auth.set_user_app_access(uid, app_id)
+                auth.save_hub_key(app_id, 'key-' + app_id)
+                def login(**extra):
+                    return client.post('/api/hub/apps/authenticate', headers={'X-Hub-Key':'key-'+app_id},
+                        json={'app_id':app_id,'username':app_id,'password':'temporary', **extra})
+                initial = login().json['user']
+                self.assertTrue(initial['email_required'] and initial['must_change_password'])
+                for email, confirmation in [('taken@example.com','new-personal'), (app_id+'@example.com','mismatch')]:
+                    result = login(first_login_email=email, first_login_password='new-personal',
+                                   first_login_password_confirm=confirmation).json['user']
+                    self.assertTrue(result['email_error'])
+                    self.assertEqual(auth.get_by_id(uid).email, '')
+                    self.assertTrue(auth.get_by_id(uid).must_change_password)
+                result = login(first_login_email=app_id+'@example.com',first_login_password='new-personal',
+                               first_login_password_confirm='new-personal').json['user']
+                self.assertFalse(result['email_required'] or result['must_change_password'])
+                self.assertEqual(login().status_code, 401)
+                self.assertEqual(login(password='new-personal').status_code, 200)
+
     def test_admin_can_reset_another_users_password_without_their_current_password(self):
         fjordhub._auth.create_user(
             "admin1", "admin-secret", role="admin", email="admin1@example.com",

@@ -878,7 +878,8 @@ class AuthService:
             except sqlite3.IntegrityError:
                 raise ValueError('Email-adressen er allerede i brug.') from None
 
-    def authenticate_app_user(self, app_id: str, username: str, password: str, first_login_email: str = '') -> Optional[dict]:
+    def authenticate_app_user(self, app_id: str, username: str, password: str, first_login_email: str = '',
+                              first_login_password: str = '', first_login_password_confirm: str = '') -> Optional[dict]:
         app_id = canonical_app_id(app_id)
         user = self.check_password(username, password)
         if not user:
@@ -887,7 +888,28 @@ class AuthService:
         if not role:
             return None
         email_error = ''
-        if user.email_required and first_login_email:
+        if user.must_change_password and first_login_password:
+            try:
+                if first_login_password != first_login_password_confirm:
+                    raise ValueError('De nye adgangskoder matcher ikke.')
+                if len(first_login_password) < 6:
+                    raise ValueError('Adgangskoden skal være mindst 6 tegn.')
+                if first_login_password == password:
+                    raise ValueError('Vælg en anden adgangskode end den midlertidige.')
+                email = _normalize_email(first_login_email, required=True) if user.email_required else user.email
+                password_hash = _hash_password(first_login_password)
+                with closing(self._conn()) as conn:
+                    changed = conn.execute('''UPDATE users SET email=?, email_required=0, password_hash=?,
+                        must_change_password=0, session_version=session_version+1
+                        WHERE id=? AND must_change_password=1 AND session_version=?''',
+                        (email, password_hash, user.id, user.session_version))
+                    if changed.rowcount != 1:
+                        return None
+                    conn.commit()
+                user = self.get_by_id(user.id)
+            except (ValueError, sqlite3.IntegrityError) as exc:
+                email_error = 'Email-adressen er allerede i brug.' if isinstance(exc, sqlite3.IntegrityError) else str(exc)
+        elif user.email_required and first_login_email:
             try:
                 self.complete_first_email(user.id, first_login_email)
                 user = self.get_by_id(user.id)
