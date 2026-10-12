@@ -24,7 +24,8 @@ with tempfile.TemporaryDirectory(prefix='fjordhub-uninstall-browser-') as data:
          patch('requests.sessions.Session.request',side_effect=RuntimeError('External requests disabled')):
         import app as hub
         hub._auth.create_user('admin','test-password',role='admin')
-        definition={'id':'demo','name':'Demo','default_port':1234,'setup_steps':[]}
+        (Path(data)/'.git').mkdir()
+        definition={'id':'demo','name':'Demo','default_port':1234,'setup_steps':[], 'compose_dir':data}
         hub._get_apps=lambda:[definition];hub._get_app=lambda _:definition
         hub._with_compose_dir=lambda a,_:a
         runtime={'state':'running','uptime':'test'}
@@ -61,11 +62,16 @@ with tempfile.TemporaryDirectory(prefix='fjordhub-uninstall-browser-') as data:
                 expect(card.locator('.btn-toggle')).to_have_text('Installer')
                 expect(card.locator('.btn-link-hub')).not_to_be_visible()
                 assert not hub._auth.get_hub_key('demo') and hub._install_state.get('demo')=={}
+                page.reload()
+                expect(card.locator('.btn-toggle')).to_have_text('Installer')
+                expect(card.locator('.btn-link-hub')).not_to_be_visible()
+                card.locator('.btn-toggle').click()
+                expect(page).to_have_url(base+'/apps/demo/wizard')
                 # A failed removal must keep the running card, registration and key.
                 runtime['state']='running';hub._install_state.register('demo',data)
                 hub._auth.save_hub_key('demo','fixture-key')
                 hub.remove_runtime=Mock(side_effect=RuntimeError('Fixture cleanup failed'))
-                page.reload();expect(card.locator('.btn-toggle')).to_have_text('Stop')
+                page.goto(base+'/');expect(card.locator('.btn-toggle')).to_have_text('Stop')
                 page.once('dialog',lambda d:d.accept())
                 page.evaluate("() => { void confirmUninstall(document.querySelector('.app-card[data-app-id=demo]')); }")
                 expect(card.locator('.btn-toggle')).to_be_enabled()

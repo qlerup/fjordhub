@@ -73,7 +73,7 @@ def test_unregistered_running_apps_discovered_through_hub_mount(tmp_path, app_id
     import app as hub
     checkout = tmp_path / 'hub' / 'apps' / folder
     (checkout / '.git').mkdir(parents=True)
-    container = SimpleNamespace(attrs={'Config': {'Labels': {
+    container = SimpleNamespace(status='running', attrs={'Config': {'Labels': {
         'com.docker.compose.project.working_dir': '/host/hub/apps/' + folder}}})
     hub_container = SimpleNamespace(attrs={'Mounts': [{
         'Type': 'bind', 'Source': '/host/hub', 'Destination': str(tmp_path / 'hub')}]})

@@ -418,6 +418,13 @@ def _ensure_install_state_for_existing_app(app_def: dict) -> None:
     if not app_id or _install_state.get_install_dir(app_id):
         return
 
+    # Uninstall deliberately preserves the checkout and its data. Only adopt
+    # an existing container, never a leftover .git directory on its own.
+    if docker_mgr.get_status(app_def).get('state') not in {
+        'running', 'exited', 'paused', 'restarting', 'created', 'removing', 'dead'
+    }:
+        return
+
     for install_dir in _candidate_app_dirs(app_def):
         try:
             if install_dir.exists() and (install_dir / ".git").exists():
@@ -3179,10 +3186,8 @@ def api_apps_status():
     _ensure_install_state_for_existing_apps(apps)
     for a in apps:
         status = docker_mgr.get_status(a)
-        app_state = _install_state.get(a["id"])
-        if status.get("state") == "not_installed" and app_state.get("state") == "installed":
-            status["state"] = "exited"
-            status["message"] = "Installeret, men containeren mangler. Start genskaber den."
+        # Docker is authoritative: old discovery code may have registered a
+        # preserved checkout after uninstall. Such apps must offer Installer.
         status["hub_linked"] = bool(_auth.get_hub_key(a["id"]))
         status["external_url"] = _install_state.get_external_url(a["id"])
         status["fallback_url"] = _fallback_app_url(a)
