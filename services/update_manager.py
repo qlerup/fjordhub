@@ -596,6 +596,9 @@ class UpdateManager:
 
             branch = str(info.get("branch") or "main")
             if not info.get("update_available") and not legacy_3d:
+                if app_id == 'fjordmail':
+                    from services.mail_setup import prepare_mail
+                    prepare_mail(install_dir, lambda message: self._append_job_log(app_id, message))
                 if app_id == 'fjordlens' and self.fjordlens_memory_needs_activation(install_dir):
                     self._append_job_log(app_id, 'Aktiverer FjordHub RAM-budget på eksisterende installation.')
                     self._activate_fjordlens_memory(install_dir)
@@ -716,6 +719,9 @@ class UpdateManager:
             if legacy_3d:
                 self._complete_legacy_3d(install_dir)
                 legacy_stopped = False
+            if app_id == 'fjordmail':
+                from services.mail_setup import prepare_mail
+                prepare_mail(install_dir, lambda message: self._append_job_log(app_id, message))
             final_info = self._git_info(install_dir, fetch=False)
             final_info.update({"state": "up_to_date", "label": "Opdateret", "update_available": False})
             self._append_job_log(app_id, "Opdatering færdig.")

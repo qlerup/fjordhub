@@ -2,7 +2,7 @@
   "id": "fjordmail",
   "name": "FjordMail",
   "tagline": "Din post. Dit overblik.",
-  "description": "Grundlæggende mail: Send tekstmails via Resend og hent nye mails automatisk. Kræver klargøring af krypteret lager. IMAP/SMTP og AI afventer.",
+  "description": "Send og modtag mails via Resend. FjordHub klargør krypteret lager og mailmotor automatisk ved installation/opdatering. IMAP/SMTP og AI afventer.",
   "icon": "mail",
   "accent": "#57cbd3",
   "container_name": "fjordmail",
@@ -56,7 +56,7 @@
           "label": "Appdata",
           "type": "path",
           "default": "/opt/fjordmail-data",
-          "hint": "Verificeret krypteret lager er nødvendigt for mailbehandling. Brug guiden i Maildrift."
+          "hint": "FjordHub klargør automatisk krypteret lager og bevarer eksisterende data."
         },
         {
           "key": "POSTGRES_PASSWORD",

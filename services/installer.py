@@ -309,6 +309,10 @@ class Installer:
                 self.state.set_failed(app_id, "docker compose returncode != 0")
                 return
 
+            if app_id == 'fjordmail':
+                from services.mail_setup import prepare_mail
+                prepare_mail(install_dir, log)
+
             if _is_truthy(env_values.get('ENABLE_GPU_COMPOSE')) and app_def.get('gpu_video'):
                 log('Tester NVENC med FFmpeg i appens egen container...')
                 service = _gpu_video_service(app_def)
