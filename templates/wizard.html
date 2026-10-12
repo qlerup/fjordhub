@@ -1300,6 +1300,38 @@ function finishNfsHelper() {
   closeNfsHelper();
 }
 
+function nfsLxcMountCommands(vmid, root) {
+  const quote = value => "'" + String(value).replace(/'/g, "'\"'\"'") + "'";
+  return String.raw`bash <<'FJORDHUB_NFS_LXC'
+set -euo pipefail
+ctid=${quote(vmid)}
+target=${quote(root.replace(/\/+$/, ''))}
+config=$(pct config "$ctid")
+slot=''
+for i in $(seq 0 255); do
+  line=$(printf '%s\n' "$config" | grep "^mp$i:" || true)
+  [ -n "$line" ] || continue
+  existing=$(printf '%s\n' "$line" | sed -n 's/.*,mp=\([^,]*\).*/\1/p')
+  if [ "$existing" = "$target" ]; then
+    source=$(printf '%s\n' "$line" | cut -d ' ' -f 2- | cut -d ',' -f 1)
+    if [ "$source" = "$target" ]; then
+      echo "Mount findes allerede paa mp$i; eksisterende indstillinger bevares."
+      exit 0
+    fi
+    echo "Mappen $target bruges allerede af et andet lager paa mp$i. Vaelg en anden mappesti."
+    exit 1
+  fi
+done
+for i in $(seq 0 255); do
+  if ! printf '%s\n' "$config" | grep -q "^mp$i:"; then slot="mp$i"; break; fi
+done
+[ -n "$slot" ] || { echo 'Ingen ledige mountpladser i LXC.'; exit 1; }
+echo "Tilfoejer mount paa $slot"
+pct set "$ctid" "-$slot" "$target,mp=$target"
+pct reboot "$ctid"
+FJORDHUB_NFS_LXC`.split('\n');
+}
+
 function renderNfsCommands() {
   const ip      = document.getElementById('nfs-server-ip')?.value.trim() || '';
   const path    = document.getElementById('nfs-export-select')?.value || '';
@@ -1364,11 +1396,8 @@ function renderNfsCommands() {
         'mount -a',
         ...(subdir ? ['', c('# 4. Opret undermappe'), `mkdir -p ${finalPath}`] : []),
         '',
-        c('# 5. Bind-mount ind i fjordhub LXC'),
-        `pct set ${vmid} -mp0 ${root},mp=${root}`,
-        '',
-        c('# 6. Genstart LXC for at aktivere mount'),
-        `pct reboot ${vmid}`,
+        c('# 5. Find ledig mountplads, tilføj bind-mount og genstart LXC'),
+        ...nfsLxcMountCommands(vmid, root),
         '',
         c(`# Base-sti til brug i wizard-felterne: ${finalPath}`),
       ],
