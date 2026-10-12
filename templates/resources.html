@@ -145,6 +145,7 @@ const RESOURCE_VIEW_KEY = 'fjordhub.resourceView';
 let resourceTimer = null;
 let currentResourceView = localStorage.getItem(RESOURCE_VIEW_KEY) || 'lxc';
 let latestResourceData = null;
+let resourceRefreshInFlight = false;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -457,9 +458,12 @@ function renderResources(data) {
   const coreEl = document.getElementById('resource-core');
   setText('resource-core-count', `${core.container_count || 0}`);
   if (coreEl) coreEl.innerHTML = containerRows(core);
+  drawCharts();
 }
 
 async function refreshResources() {
+  if (resourceRefreshInFlight) return;
+  resourceRefreshInFlight = true;
   const btn = document.getElementById('resources-refresh-btn');
   const icon = document.getElementById('resources-refresh-icon');
   if (btn) btn.disabled = true;
@@ -467,6 +471,7 @@ async function refreshResources() {
   try {
     const res = await fetch('/api/resources');
     const data = await res.json();
+    if (data.ok && !pushChartPoint(data)) return;
     renderResources(data);
   } catch (_) {
     const error = document.getElementById('resource-error');
@@ -475,6 +480,7 @@ async function refreshResources() {
       error.style.display = '';
     }
   } finally {
+    resourceRefreshInFlight = false;
     if (btn) btn.disabled = false;
     if (icon) icon.classList.remove('spinning');
   }
@@ -485,13 +491,10 @@ document.querySelector('.resource-view-switch')?.addEventListener('click', event
   if (button) setResourceView(button.dataset.resourceView);
 });
 
-setResourceView(currentResourceView);
-refreshResources();
-resourceTimer = setInterval(refreshResources, RESOURCE_REFRESH_MS);
-
 // ── Charts ──────────────────────────────────────────────────────────────────
 const CHART_MAX_POINTS = 40;
 const chartHistories = { lxc: [], docker: [] };
+let previousChartSample = null;
 
 const CHART_COLORS = {
   cpu:    '#3b82f6',
@@ -501,28 +504,37 @@ const CHART_COLORS = {
 };
 
 function pushChartPoint(data) {
+  const ts = Date.parse(data.generated_at);
+  if (!Number.isFinite(ts) || (previousChartSample && ts <= previousChartSample.ts)) return false;
   const sys    = data.system || {};
   const hub    = data.hub    || {};
+  const rx = Number(hub.net_rx || 0), tx = Number(hub.net_tx || 0);
+  const seconds = previousChartSample ? (ts - previousChartSample.ts) / 1000 : 0;
+  const rate = (value, key) => seconds > 0 && Number.isFinite(value)
+    ? Math.max(0, value - previousChartSample[key]) / seconds : 0;
+  const netIn = rate(rx, 'rx'), netOut = rate(tx, 'tx');
+  previousChartSample = {ts, rx, tx};
 
   // Push into both histories independently so switching views never mixes data
   const lxcPt = {
-    ts:     Date.now(),
+    ts,
     cpu:    sys.cpu_capacity_percent || 0,
     ram:    sys.memory_percent       || 0,
-    netIn:  hub.net_rx  || 0,
-    netOut: hub.net_tx  || 0,
+    netIn,
+    netOut,
   };
   const dockerPt = {
-    ts:     Date.now(),
+    ts,
     cpu:    hub.cpu_capacity_percent || 0,
     ram:    hub.memory_percent       || 0,
-    netIn:  hub.net_rx  || 0,
-    netOut: hub.net_tx  || 0,
+    netIn,
+    netOut,
   };
   chartHistories.lxc.push(lxcPt);
   chartHistories.docker.push(dockerPt);
   if (chartHistories.lxc.length    > CHART_MAX_POINTS) chartHistories.lxc.shift();
   if (chartHistories.docker.length > CHART_MAX_POINTS) chartHistories.docker.shift();
+  return true;
 }
 
 function drawLineChart(canvasId, key, color, maxY) {
@@ -627,10 +639,8 @@ function drawCharts() {
   drawLineChart('chart-net', ['netIn', 'netOut'], CHART_COLORS.netIn, null);
 }
 
-const _origRenderResources = renderResources;
-renderResources = function(data) {
-  _origRenderResources(data);
-  if (data.ok) { pushChartPoint(data); drawCharts(); }
-};
+setResourceView(currentResourceView);
+refreshResources();
+resourceTimer = setInterval(refreshResources, RESOURCE_REFRESH_MS);
 </script>
 {% endblock %}
