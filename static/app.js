@@ -353,10 +353,12 @@ const LOG_COLORS = {
 
 function logLineClass(line) {
   const l = line.toLowerCase();
+  // BuildKit echoes Dockerfile instructions, including unexecuted error branches.
+  if (/^#\d+\s+\[[^\]]+\]\s/.test(line.trim())) return 'dim';
+  if (line.startsWith('$')) return 'cmd';
   if (/error|fejl|failed|✗/.test(l)) return 'err';
   if (/warn/.test(l))                 return 'warn';
   if (/done|færdig|opdateret|success|✓/.test(l)) return 'ok';
-  if (line.startsWith('$'))           return 'cmd';
   if (/^#\d+/.test(line.trim()))      return 'dim';
   return '';
 }

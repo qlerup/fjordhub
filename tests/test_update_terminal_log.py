@@ -13,6 +13,23 @@ from services.update_manager import UpdateManager
 
 class UpdateTerminalLogTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which('node'), 'Node.js is required')
+    def test_build_commands_do_not_look_like_runtime_errors(self):
+        source = (Path(__file__).resolve().parents[1] / 'static/app.js').read_text(encoding='utf-8')
+        function = source.split('function logLineClass(', 1)[1].split('\n}\n', 1)[0]
+        script = 'function logLineClass(' + function + '\n}\n'
+        script += '''
+const assert = require('node:assert/strict');
+assert.equal(logLineClass('#9 [stage-0 3/8] RUN if false; then echo "Fejl: failed"; exit 1; fi'), 'dim');
+assert.equal(logLineClass('$ echo "error"'), 'cmd');
+assert.equal(logLineClass('#9 0.123 Fejl: mangler bibliotek'), 'err');
+assert.equal(logLineClass('#9 ERROR: process failed'), 'err');
+assert.equal(logLineClass('ERROR: failed to solve'), 'err');
+assert.equal(logLineClass('#9 DONE 0.1s'), 'ok');
+'''
+        result = subprocess.run(['node', '-e', script], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    @unittest.skipUnless(shutil.which('node'), 'Node.js is required')
     def test_modal_shows_error_as_text(self):
         source = (Path(__file__).resolve().parents[1] / 'static/app.js').read_text(encoding='utf-8')
         function = source.split('function finishUpdateModal(', 1)[1].split('\n}\n', 1)[0]
