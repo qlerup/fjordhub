@@ -550,7 +550,7 @@ class AppUrlTests(unittest.TestCase):
         auth = fjordhub._auth
         auth.create_user('taken', 'secret1', email='taken@example.com')
         for app_id in ('fjordseed','fjordvpn','fjordflix','fjordcasino','fjordbudget',
-                       'fjordlens','fjord3d','fjordparcel','orbitmap','urban-explorer'):
+                       'fjordlens','fjord3d','fjordparcel','orbitmap','urban-explorer','fjordmail'):
             with self.subTest(app_id=app_id), fjordhub.app.test_client() as client:
                 uid = auth.create_user(app_id, 'temporary', require_password_change=True)
                 auth.set_user_app_access(uid, app_id)
@@ -575,7 +575,7 @@ class AppUrlTests(unittest.TestCase):
     def test_email_entered_by_admin_still_requires_confirmation_in_every_app(self):
         auth = fjordhub._auth
         for app_id in ('fjordseed','fjordvpn','fjordflix','fjordcasino','fjordbudget',
-                       'fjordlens','fjord3d','fjordparcel','orbitmap','urban-explorer'):
+                       'fjordlens','fjord3d','fjordparcel','orbitmap','urban-explorer','fjordmail'):
             with self.subTest(app_id=app_id), fjordhub.app.test_client() as client:
                 initial_email = app_id + '-assigned@example.com'
                 uid = auth.create_user(app_id, 'temporary', email=initial_email, require_password_change=True)

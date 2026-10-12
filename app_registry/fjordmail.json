@@ -1,0 +1,21 @@
+{
+ "id":"fjordmail","name":"FjordMail","tagline":"Din post. Dit overblik.",
+ "description":"Fase 1: Login, mailkonti, adgangstildeling og Resend-konfiguration. Mailmodtagelse, afsendelse og IMAP/SMTP er endnu ikke aktiveret. AI afventer.",
+ "icon":"mail","accent":"#57cbd3","container_name":"fjordmail","default_port":8101,"health_path":"/api/health",
+ "compose_dir_env":"FJORDMAIL_DIR","compose_file":"docker-compose.yml","source_url":"https://github.com/qlerup/fjordmail",
+ "icon_url":"https://raw.githubusercontent.com/qlerup/fjordmail/main/web/public/logos/icon-512.png",
+ "sort_order":11,
+ "setup_steps":[
+  {"id":"basic","title":"FjordMail","fields":[
+   {"key":"APP_PORT","label":"Web-port","type":"number","default":"8101"},
+   {"key":"BIND_ADDRESS","label":"Lytteadresse","type":"text","default":"0.0.0.0","hint":"Brug lokalnet eller FjordHubs webtunnel. IMAP og SMTP åbnes ikke i fase 1."},
+   {"key":"PUBLIC_URL","label":"Webadresse (valgfri)","type":"text","default":"","hint":"Fx https://mail.gleruphub.dk. Brug hele grundadressen."},
+   {"key":"COOKIE_SECURE","label":"Login via HTTPS","type":"toggle","default":"0","hint":"Slå til efter HTTPS er opsat. Sikrer at login-cookien kun sendes over HTTPS."}
+  ]},
+  {"id":"storage","title":"Lager og kryptering","fields":[
+   {"key":"DATA_DIR","label":"Appdata","type":"path","default":"/opt/fjordmail-data","hint":"Placér data på krypteret lager. Mailbehandling er deaktiveret indtil næste fase."},
+   {"key":"POSTGRES_PASSWORD","label":"Databaseadgangskode","type":"auto_secret","default":"","hint":"Genereres automatisk. Databasen har ingen offentlig port."},
+   {"key":"APP_ENCRYPTION_KEY","label":"Krypteringsnøgle til integrationsnøgler","type":"auto_secret","default":"","hint":"Genereres automatisk. Bevar ved opdatering og backup; bruges til AES-256-GCM."}
+  ]}
+ ]
+}

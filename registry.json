@@ -40,6 +40,10 @@
     {
       "id": "fjordcasino",
       "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordcasino/main/fjordhub.json"
+    },
+    {
+      "id": "fjordmail",
+      "manifest_url": "https://raw.githubusercontent.com/qlerup/fjordmail/main/fjordhub.json"
     }
   ]
 }
