@@ -61,12 +61,12 @@
             <strong>{{ u.username }}</strong>
             {% if u.id == current_user.id %}<span style="color:var(--text-muted);font-size:.75rem;margin-left:6px;">(dig)</span>{% endif %}
             {% if u.first_name or u.last_name or u.language %}
-              <div style="color:var(--text-muted);font-size:.78rem;margin-top:3px;">
+              <div class="user-profile-detail">
                 {{ (u.first_name ~ ' ' ~ u.last_name).strip() or 'Ingen navn' }}
                 {% if u.language %}<span style="opacity:.65;"> · {{ u.language|upper }}</span>{% endif %}
               </div>
             {% endif %}
-            <div style="color:var(--text-muted);font-size:.78rem;margin-top:3px;">{{ u.email or 'Ingen email' }}</div>
+            <div class="user-profile-detail">{{ u.email or 'Ingen email' }}</div>
           </td>
           <td class="user-role-cell" data-label="Hub-rolle">
             {% if u.is_admin %}
@@ -80,8 +80,9 @@
               <div class="user-app-badges">
                 {% for a in u.app_access %}
                   <span class="badge user-app-badge">
-                    {{ a.app_id }}
-                    <span style="opacity:.6;margin-left:2px;">{{ a.role }}</span>
+                    {% set app_info = hub_apps|selectattr('id', 'equalto', a.app_id)|first %}
+                    <span>{{ app_info.name if app_info else a.app_id }}</span>
+                    <span class="user-app-role">{{ {'admin': 'Admin', 'user': 'Bruger', 'manager': 'Manager'}.get(a.role, a.role) }}</span>
                   </span>
                 {% endfor %}
               </div>
@@ -89,7 +90,7 @@
               <span style="color:var(--text-muted);font-size:.8rem;">—</span>
             {% endif %}
           </td>
-          <td class="user-created-cell" data-label="Oprettet">{{ u.created_at }}</td>
+          <td class="user-created-cell" data-label="Oprettet"><time datetime="{{ u.created_at|replace(' ', 'T') }}">{% for part in u.created_at.split(' ') %}<span>{{ part }}</span>{% endfor %}</time></td>
           <td class="user-actions-cell" data-label="Handlinger">
             {% set is_last_admin = (u.is_admin and admin_count <= 1) %}
             {% set is_self = (u.id == current_user.id) %}

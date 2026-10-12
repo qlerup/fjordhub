@@ -1319,6 +1319,16 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* ── Users table ── */
+.settings-page.users-page { max-width: 1200px; width: 100%; }
+.users-table th:first-child, .user-identity { width: 26%; }
+.user-identity strong { font-size: .95rem; }
+.users-table th:nth-child(2), .user-role-cell { width: 100px; }
+.user-role-cell .badge { white-space: nowrap; }
+.users-table th:nth-child(4), .user-created-cell { width: 125px; }
+.users-table th:nth-child(5), .user-actions-cell { width: 104px; }
+.user-created-cell time { display: flex; flex-direction: column; gap: 3px; white-space: nowrap; }
+.user-profile-detail { color: var(--text-muted); font-size: .85rem; line-height: 1.5; margin-top: 4px; }
+.user-app-role { color: var(--text-muted); font-weight: 400; border-left: 1px solid var(--border); padding-left: 8px; }
 .users-table-wrap {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1327,6 +1337,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 .users-table {
+  table-layout: fixed;
   width: 100%;
   border-collapse: collapse;
   font-size: .88rem;
@@ -1359,12 +1370,19 @@ a { color: inherit; text-decoration: none; }
 .user-app-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 8px;
 }
 .user-app-badge {
   background: color-mix(in srgb, var(--accent, #7c6af7) 15%, var(--surface-2));
   color: var(--text);
-  font-size: .7rem;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: .8rem;
+  line-height: 1.4;
+  max-width: 100%;
 }
 .user-created-cell {
   color: var(--text-muted);
@@ -1380,7 +1398,7 @@ a { color: inherit; text-decoration: none; }
   align-items: center;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 1100px) {
   .users-page {
     max-width: none;
     width: 100%;
