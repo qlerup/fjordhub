@@ -95,6 +95,22 @@ class MediaLibraryTests(unittest.TestCase):
 
 
 class MediaLibraryEndpointTests(unittest.TestCase):
+    def test_seed_inventory_requires_matching_app_key_and_hub_admin(self):
+        import app as hub
+        auth = Mock()
+        auth.verify_hub_key.side_effect = lambda app_id, key: key == 'test-key'
+        auth.list_app_users.return_value = [{'id':7,'role':'admin','hub_role':'user','must_change_password':False}]
+        with patch.object(hub,'_auth',auth), patch.object(hub.MediaLibrary,'inventory',return_value={'storages':[]}) as inventory:
+            client=hub.app.test_client()
+            params={'app_id':'fjordseed','user_id':'7'}
+            headers={'X-Hub-Key':'test-key'}
+            url='/api/hub/apps/fjordseed/library'
+            self.assertEqual(client.get(url,query_string=params,headers=headers).status_code,403)
+            auth.list_app_users.return_value[0]['hub_role']='admin'
+            self.assertEqual(client.get(url,query_string={**params,'app_id':'fjordflix'},headers=headers).status_code,403)
+            self.assertEqual(client.get(url,query_string=params,headers=headers).status_code,200)
+            inventory.assert_called_once()
+
     def test_scoped_app_key_and_active_app_admin_are_required(self):
         import app as hub
         auth = Mock()

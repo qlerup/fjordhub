@@ -1799,18 +1799,20 @@ def api_hub_app_config():
     return jsonify({'ok': True, 'external_url': _install_state.get_external_url(app_id) or ''})
 
 
+@app.route('/api/hub/apps/fjordseed/library', methods=['GET'])
 @app.route('/api/hub/apps/fjordflix/library', methods=['GET'])
 def api_fjordflix_library():
     app_id, error_response = _require_app_key({'app_id': request.args.get('app_id', '')})
     if error_response:
         return error_response
-    if app_id != 'fjordflix':
-        return jsonify(ok=False, error='Kun FjordFlix har adgang til denne oversigt.'), 403
+    expected = 'fjordseed' if '/fjordseed/' in request.path else 'fjordflix'
+    if app_id != expected:
+        return jsonify(ok=False, error='Appen har ikke adgang til denne oversigt.'), 403
     uid = request.args.get('user_id', '')
-    allowed = any(str(u['id']) == uid and u.get('role') == 'admin' and not u.get('must_change_password')
+    allowed = any(str(u['id']) == uid and u.get('hub_role' if app_id == 'fjordseed' else 'role') == 'admin' and not u.get('must_change_password')
                   for u in _auth.list_app_users(app_id))
     if not allowed:
-        return jsonify(ok=False, error='Kræver administratoradgang til FjordFlix.'), 403
+        return jsonify(ok=False, error='Kræver FjordHub-administrator.' if app_id == 'fjordseed' else 'Kræver administratoradgang til FjordFlix.'), 403
     try:
         library = MediaLibrary(app_storage.proxmox)
         inventory = library.inventory()
