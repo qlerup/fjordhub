@@ -38,7 +38,7 @@ def _short_sha(value: str) -> str:
 
 
 class UpdateManager:
-    def __init__(self, install_state: InstallState, operation_guard=None):
+    def __init__(self, install_state: InstallState, operation_guard=None, runtime_exists=None):
         self.install_state = install_state
         self._lock = threading.Lock()
         self._cache: dict[str, dict] = {}
@@ -47,13 +47,20 @@ class UpdateManager:
         self._batch_apps: list[dict] = []
         self._operation_guard = operation_guard or (lambda app_id: nullcontext())
         self._reservations = {}
+        self._runtime_exists = runtime_exists or (lambda app_id: True)
+
+    def _is_installed(self, app_id):
+        return bool(self.install_state.get_install_dir(app_id)) and self._runtime_exists(app_id)
 
     def _reserve(self, app_id):
         guard = self._operation_guard(app_id)
         guard.__enter__()
-        if not self.install_state.get_install_dir(app_id):
+        try:
+            if not self._is_installed(app_id):
+                raise RuntimeError('Appen er ikke længere installeret.')
+        except Exception:
             guard.__exit__(None, None, None)
-            raise RuntimeError('Appen er ikke længere installeret.')
+            raise
         self._reservations[app_id] = guard
 
     def _release(self, app_id, expected_guard=None):
@@ -163,7 +170,7 @@ class UpdateManager:
             cached = self._cache.get(app_id)
 
         install_dir = self.install_state.get_install_dir(app_id)
-        if not install_dir:
+        if not self._is_installed(app_id):
             status = {
                 "state": "not_installed",
                 "available": False,
@@ -227,7 +234,7 @@ class UpdateManager:
     def start_update(self, app_def: dict) -> tuple[dict, int]:
         app_id = app_def["id"]
         install_dir = self.install_state.get_install_dir(app_id)
-        if not install_dir:
+        if not self._is_installed(app_id):
             return {"ok": False, "error": "Appen er ikke installeret."}, 404
 
         with self._lock:

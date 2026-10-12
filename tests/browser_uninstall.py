@@ -62,6 +62,10 @@ with tempfile.TemporaryDirectory(prefix='fjordhub-uninstall-browser-') as data:
                 expect(card.locator('.btn-toggle')).to_have_text('Installer')
                 expect(card.locator('.btn-link-hub')).not_to_be_visible()
                 assert not hub._auth.get_hub_key('demo') and hub._install_state.get('demo')=={}
+                page.evaluate("() => { const card=document.querySelector('.app-card[data-app-id=demo]'); applyUpdateStatus(card,{state:'update_available',update_available:true}); setUpdateStatusChecking(false); }")
+                expect(card.locator('.card-update-row')).not_to_be_visible()
+                expect(card.locator('.btn-update')).to_be_disabled()
+                expect(page.locator('#update-all-btn')).to_be_disabled()
                 page.reload()
                 expect(card.locator('.btn-toggle')).to_have_text('Installer')
                 expect(card.locator('.btn-link-hub')).not_to_be_visible()

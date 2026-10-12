@@ -110,7 +110,9 @@ _local_registry  = AppRegistry(Path(__file__).parent / "app_registry")
 _remote_registry = RemoteRegistry(DATA_DIR, REGISTRY_URL)
 _install_state   = InstallState(DATA_DIR)
 _installer       = Installer(_install_state)
-_update_manager  = UpdateManager(_install_state, operation_guard=_installer.reserve_operation)
+_update_manager  = UpdateManager(_install_state, operation_guard=_installer.reserve_operation,
+    runtime_exists=lambda app_id: app_id == 'fjordhub' or
+        docker_mgr.get_status(_get_app(app_id) or {}).get('state') != 'not_installed')
 docker_mgr       = DockerManager()
 media_gateway    = MediaGateway(docker_mgr, _install_state)
 app_storage      = AppStorage(docker_mgr, _install_state)

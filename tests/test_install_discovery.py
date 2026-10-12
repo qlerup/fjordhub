@@ -38,3 +38,35 @@ def test_missing_container_stays_available_with_preserved_checkout(tmp_path, pre
     assert (checkout / '.git').is_dir()
     if not previous_registration:
         assert state.get('fjordseed') == {}
+
+
+def test_deleted_app_cannot_be_updated_even_with_stale_registration_and_cache(tmp_path):
+    from services.update_manager import UpdateManager
+    state=InstallState(tmp_path)
+    state.register('fjordseed',str(tmp_path))
+    manager=UpdateManager(state,runtime_exists=hub._update_manager._runtime_exists)
+    definition={'id':'fjordseed','container_name':'fjordseed'}
+    manager._set_cache('fjordseed',{'state':'update_available','update_available':True})
+    with patch.object(hub.docker_mgr,'get_status',return_value={'state':'not_installed'}), \
+         patch.object(manager,'_git_info') as git, \
+         patch('services.update_manager.threading.Thread') as thread:
+        assert manager.get_status(definition)['state']=='not_installed'
+        assert manager.check_now(definition)['update_available'] is False
+        assert manager.start_update(definition)[1]==404
+        assert manager.start_all_updates([definition])[0]['queued']==[]
+        # Even a stale batch result must be rejected under the operation lock.
+        with patch.object(manager,'get_status',return_value={'update_available':True}):
+            assert manager.start_all_updates([definition])[0]['queued']==[]
+        git.assert_not_called()
+        thread.assert_not_called()
+    assert not manager._reservations
+
+
+def test_stopped_installed_app_still_has_updates(tmp_path):
+    from services.update_manager import UpdateManager
+    state=InstallState(tmp_path)
+    state.register('fjordseed',str(tmp_path))
+    manager=UpdateManager(state,runtime_exists=hub._update_manager._runtime_exists)
+    with patch.object(hub.docker_mgr,'get_status',return_value={'state':'exited'}), \
+         patch.object(manager,'_git_info',return_value={'state':'update_available','update_available':True}):
+        assert manager.get_status({'id':'fjordseed'})['update_available']

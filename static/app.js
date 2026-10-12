@@ -143,6 +143,12 @@ function hideUpdateRow(card) {
   const row = card.querySelector('.card-update-row');
   if (!row) return;
   row.style.display = 'none';
+  const btn = row.querySelector('.btn-update');
+  if (btn) {
+    for (const key of ['updateAvailable', 'updateRetry', 'updateRunning', 'updateQueued']) btn.dataset[key] = '0';
+    btn.disabled = true;
+  }
+  syncUpdateAllButton();
 }
 
 let _updateStatusChecksInFlight = 0;
@@ -240,7 +246,8 @@ function syncUpdateButtonLock(btn) {
   const starting = btn.dataset.updateStarting === '1';
   const available = btn.dataset.updateAvailable === '1';
 
-  btn.disabled = checking || running || starting;
+  const missing = btn.closest('.app-card')?.querySelector('.status-dot')?.dataset.status === 'not_installed';
+  btn.disabled = missing || checking || running || starting;
   if (running) btn.textContent = btn.dataset.updateQueued === '1' ? 'I kø' : 'Opdaterer...';
   else if (starting) btn.textContent = 'Starter...';
   else if (checking && available) btn.textContent = 'Tjekker...';
@@ -262,6 +269,10 @@ function applyUpdateStatus(card, status) {
 
   let state = status.state || 'error';
   const appState = card.querySelector('.status-dot')?.dataset.status || 'unknown';
+  if (appState === 'not_installed') {
+    hideUpdateRow(card);
+    return;
+  }
   if (state === 'not_installed') {
     // Some apps can be running but not tracked in install_state (e.g. external compose stacks).
     // In that case, keep the row visible with an explicit message instead of hiding it.
