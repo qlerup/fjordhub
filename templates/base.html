@@ -35,42 +35,42 @@
   </header>
 
   <div class="app-body">
-    <nav class="sidebar">
+    <nav class="sidebar" aria-label="Hovedmenu">
       <div class="sidebar-top">
         <a href="{{ url_for('dashboard') }}" class="sidebar-item{% if active_page == 'apps' %} active{% endif %}" title="Apps">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
             <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
           </svg>
-        </a>
+        <span class="sidebar-label">Apps</span></a>
         <a href="{{ url_for('packages') }}" class="sidebar-item{% if active_page == 'packages' %} active{% endif %}" title="Mine apps">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/>
             <rect x="3" y="14" width="7" height="7" rx="2"/><path d="M17.5 14v7M14 17.5h7"/>
           </svg>
-        </a>
+        <span class="sidebar-label">Mine apps</span></a>
         <a href="{{ url_for('app_store') }}" class="sidebar-item{% if active_page == 'store' %} active{% endif %}" title="App Store">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M6 8V6a6 6 0 0 1 12 0v2"/><path d="M4 8h16l1 13H3L4 8z"/><path d="M9 12v1M15 12v1"/>
           </svg>
-        </a>
+        <span class="sidebar-label">App Store</span></a>
         {% if current_user.is_admin %}
         <a href="{{ url_for('users') }}" class="sidebar-item{% if active_page in ('profile', 'users') %} active{% endif %}" title="Brugere">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
             <circle cx="12" cy="7" r="4"/>
           </svg>
-        </a>
+        <span class="sidebar-label">Brugere</span></a>
         {% endif %}
         {% if current_user.is_admin %}
         <a href="{{ url_for('settings') }}" class="sidebar-item{% if active_page == 'settings' %} active{% endif %}" title="Indstillinger">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
-        </a>
+        <span class="sidebar-label">Indstillinger</span></a>
         <a href="{{ url_for('resources') }}" class="sidebar-item{% if active_page == 'resources' %} active{% endif %}" title="Ressourcer">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M4 19V5"/>
             <path d="M4 19h16"/>
             <path d="M8 16v-5"/>
@@ -78,19 +78,19 @@
             <path d="M16 16v-3"/>
             <path d="M20 16V9"/>
           </svg>
-        </a>
+        <span class="sidebar-label">Ressourcer</span></a>
         {% endif %}
       </div>
       <div class="sidebar-bottom">
         <form action="{{ url_for('logout') }}" method="post">
       <input type="hidden" name="csrf_token" value="{{ hub_csrf_token() }}">
           <button type="submit" class="sidebar-item" title="Log ud" style="background:none;border:none;cursor:pointer;color:var(--text-muted);">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
               <polyline points="16 17 21 12 16 7"/>
               <line x1="21" y1="12" x2="9" y2="12"/>
             </svg>
-          </button>
+          <span class="sidebar-label">Log ud</span></button>
         </form>
       </div>
     </nav>

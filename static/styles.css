@@ -142,9 +142,13 @@ a { color: inherit; text-decoration: none; }
   position: sticky;
   top: 64px;
   height: calc(100vh - 64px);
+  z-index: 20;
+  overflow: hidden;
+  transition: width .2s ease, margin-right .2s ease, box-shadow .2s ease;
 }
 
 .sidebar-top, .sidebar-bottom {
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -152,20 +156,38 @@ a { color: inherit; text-decoration: none; }
 }
 
 .sidebar-item {
-  width: 40px;
+  width: calc(100% - 16px);
   height: 40px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 12px;
+  overflow: hidden;
+  text-decoration: none;
+  font: inherit;
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   transition: background .15s, color .15s;
   background: none;
   border: none;
-  padding: 0;
+  padding: 0 10px;
   cursor: pointer;
 }
-.sidebar-item svg { width: 20px; height: 20px; }
+.sidebar-item svg { width: 20px; height: 20px; flex-shrink: 0; }
+.sidebar-bottom form { width: 100%; display: flex; justify-content: center; }
+.sidebar-label { white-space: nowrap; opacity: 0; transform: translateX(-6px); transition: opacity .15s ease, transform .2s ease; font-size: .875rem; }
+.sidebar-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (min-width: 769px) {
+  .sidebar:focus-within { width: 200px; margin-right: calc(var(--sidebar-width) - 200px); box-shadow: 8px 0 24px #0003; }
+  .sidebar:focus-within .sidebar-label { opacity: 1; transform: translateX(0); }
+}
+@media (min-width: 769px) and (hover: hover) and (pointer: fine) {
+  .sidebar:hover { width: 200px; margin-right: calc(var(--sidebar-width) - 200px); box-shadow: 8px 0 24px #0003; }
+  .sidebar:hover .sidebar-label { opacity: 1; transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .sidebar-label { transition: none; }
+}
 .sidebar-item:hover { background: var(--surface-raised); color: var(--text); }
 .sidebar-item.active { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
 
@@ -2219,7 +2241,7 @@ canvas.resource-chart-canvas {
   .refresh-label { display: none; }
   .app-body { --sidebar-width: 48px; }
   .sidebar { width: var(--sidebar-width); }
-  .sidebar-item { width: 36px; height: 36px; }
+  .sidebar-item { width: 36px; height: 36px; padding-inline: 8px; }
   .wizard-page { padding: 20px 16px 40px; }
   .info-row { flex-wrap: wrap; }
   .info-row span { min-width: unset; }
