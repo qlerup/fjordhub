@@ -29,6 +29,7 @@ class User(UserMixin):
         language: str = "da",
         must_change_password: bool = False,
         session_version: int = 1,
+        email_required: bool = False,
     ):
         self.id = id
         self.username = username
@@ -40,6 +41,7 @@ class User(UserMixin):
         self.language = language
         self.must_change_password = bool(must_change_password)
         self.session_version = int(session_version)
+        self.email_required = bool(email_required and not email)
 
     def get_id(self) -> str:
         return f"{self.id}:{self.session_version}"
@@ -63,6 +65,7 @@ def _row_to_user(row) -> Optional[User]:
         language=_normalize_language(row["language"]),
         must_change_password=bool(int(row["must_change_password"] or 0)),
         session_version=int(row["session_version"]),
+        email_required=bool(row["email_required"]),
     )
 
 
@@ -238,6 +241,8 @@ class AuthService:
                 conn.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
             if "onboarding_pending" not in user_cols:
                 conn.execute("ALTER TABLE users ADD COLUMN onboarding_pending INTEGER NOT NULL DEFAULT 0")
+            if "email_required" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN email_required INTEGER NOT NULL DEFAULT 0")
             conn.execute("UPDATE users SET first_name=COALESCE(first_name, '')")
             conn.execute("UPDATE users SET last_name=COALESCE(last_name, '')")
             conn.execute("UPDATE users SET email=LOWER(TRIM(COALESCE(email, '')))")
@@ -630,6 +635,8 @@ class AuthService:
                     """,
                     (username, password_hash, first_name, last_name, email, language, role, int(bool(require_password_change)), now, int(first_setup)),
                 )
+                if require_password_change and not email:
+                    conn.execute('UPDATE users SET email_required=1 WHERE id=?', (cur.lastrowid,))
                 conn.commit()
                 return int(cur.lastrowid)
             except sqlite3.IntegrityError:
@@ -862,7 +869,16 @@ class AuthService:
             ).fetchone()
             return str(row["role"]) if row else None
 
-    def authenticate_app_user(self, app_id: str, username: str, password: str) -> Optional[dict]:
+    def complete_first_email(self, user_id: int, email: str) -> None:
+        email = _normalize_email(email, required=True)
+        with closing(self._conn()) as conn:
+            try:
+                conn.execute("UPDATE users SET email=?, email_required=0 WHERE id=? AND email_required=1 AND email=''", (email, user_id))
+                conn.commit()
+            except sqlite3.IntegrityError:
+                raise ValueError('Email-adressen er allerede i brug.') from None
+
+    def authenticate_app_user(self, app_id: str, username: str, password: str, first_login_email: str = '') -> Optional[dict]:
         app_id = canonical_app_id(app_id)
         user = self.check_password(username, password)
         if not user:
@@ -870,6 +886,13 @@ class AuthService:
         role = self.get_user_app_role(user.id, app_id)
         if not role:
             return None
+        email_error = ''
+        if user.email_required and first_login_email:
+            try:
+                self.complete_first_email(user.id, first_login_email)
+                user = self.get_by_id(user.id)
+            except ValueError as exc:
+                email_error = str(exc)
         return {
             "id": user.id,
             "username": user.username,
@@ -881,6 +904,8 @@ class AuthService:
             "role": role,
             "created_at": user.created_at,
             "must_change_password": user.must_change_password,
+            "email_required": user.email_required,
+            "email_error": email_error,
         }
 
     def change_app_user_password(
@@ -898,6 +923,8 @@ class AuthService:
         role = self.get_user_app_role(user.id, app_id)
         if not role:
             return None
+        if user.email_required:
+            raise ValueError('Indtast din email ved første login, før du vælger ny adgangskode.')
         self.change_password(user.id, new_password)
         return {
             "id": user.id,

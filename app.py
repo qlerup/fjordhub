@@ -282,7 +282,11 @@ def _auth_gate():
         return redirect(url_for("login", next=request.path))
     if request.endpoint == "dashboard" and _auth.onboarding_pending(current_user.id):
         return redirect(url_for("onboarding"))
-    if current_user.must_change_password and request.endpoint not in {"static", "logout", "profile"}:
+    if current_user.email_required and request.endpoint not in {"static", "logout", "profile", "profile_info"}:
+        if request.path.startswith('/api/'):
+            return jsonify(ok=False, error='Indtast din email først.', email_required=True), 403
+        return redirect(url_for('profile'))
+    if current_user.must_change_password and request.endpoint not in {"static", "logout", "profile", "profile_info"}:
         if request.path.startswith("/api/"):
             return jsonify({"ok": False, "error": "Adgangskoden skal ændres først.", "password_change_required": True}), 403
         return redirect(url_for("profile", force_password_change="1"))
@@ -527,6 +531,8 @@ def login():
         else:
             _login_rate_success(rate_key)
             _login_on_device(user)
+            if user.email_required:
+                return redirect(url_for('profile'))
             if user.must_change_password:
                 return redirect(url_for("profile", force_password_change="1"))
             if _auth.onboarding_pending(user.id):
@@ -1523,6 +1529,7 @@ def profile():
         pw_error=pw_error,
         pw_ok=pw_ok,
         force_password_change=force_password_change,
+        info_error=request.args.get('info_error', ''),
         info_ok=str(request.args.get("info") or "") == "1",
         profile_user=_auth.get_by_id(current_user.id) or current_user,
         language_options=LANGUAGE_OPTIONS,
@@ -1531,6 +1538,11 @@ def profile():
 
 @app.route("/profile/info", methods=["POST"])
 def profile_info():
+    if current_user.email_required:
+        try:
+            _auth.complete_first_email(current_user.id, request.form.get('email', ''))
+        except ValueError as exc:
+            return redirect(url_for('profile', info_error=str(exc)))
     _auth.update_user_profile(
         current_user.id,
         first_name=str(request.form.get("first_name") or "").strip(),
@@ -1578,8 +1590,6 @@ def create_user():
     app_ids = request.form.getlist("app_access")
     app_roles = {aid: str(request.form.get(f"app_role_{aid}") or "user") for aid in app_ids}
     try:
-        if not email:
-            raise ValueError("Email er påkrævet.")
         user_id = _auth.create_user(
             username,
             password,
@@ -1861,7 +1871,7 @@ def api_hub_app_authenticate():
     password = str(data.get("password") or "")
     if not username or not password:
         return jsonify({"ok": False, "error": "Brugernavn og adgangskode påkrævet"}), 400
-    user = _auth.authenticate_app_user(app_id, username, password)
+    user = _auth.authenticate_app_user(app_id, username, password, str(data.get('first_login_email') or ''))
     if not user:
         _login_rate_failure(rate_key)
         return jsonify({"ok": False, "error": "Forkert login eller ingen adgang til appen"}), 401
@@ -2435,7 +2445,7 @@ def api_hub_sso_verify():
     if time.time() > entry["expires_at"]:
         return jsonify({"ok": False, "error": "Token er udløbet"}), 401
     user = _auth.get_by_session_id(entry.get('session_id', ''))
-    if user is None or user.must_change_password:
+    if user is None or user.must_change_password or user.email_required:
         return jsonify(ok=False, error='Login er tilbagekaldt.'), 401
     app_role = _auth.get_user_app_role(user.id, app_id)
     if not user.is_admin and app_role is None:

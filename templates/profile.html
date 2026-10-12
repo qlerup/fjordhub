@@ -33,6 +33,8 @@
   </div>
 
   <h2 style="font-size:1rem;font-weight:700;margin:28px 0 14px;">Kontooplysninger</h2>
+  {% if current_user.email_required %}<div class="auth-error">Første login: Indtast din email for at fortsætte. Den bruges til din fælles konto i FjordHub og apps.</div>{% endif %}
+  {% if info_error %}<div class="auth-error">{{ info_error }}</div>{% endif %}
 
   {% if info_ok %}
     <div class="auth-ok" style="margin-bottom:14px;">Kontooplysninger opdateret.</div>

@@ -490,6 +490,54 @@ class AppUrlTests(unittest.TestCase):
         self.assertIn("/profile?password_changed=1", change_response.headers["Location"])
         self.assertFalse(fjordhub._auth.get_by_username("first-login").must_change_password)
 
+    def test_admin_can_omit_email_and_user_must_supply_it_before_using_hub(self):
+        fjordhub._auth.create_user('owner', 'owner-secret', role='admin', email='owner@example.com')
+        with fjordhub.app.test_client() as client:
+            client.post('/login', data={'username':'owner', 'password':'owner-secret'})
+            result = client.post('/users/create', data={'username':'new-user', 'password':'temporary', 'role':'user'})
+            self.assertEqual(result.status_code, 302)
+            client.post('/logout')
+            result = client.post('/login', data={'username':'new-user', 'password':'temporary'})
+            self.assertIn('/profile', result.headers['Location'])
+            self.assertTrue(fjordhub._auth.get_by_username('new-user').email_required)
+            self.assertEqual(client.get('/api/apps/status').status_code, 403)
+            result = client.post('/profile/info', data={'email':'bad'})
+            self.assertIn('info_error', result.headers['Location'])
+            client.post('/profile/info', data={'email':'new@example.com'})
+            user = fjordhub._auth.get_by_username('new-user')
+            self.assertEqual(user.email, 'new@example.com')
+            self.assertFalse(user.email_required)
+            self.assertTrue(user.must_change_password)
+
+    def test_first_email_is_shared_across_apps_and_requires_valid_credentials(self):
+        auth = fjordhub._auth
+        auth.create_user('existing', 'secret1', email='used@example.com')
+        uid = auth.create_user('new-user', 'temporary', require_password_change=True)
+        for app_id in ('fjordseed', 'fjordvpn', 'fjordflix', 'fjordcasino', 'fjordbudget',
+                       'fjordlens', 'fjord3d', 'fjordparcel', 'orbitmap', 'urban-explorer'):
+            auth.set_user_app_access(uid, app_id)
+            auth.save_hub_key(app_id, 'key-' + app_id)
+        with fjordhub.app.test_client() as client:
+            def login(app_id, **extra):
+                return client.post('/api/hub/apps/authenticate', headers={'X-Hub-Key':'key-' + app_id},
+                    json={'app_id':app_id, 'username':'new-user', 'password':'temporary', **extra})
+            for app_id in auth.get_apps_with_keys():
+                self.assertTrue(login(app_id).json['user']['email_required'])
+            self.assertEqual(login('fjordflix', password='wrong', first_login_email='bad@example.com').status_code, 401)
+            self.assertEqual(auth.get_by_id(uid).email, '')
+            for email in ('invalid', 'USED@example.com'):
+                result = login('fjordflix', first_login_email=email).json['user']
+                self.assertTrue(result['email_required'])
+                self.assertTrue(result['email_error'])
+            changed = client.post('/api/hub/apps/change-password', headers={'X-Hub-Key':'key-fjordflix'},
+                json={'app_id':'fjordflix', 'username':'new-user', 'current_password':'temporary', 'new_password':'new-secret'})
+            self.assertEqual(changed.status_code, 400)
+            self.assertFalse(login('fjordflix', first_login_email='New@Example.com').json['user']['email_required'])
+            for app_id in auth.get_apps_with_keys():
+                result = login(app_id, first_login_email='replacement@example.com').json['user']
+                self.assertFalse(result['email_required'])
+                self.assertEqual(result['email'], 'new@example.com')
+
     def test_admin_can_reset_another_users_password_without_their_current_password(self):
         fjordhub._auth.create_user(
             "admin1", "admin-secret", role="admin", email="admin1@example.com",
