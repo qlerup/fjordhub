@@ -684,7 +684,14 @@ class UpdateManager:
                     raise RuntimeError('Den tidligere Fjord3D-container kunne ikke stoppes.')
                 legacy_stopped = True
                 build_services = []
-            if build_services is None:
+            if app_id == 'fjordmail':
+                # Repair/reuse its encrypted mount before recreating containers:
+                # a disconnected FUSE mount otherwise prevents DB startup.
+                if self._run_logged(app_id, ['docker', 'compose', 'build', 'app'], cwd=install_dir, timeout=900):
+                    raise RuntimeError('FjordMail build fejlede; tidligere data er bevaret.')
+                from services.mail_setup import prepare_mail
+                prepare_mail(install_dir, lambda message: self._append_job_log(app_id, message))
+            elif build_services is None:
                 self._append_job_log(app_id, "Kunne ikke analysere compose build-contexts; bruger sikkert fuldt cachebaseret build.")
                 compose_code = self._run_logged(
                     app_id,
@@ -719,9 +726,6 @@ class UpdateManager:
             if legacy_3d:
                 self._complete_legacy_3d(install_dir)
                 legacy_stopped = False
-            if app_id == 'fjordmail':
-                from services.mail_setup import prepare_mail
-                prepare_mail(install_dir, lambda message: self._append_job_log(app_id, message))
             final_info = self._git_info(install_dir, fetch=False)
             final_info.update({"state": "up_to_date", "label": "Opdateret", "update_available": False})
             self._append_job_log(app_id, "Opdatering færdig.")
