@@ -14,7 +14,7 @@
     <button class="btn-install package-install"{% if package.installed or active_page == 'packages' %} hidden{% endif %}>Installér</button>
     <button class="package-remove" title="Afinstallér {{ package.name }}"{% if not (package.installed or active_page == 'packages') %} hidden{% endif %} aria-label="Afinstallér">×</button>
     {% elif not package.installed %}
-    <span class="package-admin-hint">En administrator kan installere appen</span>
+    <span class="package-admin-hint">En administrator kan installere integrationen</span>
     {% endif %}
     <span class="package-installed-label"{% if not package.installed %} hidden{% endif %}><i></i> Installeret</span>
   </div>

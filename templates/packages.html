@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Mine apps — FjordHub{% endblock %}
+{% block title %}Integrationer — FjordHub{% endblock %}
 {% block content %}
 <div class="dashboard package-page">
   <div class="dashboard-header">
-    <span class="package-eyebrow">MINE APPS</span>
-    <h1>Installerede apps</h1>
+    <span class="package-eyebrow">INTEGRATIONER</span>
+    <h1>Installerede integrationer</h1>
     <p class="dashboard-sub">Åbn og administrer de værktøjer, du har installeret i FjordHub.</p>
   </div>
   <div id="package-toast" class="toast" aria-live="polite"></div>
@@ -20,9 +20,9 @@
     <div class="package-empty-icon">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 8V6a6 6 0 0 1 12 0v2"/><path d="M4 8h16l1 13H3L4 8z"/></svg>
     </div>
-    <h2>Du har ikke installeret nogen apps endnu</h2>
-    <p>Find kalender, notesblok og flere værktøjer i App Store.</p>
-    <a href="{{ url_for('app_store') }}" class="btn-install">Gå til App Store</a>
+    <h2>Du har ikke installeret nogen integrationer endnu</h2>
+    <p>Find kalender, notesblok og flere værktøjer i Integrationsbutik.</p>
+    <a href="{{ url_for('app_store') }}" class="btn-install">Gå til Integrationsbutik</a>
   </div>
   {% endif %}
 </div>

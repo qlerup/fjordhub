@@ -7,7 +7,7 @@
     setTimeout(() => toast.classList.remove('show'), 2600);
   };
 
-  // Rammer både butikkens .package-card og launcher-rækkerne på "Installerede apps"
+  // Rammer både butikkens .package-card og launcher-rækkerne på "Installerede integrationer"
   document.querySelectorAll('[data-package-id]').forEach(card => {
     const id = card.dataset.packageId;
     const install = card.querySelector('.package-install');
@@ -32,7 +32,7 @@
         update.hidden = true;
         const hint = card.querySelector('.package-update-hint');
         if (hint) hint.textContent = hint.textContent.split('→').pop().trim();
-        showToast('Appen er opdateret');
+        showToast('Integrationen er opdateret');
       } catch (error) { showToast(error.message, true); }
       finally { update.disabled = false; update.textContent = 'Opdatér'; }
     });
@@ -44,12 +44,12 @@
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Installationen fejlede');
         setInstalled(true);
-        showToast('Appen er installeret');
+        showToast('Integrationen er installeret');
       } catch (error) { showToast(error.message, true); }
       finally { install.disabled = false; install.textContent = 'Installér'; }
     });
     remove?.addEventListener('click', async () => {
-      if (!confirm('Vil du afinstallere appen og fjerne dens filer?')) return;
+      if (!confirm('Vil du afinstallere integrationen og fjerne dens filer?')) return;
       try {
         const response = await fetch(`/api/packages/${id}/uninstall`, {method: 'POST'});
         const data = await response.json();
@@ -60,7 +60,7 @@
         } else {
           setInstalled(false);
         }
-        showToast('Appen er afinstalleret');
+        showToast('Integrationen er afinstalleret');
       } catch (error) { showToast(error.message, true); }
     });
   });
