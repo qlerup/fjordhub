@@ -412,6 +412,13 @@ class AppUrlTests(unittest.TestCase):
                     "new_password": "self-chosen",
                 },
             )
+            self.assertEqual(change_response.status_code, 400)
+            client.post('/api/hub/apps/authenticate',headers={'X-Hub-Key':hub_key},
+                        json={'app_id':'orbitmap','username':'app-first-login','password':'temp-secret',
+                              'first_login_email':'app-first-login@example.com'})
+            change_response = client.post('/api/hub/apps/change-password',headers={'X-Hub-Key':hub_key},
+                json={'app_id':'orbitmap','username':'app-first-login','current_password':'temp-secret',
+                      'new_password':'self-chosen'})
             relogin_response = client.post(
                 "/api/hub/apps/authenticate",
                 headers={"X-Hub-Key": hub_key},
@@ -483,12 +490,13 @@ class AppUrlTests(unittest.TestCase):
             )
 
         self.assertEqual(login_response.status_code, 302)
-        self.assertIn("/profile?force_password_change=1", login_response.headers["Location"])
+        self.assertIn("/profile", login_response.headers["Location"])
         self.assertEqual(blocked_response.status_code, 302)
-        self.assertIn("/profile?force_password_change=1", blocked_response.headers["Location"])
+        self.assertIn("/profile", blocked_response.headers["Location"])
         self.assertEqual(change_response.status_code, 302)
         self.assertIn("/profile?password_changed=1", change_response.headers["Location"])
         self.assertFalse(fjordhub._auth.get_by_username("first-login").must_change_password)
+        self.assertTrue(fjordhub._auth.get_by_username("first-login").email_required)
 
     def test_admin_can_omit_email_and_user_must_supply_it_before_using_hub(self):
         fjordhub._auth.create_user('owner', 'owner-secret', role='admin', email='owner@example.com')
@@ -563,6 +571,54 @@ class AppUrlTests(unittest.TestCase):
                 self.assertFalse(result['email_required'] or result['must_change_password'])
                 self.assertEqual(login().status_code, 401)
                 self.assertEqual(login(password='new-personal').status_code, 200)
+
+    def test_email_entered_by_admin_still_requires_confirmation_in_every_app(self):
+        auth = fjordhub._auth
+        for app_id in ('fjordseed','fjordvpn','fjordflix','fjordcasino','fjordbudget',
+                       'fjordlens','fjord3d','fjordparcel','orbitmap','urban-explorer'):
+            with self.subTest(app_id=app_id), fjordhub.app.test_client() as client:
+                initial_email = app_id + '-assigned@example.com'
+                uid = auth.create_user(app_id, 'temporary', email=initial_email, require_password_change=True)
+                auth.set_user_app_access(uid, app_id)
+                auth.save_hub_key(app_id, 'key-' + app_id)
+                def login(**extra):
+                    return client.post('/api/hub/apps/authenticate', headers={'X-Hub-Key':'key-'+app_id},
+                        json={'app_id':app_id,'username':app_id,'password':'temporary', **extra})
+                initial = login().json['user']
+                self.assertTrue(initial['email_required'])
+                self.assertTrue(auth.list_app_users(app_id)[0]['email_required'])
+                denied = login(first_login_password='new-personal',first_login_password_confirm='new-personal').json['user']
+                self.assertTrue(denied['email_required'] and denied['must_change_password'])
+                self.assertEqual(auth.get_by_id(uid).email, initial_email)
+                verified = app_id + '-confirmed@example.com'
+                result = login(first_login_email=verified,first_login_password='new-personal',
+                               first_login_password_confirm='new-personal').json['user']
+                self.assertFalse(result['email_required'] or result['must_change_password'])
+                self.assertEqual(auth.get_by_id(uid).email,verified)
+                self.assertFalse(auth.list_app_users(app_id)[0]['email_required'])
+
+    def test_existing_email_can_be_confirmed_without_password_change(self):
+        auth = fjordhub._auth
+        uid = auth.create_user('email-only', 'personal', email='assigned@example.com',require_password_change=True)
+        auth.change_password(uid,'personal-changed')
+        self.assertTrue(auth.get_by_id(uid).email_required)
+        auth.complete_first_email(uid,'correct@example.com')
+        self.assertFalse(auth.get_by_id(uid).email_required)
+        self.assertEqual(auth.get_by_id(uid).email,'correct@example.com')
+
+    def test_email_policy_migration_marks_pending_first_logins_only_once(self):
+        from contextlib import closing
+        auth = fjordhub._auth
+        uid = auth.create_user('legacy-pending', 'temporary',email='assigned@example.com',require_password_change=True)
+        with closing(auth._conn()) as conn:
+            conn.execute('UPDATE users SET email_required=0 WHERE id=?',(uid,))
+            conn.execute("DELETE FROM auth_migrations WHERE name='confirm-first-email-v2'")
+            conn.commit()
+        auth._init_db()
+        self.assertTrue(auth.get_by_id(uid).email_required)
+        auth.complete_first_email(uid,'confirmed@example.com')
+        auth._init_db()
+        self.assertFalse(auth.get_by_id(uid).email_required)
 
     def test_admin_can_reset_another_users_password_without_their_current_password(self):
         fjordhub._auth.create_user(

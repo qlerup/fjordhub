@@ -41,7 +41,7 @@ class User(UserMixin):
         self.language = language
         self.must_change_password = bool(must_change_password)
         self.session_version = int(session_version)
-        self.email_required = bool(email_required and not email)
+        self.email_required = bool(email_required)
 
     def get_id(self) -> str:
         return f"{self.id}:{self.session_version}"
@@ -85,6 +85,7 @@ def _user_access_dict(row) -> dict:
         "role": str(row["app_role"] or "user"),
         "created_at": str(row["created_at"] or ""),
         "must_change_password": bool(row["must_change_password"]) if "must_change_password" in row.keys() else False,
+        "email_required": bool(row["email_required"]) if "email_required" in row.keys() else False,
     }
 
 
@@ -243,6 +244,10 @@ class AuthService:
                 conn.execute("ALTER TABLE users ADD COLUMN onboarding_pending INTEGER NOT NULL DEFAULT 0")
             if "email_required" not in user_cols:
                 conn.execute("ALTER TABLE users ADD COLUMN email_required INTEGER NOT NULL DEFAULT 0")
+            conn.execute("CREATE TABLE IF NOT EXISTS auth_migrations (name TEXT PRIMARY KEY)")
+            migration = conn.execute("INSERT OR IGNORE INTO auth_migrations(name) VALUES ('confirm-first-email-v2')")
+            if migration.rowcount:
+                conn.execute("UPDATE users SET email_required=1 WHERE must_change_password=1")
             conn.execute("UPDATE users SET first_name=COALESCE(first_name, '')")
             conn.execute("UPDATE users SET last_name=COALESCE(last_name, '')")
             conn.execute("UPDATE users SET email=LOWER(TRIM(COALESCE(email, '')))")
@@ -635,7 +640,7 @@ class AuthService:
                     """,
                     (username, password_hash, first_name, last_name, email, language, role, int(bool(require_password_change)), now, int(first_setup)),
                 )
-                if require_password_change and not email:
+                if require_password_change:
                     conn.execute('UPDATE users SET email_required=1 WHERE id=?', (cur.lastrowid,))
                 conn.commit()
                 return int(cur.lastrowid)
@@ -873,7 +878,7 @@ class AuthService:
         email = _normalize_email(email, required=True)
         with closing(self._conn()) as conn:
             try:
-                conn.execute("UPDATE users SET email=?, email_required=0 WHERE id=? AND email_required=1 AND email=''", (email, user_id))
+                conn.execute("UPDATE users SET email=?, email_required=0 WHERE id=? AND email_required=1", (email, user_id))
                 conn.commit()
             except sqlite3.IntegrityError:
                 raise ValueError('Email-adressen er allerede i brug.') from None
@@ -967,7 +972,7 @@ class AuthService:
             rows = conn.execute(
                 """
                 SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.language,
-                       u.role AS hub_role, u.created_at, u.must_change_password,
+                       u.role AS hub_role, u.created_at, u.must_change_password, u.email_required,
                        a.role AS app_role
                 FROM user_app_access a
                 JOIN users u ON u.id = a.user_id
@@ -1034,6 +1039,9 @@ class AuthService:
                     email=email,
                     language=language,
                 )
+                with closing(self._conn()) as conn:
+                    conn.execute('UPDATE users SET email_required=1 WHERE id=?',(user_id,))
+                    conn.commit()
             else:
                 # Admin har valgt startkoden i appen; brugeren skal selv vælge en ny ved første login
                 user_id = self.create_user(
