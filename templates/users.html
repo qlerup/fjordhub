@@ -257,6 +257,13 @@
         <label for="edit-email">Email</label>
         <input id="edit-email" name="email" type="email" autocomplete="email" required>
       </div>
+      <div class="auth-field">
+        <label style="display:flex;align-items:center;gap:8px;">
+          <input id="edit-require-email" name="require_email_update" type="checkbox" value="1" style="width:auto;">
+          Kræv opdatering af email ved næste åbning
+        </label>
+        <p class="dashboard-sub" style="font-size:.8rem;margin:4px 0;">Brugeren skal bekræfte eller opdatere sin email, før FjordHub eller en tilknyttet app kan bruges.</p>
+      </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;">
         <div class="auth-field" id="edit-current-password-wrap">
           <label for="edit-current-password">Nuværende adgangskode <span style="font-weight:400;color:var(--text-muted);font-size:.8rem;">(kræves ved ændring)</span></label>
@@ -404,6 +411,7 @@ function openEditModal(user, currentUserId) {
   document.getElementById('edit-last-name').value = user.last_name || '';
   document.getElementById('edit-username').value = user.username || '';
   document.getElementById('edit-email').value = user.email || '';
+  document.getElementById('edit-require-email').checked = !!user.email_required;
   document.getElementById('edit-current-password').value = '';
   // Kun relevant ved selv-redigering - en admin der redigerer en anden bruger
   // kender ikke (og skal ikke kende) den brugerens nuværende adgangskode.

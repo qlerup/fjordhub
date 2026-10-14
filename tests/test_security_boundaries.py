@@ -36,6 +36,42 @@ def login(name='admin'):
     return client
 
 
+def test_admin_can_require_email_on_existing_session_and_member_app_can_complete_it(security):
+    reader = login('reader')
+    admin = login()
+    uid = security.get_by_username('reader').id
+    version = security.get_by_id(uid).session_version
+    data = {'username':'reader', 'email':'reader@example.test', 'role':'user',
+            'require_email_update':'1', 'csrf_token':token(admin)}
+    assert admin.post(f'/users/{uid}/edit', data=data).status_code == 302
+    assert security.get_by_id(uid).email_required
+    assert security.get_by_id(uid).session_version == version
+    assert reader.get('/').location.endswith('/profile')
+    assert reader.get('/profile').status_code == 200
+    assert reader.get('/api/auth/access').json['email_required'] is True
+    security.set_user_app_access(uid, 'fjordflix')
+    security.save_hub_key('fjordflix', 'test-key')
+    security.save_hub_key('fjordlens', 'lens-key')
+    path = f'/api/hub/apps/users/{uid}/email'
+    client = hub.app.test_client()
+    assert client.post(path,json={'app_id':'fjordflix','email':'new@example.test'}).status_code == 400
+    assert client.post(path,json={'app_id':'fjordlens','email':'new@example.test'},headers={'X-Hub-Key':'lens-key'}).status_code == 403
+    for email in ('invalid', 'admin@example.test'):
+        result = client.post(path,json={'app_id':'fjordflix','email':email},headers={'X-Hub-Key':'test-key'})
+        assert result.status_code == 200 and result.json['accepted'] is False
+        assert security.get_by_id(uid).email_required
+    result = client.post(path,json={'app_id':'fjordflix','email':'new@example.test'},headers={'X-Hub-Key':'test-key'})
+    assert result.status_code == 200 and result.json['accepted'] is True
+    assert security.get_by_id(uid).email == 'new@example.test'
+    assert not security.get_by_id(uid).email_required
+    assert reader.get('/').status_code == 200
+    assert reader.get('/api/auth/access').json['authenticated'] is True
+    # The dedicated endpoint cannot change email again after completion.
+    client.post(path,json={'app_id':'fjordflix','email':'overwrite@example.test'},headers={'X-Hub-Key':'test-key'})
+    assert security.get_by_id(uid).email == 'new@example.test'
+    assert reader.post(f'/users/{uid}/edit', data={**data, 'csrf_token':token(reader)}).status_code == 403
+
+
 @pytest.mark.parametrize('path,method,endpoint', [
     ('/apps/demo/install', 'POST', 'install_app'),
     ('/apps/demo/start', 'POST', 'start_app'),

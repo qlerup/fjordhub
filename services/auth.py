@@ -677,6 +677,7 @@ class AuthService:
         language: str = "da",
         role: str = "user",
         new_password: str = "",
+        require_email_update: bool | None = None,
     ) -> Optional[User]:
         username = username.strip()
         if not username:
@@ -691,9 +692,11 @@ class AuthService:
             try:
                 conn.execute(
                     """UPDATE users SET session_version=session_version + CASE WHEN role <> ? THEN 1 ELSE 0 END,
-                       username=?, first_name=?, last_name=?, email=?, language=?, role=?
+                       username=?, first_name=?, last_name=?, email=?, language=?, role=?,
+                       email_required=COALESCE(?, email_required)
                        WHERE id=?""",
-                    (role, username, first_name, last_name, email, language, role, int(user_id)),
+                    (role, username, first_name, last_name, email, language, role,
+                     None if require_email_update is None else int(require_email_update), int(user_id)),
                 )
                 conn.commit()
             except sqlite3.IntegrityError:
@@ -761,6 +764,7 @@ class AuthService:
                 "first_name": u.first_name,
                 "last_name": u.last_name,
                 "email": u.email,
+                "email_required": u.email_required,
                 "language": u.language,
                 "role": u.role,
                 "is_admin": u.is_admin,

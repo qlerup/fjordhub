@@ -16,6 +16,38 @@ URBAN_EXPLORER_ARGON2_HASH = (
 
 
 class AuthEmailTests(unittest.TestCase):
+    def test_admin_requirement_preserves_sessions_and_is_shared_by_apps(self):
+        uid = self.auth.create_user('existing', 'secret1', email='existing@example.test')
+        for app_id in ('fjordflix', 'fjordlens'):
+            self.auth.set_user_app_access(uid, app_id)
+        version = self.auth.get_by_id(uid).session_version
+        self.auth.update_user(uid, username='existing', email='existing@example.test', require_email_update=True)
+        self.assertEqual(self.auth.get_by_id(uid).session_version, version)
+        self.assertFalse(self.auth.get_by_id(uid).must_change_password)
+        self.assertTrue(self.auth.get_all_users_with_access()[0]['email_required'])
+        for app_id in ('fjordflix', 'fjordlens'):
+            self.assertTrue(self.auth.list_app_users(app_id)[0]['email_required'])
+        self.auth.complete_first_email(uid, ' New@Example.test ')
+        self.assertEqual(self.auth.get_by_id(uid).email, 'new@example.test')
+        for app_id in ('fjordflix', 'fjordlens'):
+            self.assertFalse(self.auth.list_app_users(app_id)[0]['email_required'])
+        self.assertIsNotNone(self.auth.check_password('existing', 'secret1'))
+
+    def test_invalid_or_duplicate_email_keeps_requirement_and_confirmation_can_reuse_address(self):
+        uid = self.auth.create_user('existing', 'secret1', email='existing@example.test')
+        self.auth.create_user('other', 'secret2', email='other@example.test')
+        self.auth.update_user(uid, username='existing', email='existing@example.test', require_email_update=True)
+        for email in ('bad', '', 'OTHER@example.test'):
+            with self.assertRaises(ValueError):
+                self.auth.complete_first_email(uid, email)
+            self.assertTrue(self.auth.get_by_id(uid).email_required)
+            self.assertEqual(self.auth.get_by_id(uid).email, 'existing@example.test')
+        self.auth.complete_first_email(uid, 'existing@example.test')
+        self.assertFalse(self.auth.get_by_id(uid).email_required)
+        self.auth.update_user(uid, username='existing', email='existing@example.test', require_email_update=True)
+        self.auth.update_user(uid, username='existing', email='existing@example.test', require_email_update=False)
+        self.assertFalse(self.auth.get_by_id(uid).email_required)
+
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tempdir.name) / "hub.db"

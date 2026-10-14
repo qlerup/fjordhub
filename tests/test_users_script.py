@@ -13,7 +13,7 @@ class UsersScriptTests(unittest.TestCase):
     def test_edit_buttons_and_validation_reopen(self):
         env = Environment(loader=FileSystemLoader(Path(__file__).resolve().parents[1] / 'templates'))
         template = env.get_template('users.html')
-        users = [dict(id=1, username='admin', role='admin'), dict(id=2, username='member')]
+        users = [dict(id=1, username='admin', role='admin', email_required=False), dict(id=2, username='member', email_required=True)]
         for reopen_id in (None, 1, 2):
             with self.subTest(reopen_id=reopen_id):
                 context = template.new_context(dict(
@@ -42,6 +42,7 @@ function check(id) {
   assert.equal(element('edit-modal').classList.contains('is-open'), true);
   assert.equal(element('edit-form').action, '/users/' + id + '/edit');
   assert.equal(element('edit-username').value, id === 1 ? 'admin' : 'member');
+  assert.equal(element('edit-require-email').checked, id === 2);
   assert.equal(element('edit-current-password-wrap').style.display, id === 1 ? '' : 'none');
   element('cancel-edit-modal').listeners.click();
   assert.equal(element('edit-modal').classList.contains('is-open'), false);

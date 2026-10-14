@@ -209,6 +209,7 @@ _AUTH_EXEMPT = {
     "api_hub_password_reset_complete",
     "api_hub_app_users",
     "api_hub_app_user",
+    "api_hub_app_email",
     "api_hub_sso_verify",
 }
 
@@ -297,6 +298,7 @@ _USER_ENDPOINTS = {
     'dashboard', 'packages', 'app_store', 'open_package', 'package_asset',
     'logout', 'profile', 'profile_info', 'api_hub_sso_token', 'app_sso_url',
     'api_apps_status', 'api_apps_updates', 'api_registry_status',
+    'api_account_access',
 }
 # Only these public endpoints use browser sessions/forms. All other auth-exempt
 # operations authenticate their own app key or bearer token, never the cookie.
@@ -1709,6 +1711,7 @@ def edit_user(user_id: int):
             language=language,
             role=role,
             new_password=new_password if password_fields_filled else "",
+            require_email_update=request.form.get('require_email_update') == '1',
         )
         existing_ids = {a["app_id"] for a in _auth.get_user_app_access(user_id)}
         new_ids = set(app_ids)
@@ -1799,6 +1802,13 @@ def _require_app_key(data: dict) -> tuple[str, tuple | None]:
     if not _auth.verify_hub_key(app_id, key):
         return "", (jsonify({"ok": False, "error": "Uautoriseret"}), 401)
     return app_id, None
+
+
+@app.get('/api/auth/access')
+def api_account_access():
+    response = jsonify(authenticated=True)
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
 
 
 @app.route("/api/hub/apps/config", methods=["GET"])
@@ -2006,6 +2016,29 @@ def api_hub_app_user(user_id: int):
     if not user:
         return jsonify({"ok": False, "error": "Brugeren har ikke adgang til appen"}), 404
     return jsonify({"ok": True, "user": user, "item": user})
+
+
+@app.post('/api/hub/apps/users/<int:user_id>/email')
+def api_hub_app_email(user_id: int):
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error='Ugyldig forespørgsel.'), 400
+    app_id, error_response = _require_app_key(data)
+    if error_response:
+        return error_response
+    member = next((u for u in _auth.list_app_users(app_id) if u['id'] == user_id), None)
+    if not member:
+        return jsonify(ok=False, error='Brugeren har ikke adgang til appen.'), 403
+    if not member['email_required']:
+        return jsonify(ok=True, accepted=True, user=member)
+    if not isinstance(data.get('email'), str):
+        return jsonify(ok=True, accepted=False, error='Indtast en gyldig email.' )
+    try:
+        _auth.complete_first_email(user_id, data['email'])
+    except ValueError as exc:
+        return jsonify(ok=True, accepted=False, error=str(exc))
+    updated = next(u for u in _auth.list_app_users(app_id) if u['id'] == user_id)
+    return jsonify(ok=True, accepted=True, user=updated)
 
 
 @app.route("/api/hub/sso-token")
