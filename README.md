@@ -20,6 +20,7 @@ FjordHub is a lightweight control panel for a small fleet of self-hosted apps. I
 - **One-click install** — a guided wizard collects the app's settings (ports, timezone, secrets), clones the app's repository, writes its `.env` and brings it up with Docker Compose.
 - **Lifecycle management** — start, stop, update and uninstall apps from the dashboard, with live health checks per app.
 - **Central users & SSO** — user accounts live in the hub. Installed apps authenticate against the hub's API, users are synced automatically, and "Open app" links can log you straight in via short-lived SSO tokens.
+- **Shared account completion** — first-login email confirmation and replacement of a temporary password can be completed inside integrated apps. Administrators can require a fresh email update for an existing account, including existing app sessions.
 - **Password recovery** — configure an SMTP sender under Settings. FjordHub sends five-minute security codes and handles recovery centrally for the hub and integrated apps.
 - **Self-update** — a small sidecar container pulls the latest FjordHub from GitHub and rebuilds/restarts the hub, triggered from the Settings page.
 - **Resource monitoring** — host CPU, memory and disk usage plus per-container stats, with a one-click Docker cleanup for reclaiming space.
@@ -103,10 +104,10 @@ controlled by FjordLens's conversion settings.
 Updating the hub does not change an existing installation's storage. Update
 FjordHub before using the split-storage fields from the FjordLens catalog manifest.
 
-For an installed FjordLens, open the app's **Indstillinger → Filplaceringer**.
+For an installed FjordLens, open the app's **Settings → File locations**.
 Select **Originaler** or **Konverterede filer**, then choose a Proxmox storage
 pool or enter an absolute path to an already mounted local/NAS/NFS folder.
-Choose **Kopiér** to retain the old files, or **Flyt** to remove them after
+Choose **Copy** to retain the old files, or **Move** to remove them after
 verification. Move one folder at a time; this also works for older installations
 where both folders initially share the upload root. They can later be moved back
 onto the same disk using separate folders (for example `uploads/originals` and
@@ -135,8 +136,8 @@ Docker metrics remain available, and existing tokens keep their original access
 until an administrator selects extra apps. See the
 [API contract](docs/app-data-integration.md).
 
-Administrators can create named tokens under **Indstillinger → Adgangstokens**,
-with a lifetime of 30, 90 or 365 days, or **Udløber aldrig** (no expiry). Copy the token when it is created: only
+Administrators can create named tokens under **Settings → Access tokens**,
+with a lifetime of 30, 90 or 365 days, or **Never expires** (no expiry). Copy the token when it is created: only
 its SHA-256 hash is stored, and the full token cannot be displayed again.
 The same page lists expiry, last use (UTC) and a revoke button.
 
@@ -294,7 +295,9 @@ Any Docker Compose project can join the catalog:
 
 Apps can optionally integrate with the hub's user API (`/api/hub/apps/authenticate`, `/api/hub/user-sync`, `/api/hub/sso-verify`) to share the hub's user accounts and accept SSO logins instead of keeping their own.
 
-In **Brugere → Rediger**, administrators can select **Kræv opdatering af email ved næste åbning**. The requirement belongs to the shared account and also applies to existing sessions. FjordHub opens the account profile; managed apps display a mandatory email form when opened or brought back to the foreground. Saving a valid, unique address in one app clears the requirement for all apps. Users may explicitly confirm their existing valid address. Passwords and session identities are preserved.
+First-login confirmation applies even when an email was prefilled by the administrator. Updated apps present the required email/password fields in their own login flow and save completion centrally; users do not have to switch back to Hub to finish. Current app membership is checked during active sessions, and revocation is distinct from a temporary Hub outage or a required email update.
+
+In **Users → Edit**, administrators can select **Require email update on next opening**. The requirement belongs to the shared account and also applies to existing sessions. FjordHub opens the account profile; managed apps display a mandatory email form when opened or brought back to the foreground. Saving a valid, unique address in one app clears the requirement for all apps. Users may explicitly confirm their existing valid address. Passwords and session identities are preserved.
 
 Update FjordHub and the connected apps to enable this across the installation. App membership responses include `email_required`; protected app APIs return HTTP 403 with `error_code: "email_update_required"` while it is set. Each app's authenticated `/api/auth/email` endpoint derives the Hub identity from its own session and forwards the address to `/api/hub/apps/users/<id>/email` using its app key. The Hub endpoint only completes an outstanding requirement for a member of that app. Validation failures return `ok: true, accepted: false, error` so existing app-key clients can display the specific problem.
 
@@ -413,7 +416,7 @@ registry.json       The default app registry served from this repo
 
 ### FjordFlix: Cloudflare Tunnel and direct video
 
-The FjordFlix installer includes **Adgang og Cloudflare**. Choose No to skip gateway setup, or Yes to follow the DNS and router guide. After app installation, FjordHub configures its own Caddy container and verifies HTTPS with a temporary proof served by that FjordFlix instance before enabling direct delivery. The same guide is available from the gear on the app card. Update both FjordHub and FjordFlix first for an existing installation.
+The FjordFlix installer includes **Access and Cloudflare**. Choose No to skip gateway setup, or Yes to follow the DNS and router guide. After app installation, FjordHub configures its own Caddy container and verifies HTTPS with a temporary proof served by that FjordFlix instance before enabling direct delivery. The same guide is available from the gear on the app card. Update both FjordHub and FjordFlix first for an existing installation.
 
 Certificates and configuration persist in Docker volumes; retries reuse the gateway. Other services occupying ports 80/443 are not changed. You can select an existing reverse proxy instead and configure its media-only route. Failed verification leaves playback settings unchanged. Web and media require different HTTPS domains. DNS and router configuration remain steps in their respective interfaces; automatic dynamic DNS is not included. Test playback from outside the LAN after setup.
 
@@ -426,9 +429,9 @@ The automatic media gateway recognizes the bundled `fjordhub-traefik` HTTP entry
 
 ## Change an app's file location
 
-Open the app's gear menu and use **Filplaceringer**. This is available to hub
+Open the app's gear menu and use **File locations**. This is available to hub
 administrators for configured bind-mount paths declared by the app's installer.
-Choose the app folder, a **Proxmox-lager**, and a **Mappenavn**. FjordHub
+Choose the app folder, a **Proxmox storage**, and a **Folder name**. FjordHub
 reads eligible storages from the configured Proxmox node (including ones not yet
 attached to the LXC), displays capacity and flags the system storage pool.
 It computes the destination itself; users do not enter Linux paths. Missing
@@ -453,12 +456,12 @@ LXC: check the source, select an unused `mpN`, back up the LXC configuration,
 attach storage and reboot the LXC. Finish uploads before running them. The
 commands refuse to hide a nonempty destination or replace a conflicting mount.
 The browser checks every five seconds after each response and survives the
-restart. **Start flytning/kopiering** becomes available once the matching mount
+restart. **Start transfer** becomes available once the matching mount
 is visible; starting still requires a click and a fresh server-side check.
 The access-permissions dialog similarly polls until storage becomes visible,
 without requiring a restart or starting a file operation.
 
-**Kopiér filer og skift placering** checks the destination and available space,
+**Copy files and change location** checks the destination and available space,
 pauses the app's Compose services, copies and verifies files with SHA-256, and
 updates only the selected `.env` entry. Existing Compose overrides and secrets
 are retained. Only previously running services are restarted; the operation
@@ -466,7 +469,7 @@ waits for their running/healthy state. It never pulls or builds new app images.
 Finish uploads before starting. The settings dialog can be closed and reopened
 while the copy runs.
 
-Choose **Kopiér** (default) to retain the original files, or **Flyt** to reclaim
+Choose **Copy** (default) to retain the original files, or **Move** to reclaim
 the old space automatically. Move first makes the same verified copy, switches
 the configuration and waits for previously running services to start successfully.
 Only then does it remove the unchanged originals. A stopped app stays stopped;
@@ -499,11 +502,11 @@ FjordHub self-update are blocked while migration is in progress.
 
 After creating the first administrator, FjordHub signs them in and offers optional
 email setup for password resets. They can test and save SMTP settings or choose
-**Gør det senere** and configure email later under **Indstillinger → Generelt**.
-An optional **Lageradgang** step follows email setup. It checks the restricted
+**Do it later** and configure email later under **Settings → General**.
+An optional **Storage access** step follows email setup. It checks the restricted
 Proxmox connection and can be skipped. Actual media mounts are selected later
 inside FjordFlix. Both connection setup and checking are available from
-**Indstillinger → Lageradgang**. See [Proxmox installation and storage access](docs/proxmox-storage.md).
+**Settings → Storage access**. See [Proxmox installation and storage access](docs/proxmox-storage.md).
 Unfinished setup resumes on the administrator’s next login. Existing installations
 and additional user accounts are not enrolled in this guide.
 
@@ -512,7 +515,7 @@ and additional user accounts are not enrolled in this guide.
 Uninstalling an app such as FjordFlix from the dashboard removes its Compose
 containers and project networks. It preserves bind-mounted files, Docker volumes,
 media, databases, the checkout and settings. This also applies to mounts where
-**Få fuld adgang** has enabled writing. Uninstallation never walks into those
+**Grant full access** has enabled writing. Uninstallation never walks into those
 folders or revokes their file permissions.
 
 To remove FjordHub itself, run this from the Docker host (inside its LXC, if used),
