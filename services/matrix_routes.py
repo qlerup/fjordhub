@@ -2,6 +2,7 @@
 from flask import Blueprint, Response, current_app, jsonify, render_template, request, stream_with_context
 from urllib.parse import quote, urlsplit
 import requests
+import tempfile
 from flask_login import current_user
 
 from services.matrix_hub import MatrixError, validate_domain, SYNAPSE_NAME
@@ -73,7 +74,10 @@ def create_matrix_blueprint(hub, auth):
         max_size = 100 * 1024 * 1024
         if request.content_length is not None and request.content_length > max_size:
             return private({"errcode": "M_TOO_LARGE", "error": "Filen er for stor (maks. 100 MB)."}, 413)
-        allowed_request = ("Authorization", "Content-Type", "Content-Length",
+        # Do not forward the caller's Content-Length alongside a streaming
+        # Werkzeug request body. Requests can add Transfer-Encoding: chunked,
+        # producing both length headers and causing Synapse to reject logins.
+        allowed_request = ("Authorization", "Content-Type",
                            "Accept", "Accept-Language", "Range", "If-None-Match",
                            "If-Modified-Since", "If-Match", "Origin",
                            "Access-Control-Request-Method", "Access-Control-Request-Headers")
@@ -81,12 +85,32 @@ def create_matrix_blueprint(hub, auth):
         headers["Accept-Encoding"] = "identity"
         headers["X-Forwarded-For"] = request.remote_addr or "127.0.0.1"
         headers["X-Forwarded-Proto"] = "https"
+        body = None
         try:
+            if request.method in ("POST", "PUT"):
+                # Bound memory and total upload size. Spooled files are seekable,
+                # so requests sends exactly one Content-Length, not chunked.
+                body = tempfile.SpooledTemporaryFile(max_size=1024 * 1024)
+                total = 0
+                while True:
+                    chunk = request.stream.read(min(65536, max_size - total + 1))
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > max_size:
+                        return private({"errcode": "M_TOO_LARGE", "error": "Filen er for stor (maks. 100 MB)."}, 413)
+                    body.write(chunk)
+                body.seek(0)
+                headers["Content-Length"] = str(total)
             upstream = requests.request(
-                request.method, target, headers=headers, data=request.stream if request.method in ("POST", "PUT") else None,
+                request.method, target, headers=headers,
+                data=body if body is not None else None,
                 timeout=(5, 55), stream=True, allow_redirects=False)
         except requests.RequestException:
             return private({"errcode": "M_UNKNOWN", "error": "Matrix-serveren svarer ikke."}, 503)
+        finally:
+            if body is not None:
+                body.close()
 
         forwarded = ("Content-Type", "Content-Length", "Content-Encoding", "ETag",
                      "Last-Modified", "Cache-Control", "Content-Range", "Accept-Ranges",

@@ -189,3 +189,41 @@ def test_matrix_proxy_forwards_only_matrix_headers_and_needs_ready_host():
         well_known = client.get("/.well-known/matrix/client",
                                 base_url="https://hub.example.dk")
         assert well_known.json == {"m.homeserver": {"base_url": "https://hub.example.dk"}}
+
+
+def test_matrix_proxy_login_upload_uses_single_content_length():
+    """Synapse rejects requests mixing Content-Length and Transfer-Encoding.
+
+    Prepare the actual outbound request inside the mocked upstream call, while
+    the bounded spool is still open, so this catches regressions in body encoding.
+    """
+    import app as fjordhub
+    import requests
+    from types import SimpleNamespace
+
+    payload = b'{"type":"m.login.password","identifier":{"type":"m.id.user","user":"qlerup"},"password":"test-only"}'
+    captured = {}
+
+    def fake_upstream(method, url, **kwargs):
+        prepared = requests.Request(method, url, headers=kwargs["headers"], data=kwargs["data"]).prepare()
+        captured["headers"] = dict(prepared.headers)
+        captured["body"] = prepared.body.read()
+        reply = b'{"errcode":"M_FORBIDDEN","error":"Invalid username or password"}'
+        return SimpleNamespace(
+            status_code=403,
+            headers={"Content-Type": "application/json", "Content-Length": str(len(reply))},
+            raw=SimpleNamespace(stream=lambda *args, **kw: iter([reply])),
+            close=lambda: None,
+        )
+
+    with patch.object(fjordhub._matrix_hub, "_state", return_value={
+        "phase": "ready", "domain": "hub.example.dk"
+    }), patch("services.matrix_routes.requests.request", side_effect=fake_upstream):
+        client = fjordhub.app.test_client()
+        result = client.post("/_matrix/client/v3/login", base_url="https://hub.example.dk",
+                             data=payload, content_type="application/json")
+        assert result.status_code == 403
+        assert result.json["errcode"] == "M_FORBIDDEN"
+        assert captured["body"] == payload
+        assert captured["headers"]["Content-Length"] == str(len(payload))
+        assert "Transfer-Encoding" not in captured["headers"]
