@@ -40,7 +40,8 @@ def test_all_titles_are_delivered_across_bounded_messages():
         assert f'Title {i} ' in '\n'.join(messages)
     assert 'Ubegrænset seeding' in messages[0]
     assert len(messages) == 24
-    assert all(message.count('🎬 ') == 5 for message in messages)
+    import re
+    assert all(len(re.findall(r'^\d+\. ', message, re.MULTILINE)) == 5 for message in messages)
     assert '1/24' in messages[0] and '24/24' in messages[-1]
 
 
@@ -53,7 +54,9 @@ def test_rich_message_has_clear_titles_and_escapes_file_names():
     text = torrent_messages(dict(torrents=[dict(name='<img src=x> & test', state='uploading',
         progress=1, seeding_unlimited=True, seeding_time=4500, ratio=.25, upspeed=2*1024**2)]))[0]
     rendered = torrent_message_html(text)
-    assert '<strong>🎬 1. &lt;img src=x&gt; &amp; test</strong>' in rendered
+    assert '<strong>1. &lt;img src=x&gt; &amp; test</strong>' in rendered
+    assert '<h3>FjordSeed · Seeding</h3>' in rendered
     assert '<img ' not in rendered
     assert '1 t 15 min' in text and '2 MiB/s' in text
     assert 'Download: 100' not in text
+    assert not any(ord(char) >= 0x1F000 for char in text)

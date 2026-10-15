@@ -181,7 +181,7 @@ class FjordBot:
     async def send(self, room_id, body):
         # Payloads are encrypted; a new device must later be verified manually in Element X.
         content = {"msgtype": "m.text", "body": body[:8000]}
-        if body.startswith(('🌱 FjordSeed', '📦 FjordSeed')):
+        if body.startswith(('FjordSeed · Seeding', 'FjordSeed · Downloads')):
             content.update(format='org.matrix.custom.html', formatted_body=torrent_message_html(body[:8000]))
         await self.client.room_send(
             room_id, "m.room.message", content,
