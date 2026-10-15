@@ -21,6 +21,7 @@
       const response = await fetch('/api/matrix/status', {credentials:'same-origin',cache:'no-store'});
       if (!response.ok) return;
       const data = await response.json();
+      if (data.domain) $('matrix-bot-id').textContent = '@fjordhub-bot:' + data.domain;
       $('matrix-phase').textContent = data.phase;
       $('matrix-server').textContent = data.server;
       $('matrix-bot').textContent = data.bot_ready ? 'Online' : data.bot;

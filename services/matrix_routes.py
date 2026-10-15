@@ -39,7 +39,7 @@ def create_matrix_blueprint(hub, auth):
         try:
             domain = validate_domain(data.get("domain"))
             state = hub._state()
-            if state.get("phase") == "installing":
+            if state.get("phase") == "installing" and hub._installer_active():
                 raise MatrixError("En Matrix-installation er allerede i gang.")
             if state.get("phase") == "ready":
                 raise MatrixError("Matrix er allerede installeret.")

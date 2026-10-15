@@ -97,8 +97,19 @@ class MatrixHub:
         except docker.errors.NotFound:
             return "not_installed"
 
+    @staticmethod
+    def _installer_active():
+        return any(t.name == "fjordhub-matrix-installer" and t.is_alive()
+                   for t in threading.enumerate())
+
     def status(self):
         data = self._state()
+        phase = data.get("phase", "not_installed")
+        message = data.get("message", "")
+        if phase == "installing" and not self._installer_active() and (
+                time.time() - float(data.get("started_at", 0)) > 20):
+            phase = "error"
+            message = "Installationen blev afbrudt. Prøv igen med samme domæne."
         server = "unavailable"
         bot = "unavailable"
         try:
@@ -111,8 +122,8 @@ class MatrixHub:
         return {
             "domain": data.get("domain", ""),
             "url": "https://" + data["domain"] if data.get("domain") else "",
-            "phase": data.get("phase", "not_installed"),
-            "message": data.get("message", ""),
+            "phase": phase,
+            "message": message,
             "server": server, "bot": bot,
             "bot_ready": (bot == "running" and
                           time.time() - float(runtime.get("updated", 0)) < 120 and
@@ -127,7 +138,8 @@ class MatrixHub:
             old = self._state()
             if old.get("domain") and old["domain"] != domain:
                 raise MatrixError("Matrix-domænet kan ikke ændres efter installation. Bevar eksisterende identiteter og data.")
-            if old.get("phase") == "installing":
+            if old.get("phase") == "installing" and (
+                    self._installer_active() or time.time() - float(old.get("started_at", 0)) < 20):
                 raise MatrixError("Matrix-installationen kører allerede.")
             if old.get("phase") == "ready":
                 raise MatrixError("Matrix er allerede installeret.")
@@ -190,18 +202,28 @@ class MatrixHub:
             bot_cfg_path = self.bot_dir / "config.json"
             cfg = self._load(bot_cfg_path)
             if not cfg.get("password"):
-                password = secrets.token_urlsafe(36)
-                server = client.containers.get(SYNAPSE_NAME)
-                command = ["register_new_matrix_user", "-c", "/data/homeserver.yaml",
-                           "-u", "fjordhub-bot", "-p", password, "--no-admin", "http://127.0.0.1:8008"]
-                result = server.exec_run(command)
-                if result.exit_code != 0:
-                    # Retrying a partial install must not silently reset an existing identity.
-                    raise MatrixError("Kunne ikke oprette bot-kontoen. Kontrollér Synapse-loggen.")
-                cfg = {"user_id": "@fjordhub-bot:" + domain, "password": password,
-                       "allowed_users": [], "monitor_token": monitor_token}
+                cfg = {"user_id": "@fjordhub-bot:" + domain,
+                       "password": secrets.token_urlsafe(36), "allowed_users": [],
+                       "monitor_token": monitor_token}
                 self._save(bot_cfg_path, cfg)
-            elif monitor_token and not cfg.get("monitor_token"):
+            if not cfg.get("registered"):
+                # A retried install may have registered the bot just before interruption.
+                response = requests.post(
+                    "http://" + SYNAPSE_NAME + ":8008/_matrix/client/v3/login",
+                    json={"type": "m.login.password", "identifier": {
+                        "type": "m.id.user", "user": cfg["user_id"]},
+                        "password": cfg["password"]}, timeout=10)
+                if not response.ok:
+                    server = client.containers.get(SYNAPSE_NAME)
+                    command = ["register_new_matrix_user", "-c", "/data/homeserver.yaml",
+                               "-u", "fjordhub-bot", "-p", cfg["password"],
+                               "--no-admin", "http://127.0.0.1:8008"]
+                    result = server.exec_run(command)
+                    if result.exit_code != 0:
+                        raise MatrixError("Kunne ikke oprette bot-kontoen. Kontrollér Synapse-loggen.")
+                cfg["registered"] = True
+                self._save(bot_cfg_path, cfg)
+            if monitor_token and not cfg.get("monitor_token"):
                 cfg["monitor_token"] = monitor_token
                 self._save(bot_cfg_path, cfg)
             self._save_state(message="Bygger den krypterede FjordHub-bot...")
