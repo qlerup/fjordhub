@@ -698,7 +698,7 @@ def packages():
             package_copy["installed_version"] = installed_version
             package_copy["update_available"] = installed_version != catalog_version
             installed.append(package_copy)
-    return render_template("packages.html", packages=installed, matrix_status=_matrix_hub.status(), active_page="packages")
+    return render_template("packages.html", packages=installed, active_page="packages")
 
 
 @app.route("/store")

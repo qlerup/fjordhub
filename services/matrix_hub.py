@@ -4,6 +4,8 @@ Synapse and the bot are services, not FjordHub catalog apps. Secrets stay on the
 installation's DATA_DIR, and containers only receive the mounts they need.
 """
 import io
+import logging
+from contextlib import contextmanager
 import json
 import os
 import re
@@ -25,6 +27,16 @@ SYNAPSE_NAME = "fjordhub-matrix"
 BOT_NAME = "fjordhub-matrix-bot"
 NETWORK = "fjord-net"
 DOMAIN_RE = re.compile(r"(?=.{4,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+\Z")
+
+
+@contextmanager
+def managed_docker(**kwargs):
+    """Close Docker SDK clients explicitly, even on errors."""
+    client = docker.from_env(**kwargs)
+    try:
+        yield client
+    finally:
+        client.close()
 
 
 class MatrixError(ValueError):
@@ -104,6 +116,8 @@ class MatrixHub:
 
     def status(self):
         data = self._state()
+        if not isinstance(data, dict):
+            data = {}
         phase = data.get("phase", "not_installed")
         message = data.get("message", "")
         if phase == "installing" and not self._installer_active() and (
@@ -112,12 +126,13 @@ class MatrixHub:
             message = "Installationen blev afbrudt. Prøv igen med samme domæne."
         server = "unavailable"
         bot = "unavailable"
-        try:
-            with docker.from_env(timeout=5) as client:
-                server = self._container_status(client, SYNAPSE_NAME)
-                bot = self._container_status(client, BOT_NAME)
-        except (docker.errors.DockerException, OSError):
-            pass
+        if phase != "not_installed":
+            try:
+                with managed_docker(timeout=5) as client:
+                    server = self._container_status(client, SYNAPSE_NAME)
+                    bot = self._container_status(client, BOT_NAME)
+            except Exception:
+                logging.getLogger(__name__).warning("Matrix runtime status unavailable", exc_info=True)
         runtime = self._load(self.bot_dir / "health.json")
         return {
             "domain": data.get("domain", ""),
@@ -166,7 +181,7 @@ class MatrixHub:
         host_bot = self._host_dir(self.bot_dir)
         (self.root / "synapse").mkdir(parents=True, exist_ok=True)
         self._save_state(message="Henter Synapse og klargør serverdata...")
-        with docker.from_env(timeout=600) as client:
+        with managed_docker(timeout=600) as client:
             try:
                 client.networks.get(NETWORK)
             except docker.errors.NotFound:
@@ -298,7 +313,7 @@ with open(p, 'w', encoding='utf-8') as f: yaml.safe_dump(config, f, sort_keys=Fa
         if state.get("phase") != "ready":
             raise MatrixError("Installér Matrix først.")
         password = secrets.token_urlsafe(27)
-        with self._lock, docker.from_env(timeout=30) as client:
+        with self._lock, managed_docker(timeout=30) as client:
             container = client.containers.get(SYNAPSE_NAME)
             if container.status != "running":
                 raise MatrixError("Matrix-serveren kører ikke.")
