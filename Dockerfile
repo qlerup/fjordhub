@@ -11,7 +11,8 @@ RUN apk add --no-cache \
     git \
     openssh-client \
     util-linux \
-    nfs-utils
+    nfs-utils \
+    tzdata
 
 WORKDIR /app
 

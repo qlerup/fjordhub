@@ -36,6 +36,9 @@
       $('matrix-phase').textContent = data.phase;
       $('matrix-server').textContent = data.server;
       $('matrix-bot').textContent = data.bot_ready ? 'Online' : data.bot;
+      $('matrix-bot-update').hidden = data.phase !== 'ready';
+      $('matrix-bot-update').disabled = data.bot_update === 'running';
+      $('matrix-bot-update-message').textContent = data.bot_update_message || '';
       $('matrix-message').textContent = data.message || '';
       $('matrix-install').disabled = data.phase === 'ready' || data.phase === 'installing' || !previewDomain;
       $('matrix-connectivity').hidden = data.phase !== 'ready';
@@ -77,6 +80,16 @@
     } catch (err) {
       result.textContent = '❌ Kunne ikke nå Matrix gennem domænet: ' + err.message;
     }
+  });
+  $('matrix-bot-update').addEventListener('click', async () => {
+    $('matrix-bot-update').disabled = true;
+    try {
+      const result = await post('/api/matrix/bot/update', {});
+      message(result.message);
+    } catch (err) {
+      message(err.message, true);
+    }
+    await refresh();
   });
   $('matrix-user-form').addEventListener('submit', async e => {
     e.preventDefault();

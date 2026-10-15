@@ -8,6 +8,7 @@ import io
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -23,8 +24,8 @@ SESSION = ROOT / "session.json"
 SERVER = os.environ.get("MATRIX_HOMESERVER", "")
 API = os.environ.get("FJORDHUB_RESOURCE_API", "")
 COMMANDS = {
-    "hjælp": "Skriv: status, apps eller rapport. FjordHub sender også beskeder om appnedbrud.",
-    "help": "Skriv: status, apps eller rapport. FjordHub sender også beskeder om appnedbrud.",
+    "hjælp": "Skriv: status, apps, rapport eller spørg: Er der downloadet noget nyt i dag?",
+    "help": "Skriv: status, apps, rapport eller spørg: Er der downloadet noget nyt i dag?",
 }
 
 
@@ -83,6 +84,41 @@ def status_text(snapshot, details=False):
     )
 
 
+
+def asks_about_todays_downloads(message):
+    text = message.strip().lower()
+    today = "i dag" in text or "idag" in text
+    subject = any(term in text for term in ("download", "hentet", "færdig", "ny", "rss"))
+    return today and subject
+
+
+def todays_downloads_text():
+    token = read(CONFIG).get("monitor_token")
+    if not token:
+        raise RuntimeError("FjordHub-bottens læseadgang mangler.")
+    response = requests.get(
+        "http://fjordhub:8080/api/matrix/bot/downloads/today",
+        headers={"Authorization": "Bearer " + token}, timeout=10)
+    response.raise_for_status()
+    payload = response.json()
+    if not payload.get("ok"):
+        raise RuntimeError("FjordHub kan ikke hente FjordSeed-hændelser.")
+    done = payload.get("completed", [])
+    started = payload.get("started", [])
+    if not done and not started:
+        return "FjordSeed: Ingen nye downloads registreret i dag."
+    parts = ["FjordSeed i dag (" + payload["date"] + "):"]
+    if done:
+        parts.append("✅ Færdigdownloadet:\n" + "\n".join(
+            "• " + item["filename"] for item in done[:15]))
+    if started:
+        parts.append("⬇️ Startet, men ikke færdig:\n" + "\n".join(
+            "• " + item["filename"] for item in started[:15]))
+    if payload.get("more") or len(done) > 15 or len(started) > 15:
+        parts.append("Der er flere filer end vist her.")
+    return "\n\n".join(parts)
+
+
 class FjordBot:
     def __init__(self):
         cfg = read(CONFIG)
@@ -137,6 +173,9 @@ class FjordBot:
         try:
             if command in COMMANDS:
                 await self.send(room.room_id, COMMANDS[command])
+            elif asks_about_todays_downloads(command):
+                answer = await asyncio.to_thread(todays_downloads_text)
+                await self.send(room.room_id, answer)
             elif command in ("status", "apps", "rapport"):
                 snapshot = await asyncio.to_thread(resources)
                 if command == "rapport":
@@ -144,7 +183,7 @@ class FjordBot:
                 else:
                     await self.send(room.room_id, status_text(snapshot, details=command == "apps"))
             else:
-                await self.send(room.room_id, "Jeg forstår: status, apps, rapport eller hjælp.")
+                await self.send(room.room_id, "Jeg forstår: status, apps, rapport, hjælp eller spørg til dagens downloads.")
         except Exception:
             log.exception("Failed to handle bot command")
             await self.send(room.room_id, "Kunne ikke hente oplysninger lige nu.")

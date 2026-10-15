@@ -607,3 +607,32 @@ Security and operations:
   first version does not yet offer automatic updates or deletion.
 - Arbitrary AI questions, general-purpose server file sending and advanced
   verified-device functionality are not yet enabled.
+
+
+### Notifications from FjordVPN and FjordSeed
+
+FjordHub receives authenticated, typed app events at
+`POST /api/hub/apps/notifications` using each app's existing
+`X-Hub-Key` and `app_id`. Only `fjordvpn` can submit
+`vpn_failed`/`vpn_recovered`; only `fjordseed` can submit
+`rss_started`, `rss_completed`, `download_started` and
+`download_completed`. Arbitrary chat messages or recipient addresses
+are intentionally not supported. Event IDs are deduplicated across retries
+in `DATA_DIR/matrix-app-events.sqlite3`; notifications enter the existing
+Matrix bot outbox only for previously linked/allowlisted Matrix users.
+
+FjordVPN warns after a sustained failure and lists affected VPN profile names,
+including recovery notifications. FjordSeed only pushes actual RSS download
+*starts*, with the torrent name; completion events and manual downloads are
+recorded for on-demand queries without causing notification noise.
+
+The encrypted bot can answer questions such as "Er der downloadet noget nyt i
+dag?" with completed and started file names registered **today in
+Europe/Copenhagen**. The answer is based on live app-origin events and
+persistence; it is not an unrestricted query of the downloader database.
+Previously completed files before this update are not retroactively indexed.
+
+**Update order:** FjordHub first, then FjordVPN and FjordSeed, then open
+`Integrationer → Matrix / Element X → Opdater FjordHub-botten`. The last
+step builds a new bot image without resetting its Matrix account, verified
+login state, encrypted key store or previous conversation.

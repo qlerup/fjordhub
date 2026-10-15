@@ -33,6 +33,7 @@ from services.resource_monitor import ResourceMonitor
 from services.package_catalog import PackageCatalog
 from services.package_manager import PackageManager, PackageError
 from services.matrix_hub import MatrixHub
+from services.notification_events import NotificationStore, NotificationError
 from services.matrix_routes import create_matrix_blueprint
 from services.password_reset import PasswordResetService
 from services.nvidia_devices import probe_gpu
@@ -122,6 +123,7 @@ _app_operation_lock = threading.RLock()
 resource_monitor = ResourceMonitor(docker_mgr)
 package_manager  = PackageManager(DATA_DIR)
 _matrix_hub = MatrixHub(DATA_DIR)
+_app_notifications = NotificationStore(DATA_DIR)
 app.register_blueprint(create_matrix_blueprint(_matrix_hub, _auth))
 
 # Five failed password attempts from the same caller lock authentication for five minutes.
@@ -217,6 +219,8 @@ _AUTH_EXEMPT = {
     "api_hub_sso_verify",
     "matrix_integration.matrix_proxy",
     "matrix_integration.matrix_well_known",
+    "api_hub_app_notifications",
+    "api_matrix_bot_downloads_today",
 }
 
 _sso_tokens: dict = {}
@@ -3498,6 +3502,46 @@ def api_registry_status():
 @app.route("/api/health")
 def health():
     return jsonify({"status": "ok", "docker": docker_mgr.client is not None})
+
+
+
+# App-origin notifications are authenticated with each installed app's existing
+# FjordHub key. They do not accept arbitrary text, recipients, or commands.
+@app.post("/api/hub/apps/notifications")
+def api_hub_app_notifications():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify(ok=False, error="Ugyldig hændelse."), 400
+    app_id = payload.get("app_id")
+    if app_id not in ("fjordvpn", "fjordseed") or not _auth.verify_hub_key(
+            app_id, request.headers.get("X-Hub-Key", "")):
+        return jsonify(ok=False, error="Ugyldig appnøgle."), 403
+    try:
+        result = _app_notifications.record(app_id, payload, _matrix_hub)
+    except NotificationError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+    except Exception:
+        app.logger.exception("Failed to persist Matrix notification")
+        return jsonify(ok=False, error="Notifikationen kunne ikke gemmes."), 503
+    response = jsonify(result)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.get("/api/matrix/bot/downloads/today")
+def api_matrix_bot_downloads_today():
+    # The bot calls via its private docker network, using its existing monitor
+    # token. Browser sessions and regular app keys cannot access this endpoint.
+    if not is_local_request(request.remote_addr, request.headers):
+        return jsonify(ok=False, error="Kræver intern adgang."), 403
+    authorization = request.headers.get("Authorization", "").split()
+    token = authorization[1] if len(authorization) == 2 and authorization[0].lower() == "bearer" else ""
+    saved = _matrix_hub._state().get("monitor_token", "")
+    if not token or not saved or not secrets.compare_digest(token, saved) or not _auth.authenticate_access_token(token):
+        return jsonify(ok=False, error="Ugyldigt bot-token."), 401
+    response = jsonify(_app_notifications.downloads_today())
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 def _reconcile_fjordlens_memory_loop():
