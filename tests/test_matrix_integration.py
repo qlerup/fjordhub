@@ -101,3 +101,91 @@ def test_matrix_route_requires_authentication_and_csrf():
             assert client.post("/api/matrix/test", json={"user_id": "x"},
                                headers={"X-CSRF-Token": "bad"}).status_code == 403
             notify.assert_not_called()
+
+def test_matrix_installer_uses_existing_public_origin_without_manual_domain():
+    """An existing FjordHub HTTPS origin is the Matrix identity."""
+    import app as fjordhub
+    from services.auth import AuthService
+    from services.install_state import InstallState
+    from services.transport_security import TransportPolicy
+    with TemporaryDirectory() as tmp:
+        auth = AuthService(Path(tmp) / "users.db")
+        admin_id = auth.create_user("matrix-owner", "securepassword", role="admin")
+        with patch.object(fjordhub, "_auth", auth), patch.object(
+                fjordhub, "_install_state", InstallState(Path(tmp))), patch.object(
+                fjordhub._matrix_hub, "_state", return_value={}), patch.object(
+                fjordhub._matrix_hub, "begin_install") as begin, patch.object(
+                fjordhub._matrix_hub, "_save_state"), patch.dict(
+                fjordhub.app.config, {"FJORDHUB_TRANSPORT_POLICY":
+                                      TransportPolicy.from_config("https://hub.example.dk")}):
+            client = fjordhub.app.test_client()
+            with client.session_transaction() as session:
+                session["_user_id"] = auth.get_by_id(admin_id).get_id()
+                session["_fresh"] = True
+                session["hub_csrf"] = "valid-matrix-csrf"
+            result = client.post("/api/matrix/install", json={},
+                                 headers={"X-CSRF-Token": "valid-matrix-csrf"})
+            assert result.status_code == 202
+            assert begin.call_count == 1
+            assert begin.call_args.args[0] == "hub.example.dk"
+            assert begin.call_args.args[1].startswith("fh_at_")
+            result = client.post("/api/matrix/install", json={"domain": "attacker.example.com"},
+                                 headers={"X-CSRF-Token": "valid-matrix-csrf"})
+            assert result.status_code == 202
+            assert begin.call_args.args[0] == "hub.example.dk"
+
+
+def test_matrix_install_needs_https_on_existing_domain():
+    import app as fjordhub
+    from services.auth import AuthService
+    from services.install_state import InstallState
+    from services.transport_security import TransportPolicy
+    with TemporaryDirectory() as tmp:
+        auth = AuthService(Path(tmp) / "users.db")
+        user_id = auth.create_user("matrix-owner", "securepassword", role="admin")
+        with patch.object(fjordhub, "_auth", auth), patch.object(
+                fjordhub, "_install_state", InstallState(Path(tmp))), patch.object(
+                fjordhub._matrix_hub, "_state", return_value={}), patch.object(
+                fjordhub._matrix_hub, "begin_install") as begin, patch.dict(
+                fjordhub.app.config, {"FJORDHUB_TRANSPORT_POLICY": TransportPolicy.from_config()}):
+            client = fjordhub.app.test_client()
+            with client.session_transaction() as session:
+                session["_user_id"] = auth.get_by_id(user_id).get_id()
+                session["_fresh"] = True
+                session["hub_csrf"] = "valid-matrix-csrf"
+            headers = {"X-CSRF-Token": "valid-matrix-csrf"}
+            assert client.post("/api/matrix/install", json={}, headers=headers).status_code == 400
+            assert client.post("/api/matrix/install", json={}, headers={
+                **headers, "Origin": "https://other.example.dk"
+            }, base_url="https://hub.example.dk").status_code == 400
+            begin.assert_not_called()
+
+
+def test_matrix_proxy_forwards_only_matrix_headers_and_needs_ready_host():
+    import app as fjordhub
+    from types import SimpleNamespace
+    body = b'{"versions":["v1.16"]}'
+    state = {"phase": "ready", "domain": "hub.example.dk"}
+    fake = SimpleNamespace(status_code=200, headers={
+        "Content-Type": "application/json", "Content-Length": str(len(body)),
+        "Access-Control-Allow-Origin": "*", "Set-Cookie": "should-not-forward"
+    }, raw=SimpleNamespace(stream=lambda *a, **k: iter((body,))),
+       close=lambda: None)
+    with patch.object(fjordhub._matrix_hub, "_state", return_value=state), patch(
+            "services.matrix_routes.requests.request", return_value=fake) as upstream:
+        client = fjordhub.app.test_client()
+        response = client.get("/_matrix/client/versions", base_url="https://hub.example.dk",
+                              headers={"Authorization": "Bearer matrix-token",
+                                       "Cookie": "session-is-not-forwarded"})
+        assert response.status_code == 200
+        assert response.json["versions"] == ["v1.16"]
+        assert "Set-Cookie" not in response.headers
+        args, kwargs = upstream.call_args
+        assert args[1] == "http://fjordhub-matrix:8008/_matrix/client/versions"
+        assert kwargs["headers"]["Authorization"] == "Bearer matrix-token"
+        assert "Cookie" not in kwargs["headers"]
+        assert client.get("/_matrix/client/versions", base_url="https://other.example.dk").status_code == 404
+        assert upstream.call_count == 1
+        well_known = client.get("/.well-known/matrix/client",
+                                base_url="https://hub.example.dk")
+        assert well_known.json == {"m.homeserver": {"base_url": "https://hub.example.dk"}}

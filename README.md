@@ -561,16 +561,23 @@ Update FjordHub before updating Fjord3D. Existing app permissions and installati
 Open **Integrationer → Matrix / Element X** as a FjordHub administrator.
 This is a built-in system integration, not a catalog application.
 
-1. Choose a permanent public Matrix hostname, such as matrix.example.dk,
-   and click Installer Matrix. FjordHub creates a Synapse container plus an
-   encrypted bot service, with deployment progress shown in the UI.
-2. Expose that hostname via an HTTPS reverse proxy or Cloudflare Tunnel,
-   with upstream targeting FjordHub's existing Traefik HTTP entrypoint.
-   The bundled Traefik itself does not provision public HTTPS certificates.
-   Externally test: https://matrix.example.dk/_matrix/client/versions
+1. Open FjordHub at its existing public HTTPS address, for example
+   https://hub.example.dk, and choose Installer Matrix. If FJORDHUB_PUBLIC_URL
+   is configured, that URL is used automatically even when administering over
+   the LAN. No additional domain or Cloudflare Tunnel route is needed.
+   Matrix will use https://hub.example.dk as its homeserver and the permanent
+   server identity will be hub.example.dk.
+2. The bundled Traefik routes Matrix's client and media endpoints when the
+   tunnel points to its HTTP entrypoint. If your *existing* Cloudflare Tunnel
+   points directly to FjordHub's published app port (such as 8091), FjordHub
+   safely proxies /_matrix/client and /_matrix/media to the internal Synapse
+   container instead. /.well-known/matrix/client handles homeserver discovery.
+   There is no new Cloudflare credential, API token or DNS step.
+   Run the public connection test on the integration page (which checks
+   https://hub.example.dk/_matrix/client/versions).
 3. Create a Matrix user from FjordHub. Save the one-time password and log
    into Element X on iOS with the explicit HTTPS homeserver URL. Invite
-   @fjordhub-bot:matrix.example.dk to an encrypted DM and type 'hjælp'.
+   @fjordhub-bot:hub.example.dk to an encrypted DM and type 'hjælp'.
 4. Bot commands: hjælp, status, apps, rapport. The last command uploads
    a separately encrypted JSON file with status information. Push-test
    messages are queued from FjordHub after the private chat is established.
@@ -591,7 +598,10 @@ Security and operations:
 - Synapse database, signing keys and files are under DATA_DIR/matrix/synapse,
   while the bot account, credentials, key store and notification queue live
   under DATA_DIR/matrix/bot. Back up these directories securely together.
-- The homeserver domain is an immutable identity. Do not reuse container
+- The homeserver domain reuses FjordHub's current public hostname and is an
+  immutable Matrix identity. If you later move FjordHub to another hostname,
+  the original hostname must continue to serve the Matrix client endpoints.
+  Do not reuse container
   names on a second FjordHub installed on the same Docker daemon.
 - Upgrade Synapse with backups and deliberate change management. The
   first version does not yet offer automatic updates or deletion.

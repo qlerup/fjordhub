@@ -215,6 +215,8 @@ _AUTH_EXEMPT = {
     "api_hub_app_user",
     "api_hub_app_email",
     "api_hub_sso_verify",
+    "matrix_integration.matrix_proxy",
+    "matrix_integration.matrix_well_known",
 }
 
 _sso_tokens: dict = {}

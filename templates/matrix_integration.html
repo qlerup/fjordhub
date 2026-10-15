@@ -16,19 +16,21 @@
       <div><small>Bot</small><strong id="matrix-bot">{{ "Online" if matrix.bot_ready else matrix.bot }}</strong></div>
     </div>
     <p id="matrix-message" role="status">{{ matrix.message }}</p>
+    <button class="btn-open" type="button" id="matrix-connectivity" {% if matrix.phase != 'ready' %}hidden{% endif %}>Test offentlig Matrix-forbindelse</button>
+    <p id="matrix-connectivity-result" aria-live="polite"></p>
   </div>
   <div class="settings-card matrix-card" id="matrix-install-card">
     <div class="settings-card-head"><h2>1. Installer selvhostet Matrix</h2></div>
     <p>Synapse og FjordHub-botten installeres som administrerede Docker-tjenester. Dine data gemmes i FjordHubs vedvarende datamappe. De vises ikke som apps i appoversigten.</p>
     <form id="matrix-install-form">
       <div class="auth-field">
-        <label for="matrix-domain">Offentligt Matrix-domæne</label>
-        <input type="text" id="matrix-domain" autocomplete="off" spellcheck="false" placeholder="matrix.ditdomæne.dk" required value="{{ matrix.domain }}" {% if matrix.phase == 'ready' %}disabled{% endif %}>
-        <small>Du skal pege domænet til FjordHubs Traefik via HTTPS, fx med Cloudflare Tunnel. Brug samme domæne i Element X.</small>
+        <label for="matrix-domain">FjordHubs eksisterende domæne (genbruges automatisk)</label>
+        <input type="text" id="matrix-domain" value="{{ matrix.domain }}" readonly aria-readonly="true" data-hub-public-url="{{ hub_public_url }}">
+        <small>Matrix deler FjordHubs adresse og Cloudflare Tunnel. Du skal ikke oprette et nyt domæne eller ændre tunnelens destination. Åbn FjordHub via HTTPS-adressen for at installere, hvis den ikke allerede er konfigureret i FjordHub.</small>
       </div>
       <button class="btn-install" type="submit" id="matrix-install" {% if matrix.phase in ('ready','installing') %}disabled{% endif %}>{{ "Installeret" if matrix.phase == 'ready' else "Installer Matrix" }}</button>
     </form>
-    <div class="matrix-warning">Matrix-identiteten er bundet til domænet og kan ikke bare ændres bagefter. Der oprettes ikke offentlige brugerkonti, og føderation er slået fra.</div>
+    <div class="matrix-warning">Matrix-identiteten er permanent bundet til FjordHubs eksisterende domæne. Der oprettes ikke offentlige brugerkonti, og føderation er slået fra.</div>
   </div>
   <div class="settings-card matrix-card">
     <div class="settings-card-head"><h2>2. Forbind din Element X-konto</h2></div>

@@ -1,6 +1,17 @@
 (() => {
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
   const $ = id => document.getElementById(id);
+  const domainInput = $('matrix-domain');
+  const configuredUrl = domainInput.dataset.hubPublicUrl || '';
+  const externalOrigin = configuredUrl || (location.protocol === 'https:' ? location.origin : '');
+  const previewDomain = (() => {
+    try {
+      const url = new URL(externalOrigin);
+      if (url.protocol !== 'https:' || (url.port && url.port !== '443')) return '';
+      return url.hostname.toLowerCase();
+    } catch (_) { return ''; }
+  })();
+  if (!domainInput.value) domainInput.value = previewDomain || 'Åbn FjordHub via dit HTTPS-domæne først';
   const message = (text, isError = false) => {
     const node = $('matrix-feedback');
     node.textContent = text;
@@ -26,25 +37,46 @@
       $('matrix-server').textContent = data.server;
       $('matrix-bot').textContent = data.bot_ready ? 'Online' : data.bot;
       $('matrix-message').textContent = data.message || '';
-      $('matrix-install').disabled = data.phase === 'ready' || data.phase === 'installing';
+      $('matrix-install').disabled = data.phase === 'ready' || data.phase === 'installing' || !previewDomain;
+      $('matrix-connectivity').hidden = data.phase !== 'ready';
+      if (data.domain) domainInput.value = data.domain;
       if (data.phase === 'ready') {
         $('matrix-install').textContent = 'Installeret';
-        $('matrix-domain').disabled = true;
       }
       if (data.phase === 'error') message(data.message || 'Installationen fejlede.', true);
     } catch (_) { /* Remain usable when offline. */ }
   };
   $('matrix-install-form').addEventListener('submit', async e => {
     e.preventDefault();
+    if (!previewDomain) {
+      message('Åbn FjordHub via dens offentlige HTTPS-adresse for at installere.', true);
+      return;
+    }
     $('matrix-install').disabled = true;
     try {
-      const data = await post('/api/matrix/install', {domain: $('matrix-domain').value});
+      const data = await post('/api/matrix/install', {origin: externalOrigin});
       message(data.message);
     } catch (err) {
       message(err.message, true);
-      $('matrix-install').disabled = false;
+      $('matrix-install').disabled = !previewDomain;
     }
     refresh();
+  });
+  $('matrix-connectivity').addEventListener('click', async () => {
+    const result = $('matrix-connectivity-result');
+    result.textContent = 'Tester...';
+    try {
+      if (!externalOrigin) throw new Error('Åbn FjordHub via HTTPS først.');
+      const response = await fetch(externalOrigin + '/_matrix/client/versions',
+        {cache: 'no-store', mode: 'cors'});
+      const body = await response.json();
+      if (!response.ok || !Array.isArray(body.versions)) {
+        throw new Error('Matrix API svarer ikke korrekt.');
+      }
+      result.textContent = '✅ Matrix API svarer gennem FjordHubs eksisterende adresse.';
+    } catch (err) {
+      result.textContent = '❌ Kunne ikke nå Matrix gennem domænet: ' + err.message;
+    }
   });
   $('matrix-user-form').addEventListener('submit', async e => {
     e.preventDefault();
