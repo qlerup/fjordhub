@@ -140,6 +140,8 @@ class MatrixHub:
             "phase": phase,
             "message": message,
             "server": server, "bot": bot,
+            "bot_update": data.get("bot_update", "idle"),
+            "bot_update_message": data.get("bot_update_message", ""),
             "bot_ready": (bot == "running" and
                           time.time() - float(runtime.get("updated", 0)) < 120 and
                           runtime.get("connected", False)),
@@ -306,6 +308,55 @@ with open(p, 'w', encoding='utf-8') as f: yaml.safe_dump(config, f, sort_keys=Fa
                 archive.addfile(item, io.BytesIO(data))
         bundle.seek(0)
         client.images.build(fileobj=bundle, custom_context=True, tag=BOT_IMAGE, rm=True, pull=False)
+
+    def update_bot(self):
+        """Rebuild bot after FjordHub code updates; keep data and Matrix keys."""
+        with self._lock:
+            state = self._state()
+            if state.get("phase") != "ready":
+                raise MatrixError("Installér Matrix først.")
+            if state.get("bot_update") == "running" and (
+                    self._installer_active() or
+                    time.time() - float(state.get("bot_update_started_at", 0)) < 600):
+                raise MatrixError("En Matrix-opdatering er allerede i gang.")
+            self._save_state(bot_update="running", bot_update_started_at=time.time(),
+                             bot_update_message="Bygger ny bot...")
+        threading.Thread(target=self._update_bot, daemon=True,
+                         name="fjordhub-matrix-installer").start()
+
+    def _update_bot(self):
+        try:
+            host_bot = self._host_dir(self.bot_dir)
+            with managed_docker(timeout=600) as client:
+                old = client.containers.get(BOT_NAME)
+                if old.labels.get("dk.fjordhub.integration") != "matrix":
+                    raise MatrixError("Bot-containeren tilhører ikke FjordHub.")
+                old_image = old.image.id
+                self._build_bot_image(client)  # Fail before stopping the old bot.
+                configuration = {
+                    "detach": True, "name": BOT_NAME, "network": NETWORK,
+                    "volumes": {host_bot: {"bind": "/config", "mode": "rw"}},
+                    "restart_policy": {"Name": "unless-stopped"},
+                    "environment": {
+                        "MATRIX_HOMESERVER": "http://" + SYNAPSE_NAME + ":8008",
+                        "FJORDHUB_RESOURCE_API": "http://fjordhub:8080/api/integrations/v1/resources"},
+                    "labels": {"dk.fjordhub.integration": "matrix"},
+                }
+                old.stop(timeout=15)
+                old.remove()
+                try:
+                    client.containers.run(BOT_IMAGE, **configuration)
+                except Exception:
+                    logging.getLogger(__name__).exception("Bot restart failed; restoring old image")
+                    client.containers.run(old_image, **configuration)
+                    raise
+        except Exception:
+            logging.getLogger(__name__).exception("Matrix bot upgrade failed")
+            self._save_state(bot_update="error",
+                             bot_update_message="Botopdatering mislykkedes. Kontrollér Docker-loggen.")
+        else:
+            self._save_state(bot_update="idle",
+                             bot_update_message="Botten er opdateret. Krypteringsnøgler er bevaret.")
 
     def create_user(self, username):
         username = validate_username(username)

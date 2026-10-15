@@ -1,0 +1,25 @@
+name: Notification tests
+on:
+  push:
+    paths:
+      - 'services/notification_events.py'
+      - 'services/matrix_bot.py'
+      - 'services/matrix_hub.py'
+      - 'services/matrix_routes.py'
+      - 'app.py'
+      - 'tests/test_app_notifications.py'
+      - '.github/workflows/notifications.yml'
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt pytest tzdata
+      - run: python -m compileall -q app.py services
+      - run: pytest -q tests/test_app_notifications.py tests/test_matrix_status_resilience.py

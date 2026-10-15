@@ -182,6 +182,16 @@ def create_matrix_blueprint(hub, auth):
                             else "Kunne ikke oprette Matrix-brugeren."}, 400)
         return private({"ok": True, **result}, 201)
 
+    @bp.post("/api/matrix/bot/update")
+    def update_bot():
+        if not admin():
+            return private({"ok": False}, 403)
+        try:
+            hub.update_bot()
+        except MatrixError as exc:
+            return private({"ok": False, "error": str(exc)}, 409)
+        return private({"ok": True, "message": "Botten opdateres. Samtaler og nøgler bevares."}, 202)
+
     @bp.post("/api/matrix/test")
     def test_message():
         if not admin():
