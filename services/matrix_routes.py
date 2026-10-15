@@ -66,7 +66,7 @@ def create_matrix_blueprint(hub, auth):
         if ".." in subpath.split("/") or "\\" in subpath or not subpath:
             return private({"errcode": "M_UNRECOGNIZED", "error": "Ugyldig Matrix-sti."}, 400)
         prefix = "client" if request.path.startswith("/_matrix/client/") else "media"
-        safe_path = quote(subpath, safe="/:%@+,-._~!        target = "http://" + SYNAPSE_NAME + ":8008/_matrix/" + prefix + "/" + subpath'()*;=")
+        safe_path = quote(subpath, safe="/:@+-._~")
         target = "http://" + SYNAPSE_NAME + ":8008/_matrix/" + prefix + "/" + safe_path
         if request.query_string:
             target += "?" + request.query_string.decode("latin-1")
