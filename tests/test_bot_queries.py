@@ -43,6 +43,8 @@ def test_all_titles_are_delivered_across_bounded_messages():
     import re
     assert all(len(re.findall(r'^\d+\. ', message, re.MULTILINE)) == 5 for message in messages)
     assert '1/24' in messages[0] and '24/24' in messages[-1]
+    assert '\n\n\n2. Title 1 ' in messages[0]
+    assert '</p><br><p><strong>2. Title 1 ' in torrent_message_html(messages[0])
 
 
 def test_empty_and_truncated_counts_are_explicit():

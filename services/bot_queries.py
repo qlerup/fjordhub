@@ -44,7 +44,7 @@ def progress_bar(fraction):
 
 
 def torrent_message_html(body):
-    blocks = body.split('\n\n')
+    blocks = re.split(r'\n{2,}', body)
     heading, _, summary = blocks[0].partition('\n')
     output = ['<h3>' + escape(heading) + '</h3><p>' + escape(summary) + '</p>']
     for block in blocks[1:]:
@@ -58,7 +58,7 @@ def torrent_message_html(body):
             else:
                 rendered.append(escape(line))
         output.append('<p>' + '<br>'.join(rendered) + '</p>')
-    return ''.join(output)
+    return '<br>'.join(output)
 
 
 ACTIVE_SEEDS = {'uploading', 'stalledUP', 'forcedUP'}
@@ -128,7 +128,7 @@ def torrent_messages(payload, intent='seeding'):
         if current and (items == 5 or len(current) + len(block) + 2 > 5500):
             pages.append(current)
             current, items = '', 0
-        current += ('\n\n' if current else '') + block
+        current += ('\n\n\n' if current else '') + block
         items += 1
     pages.append(current or ('Ingen aktive seedinger.' if intent == 'seeding' else 'Ingen torrents.'))
     heading = 'FjordSeed · Seeding' if intent == 'seeding' else 'FjordSeed · Downloads'
