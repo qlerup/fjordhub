@@ -7,6 +7,15 @@
     <h1>Installerede integrationer</h1>
     <p class="dashboard-sub">Åbn og administrer de værktøjer, du har installeret i FjordHub.</p>
   </div>
+  {% if current_user.is_admin %}
+  <section class="app-section" aria-label="Systemintegrationer">
+    <div class="app-section-header"><h2>Systemintegrationer</h2></div>
+    <a href="{{ url_for('matrix_integration.page') }}" class="package-empty" style="display:flex;align-items:center;justify-content:space-between;gap:16px;text-decoration:none;text-align:left;padding:20px;flex-wrap:wrap">
+      <span><strong style="display:block;font-size:1.08rem">Matrix / Element X</strong><small>Selvhostet krypteret FjordHub-bot, notifikationer og filer</small></span>
+      <span class="btn-open">{{ "Administrer" if matrix_status.phase == "ready" else "Opsæt" }} →</span>
+    </a>
+  </section>
+  {% endif %}
   <div id="package-toast" class="toast" aria-live="polite"></div>
   {% if packages %}
   <div class="app-section-header"><h2>Installeret</h2><span class="section-count">{{ packages|length }}</span></div>
@@ -20,8 +29,8 @@
     <div class="package-empty-icon">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 8V6a6 6 0 0 1 12 0v2"/><path d="M4 8h16l1 13H3L4 8z"/></svg>
     </div>
-    <h2>Du har ikke installeret nogen integrationer endnu</h2>
-    <p>Find kalender, notesblok og flere værktøjer i Integrationsbutik.</p>
+    <h2>Du har ikke installeret ekstra værktøjer endnu</h2>
+    <p>Systemintegrationer administreres ovenfor. Kalender, notesblok og andre værktøjer findes i Integrationsbutik.</p>
     <a href="{{ url_for('app_store') }}" class="btn-install">Gå til Integrationsbutik</a>
   </div>
   {% endif %}

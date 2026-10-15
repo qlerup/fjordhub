@@ -555,3 +555,45 @@ Grant existing users access under **Users** before importing/synchronizing them 
 ## Fjord3D identity migration
 
 Update FjordHub before updating Fjord3D. Existing app permissions and installation registrations are migrated when FjordHub starts. Old installation directory and environment aliases remain supported so mounted data is preserved. Running apps installed manually can be registered from Docker Compose metadata when their checkout is visible through a FjordHub bind mount.
+
+## Matrix / Element X integration
+
+Open **Integrationer → Matrix / Element X** as a FjordHub administrator.
+This is a built-in system integration, not a catalog application.
+
+1. Choose a permanent public Matrix hostname, such as matrix.example.dk,
+   and click Installer Matrix. FjordHub creates a Synapse container plus an
+   encrypted bot service, with deployment progress shown in the UI.
+2. Expose that hostname via an HTTPS reverse proxy or Cloudflare Tunnel,
+   with upstream targeting FjordHub's existing Traefik HTTP entrypoint.
+   The bundled Traefik itself does not provision public HTTPS certificates.
+   Externally test: https://matrix.example.dk/_matrix/client/versions
+3. Create a Matrix user from FjordHub. Save the one-time password and log
+   into Element X on iOS with the explicit HTTPS homeserver URL. Invite
+   @fjordhub-bot:matrix.example.dk to an encrypted DM and type 'hjælp'.
+4. Bot commands: hjælp, status, apps, rapport. The last command uploads
+   a separately encrypted JSON file with status information. Push-test
+   messages are queued from FjordHub after the private chat is established.
+5. Enable notifications for Element X in the iOS and app settings; lock
+   your phone and send a test. Push delivery is verified on-device only.
+   Stock Element X uses Elements pushgateway and Apple APNs, even when
+   Synapse itself is self-hosted.
+
+Security and operations:
+- The bot has no Docker socket, shell access or admin privileges. It uses
+  a read-only FjordHub resource API token shown in Settings → Access tokens.
+- Self-registration and federation are disabled on Synapse. The bot joins
+  invitations only from users created and authorized by FjordHub admins.
+- Bot messages and files use E2EE, but device verification is NOT enforced:
+  the bot currently shares keys with unverified devices. Do not transfer
+  secrets or add privileged remote-control commands until verified-device
+  support is introduced.
+- Synapse database, signing keys and files are under DATA_DIR/matrix/synapse,
+  while the bot account, credentials, key store and notification queue live
+  under DATA_DIR/matrix/bot. Back up these directories securely together.
+- The homeserver domain is an immutable identity. Do not reuse container
+  names on a second FjordHub installed on the same Docker daemon.
+- Upgrade Synapse with backups and deliberate change management. The
+  first version does not yet offer automatic updates or deletion.
+- Arbitrary AI questions, general-purpose server file sending and advanced
+  verified-device functionality are not yet enabled.

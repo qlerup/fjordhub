@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Matrix / Element X – FjordHub{% endblock %}
+{% block content %}
+<div class="dashboard package-page matrix-page">
+  <div class="dashboard-header">
+    <span class="package-eyebrow">SYSTEMINTEGRATION</span>
+    <h1>Matrix / Element X</h1>
+    <p class="dashboard-sub">Din egen krypterede beskedserver, FjordHub-bot og push til iPhone.</p>
+    <a href="{{ url_for('packages') }}" class="btn-open">← Tilbage til Integrationer</a>
+  </div>
+  <div class="settings-card matrix-card">
+    <div class="settings-card-head"><h2>Driftsstatus</h2></div>
+    <div class="matrix-grid">
+      <div><small>Installation</small><strong id="matrix-phase">{{ matrix.phase }}</strong></div>
+      <div><small>Synapse</small><strong id="matrix-server">{{ matrix.server }}</strong></div>
+      <div><small>Bot</small><strong id="matrix-bot">{{ "Online" if matrix.bot_ready else matrix.bot }}</strong></div>
+    </div>
+    <p id="matrix-message" role="status">{{ matrix.message }}</p>
+  </div>
+  <div class="settings-card matrix-card" id="matrix-install-card">
+    <div class="settings-card-head"><h2>1. Installer selvhostet Matrix</h2></div>
+    <p>Synapse og FjordHub-botten installeres som administrerede Docker-tjenester. Dine data gemmes i FjordHubs vedvarende datamappe. De vises ikke som apps i appoversigten.</p>
+    <form id="matrix-install-form">
+      <div class="auth-field">
+        <label for="matrix-domain">Offentligt Matrix-domæne</label>
+        <input type="text" id="matrix-domain" autocomplete="off" spellcheck="false" placeholder="matrix.ditdomæne.dk" required value="{{ matrix.domain }}" {% if matrix.phase == 'ready' %}disabled{% endif %}>
+        <small>Du skal pege domænet til FjordHubs Traefik via HTTPS, fx med Cloudflare Tunnel. Brug samme domæne i Element X.</small>
+      </div>
+      <button class="btn-install" type="submit" id="matrix-install" {% if matrix.phase in ('ready','installing') %}disabled{% endif %}>{{ "Installeret" if matrix.phase == 'ready' else "Installer Matrix" }}</button>
+    </form>
+    <div class="matrix-warning">Matrix-identiteten er bundet til domænet og kan ikke bare ændres bagefter. Der oprettes ikke offentlige brugerkonti, og føderation er slået fra.</div>
+  </div>
+  <div class="settings-card matrix-card">
+    <div class="settings-card-head"><h2>2. Forbind din Element X-konto</h2></div>
+    <p>Opret en Matrix-bruger, og brug legitimationsoplysningerne til at logge ind i Element X på din iPhone. Adgangskoden vises kun én gang. Start derefter en <strong>krypteret</strong> chat med <code id="matrix-bot-id">@fjordhub-bot:{{ matrix.domain or 'ditdomæne.dk' }}</code> og skriv <code>hjælp</code>.</p>
+    <form id="matrix-user-form" class="matrix-inline">
+      <input type="text" id="matrix-username" placeholder="Brugernavn" maxlength="31" required>
+      <button class="btn-install" type="submit">Opret Matrix-bruger</button>
+    </form>
+    <div class="matrix-result" id="matrix-credentials" hidden></div>
+    <div class="matrix-users" id="matrix-users">
+      {% for user_id in matrix.users %}
+      <div class="matrix-user"><span>{{ user_id }}</span><button class="btn-open" data-test-user="{{ user_id }}">Send push-test</button></div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="settings-card matrix-card">
+    <div class="settings-card-head"><h2>3. Kontroller push-notifikationer</h2></div>
+    <p>Element X fra App Store bruger normalt Elements pushgateway og Apple APNs. Beskeden kan fortsat være end-to-end-krypteret. Denne opsætning hoster Matrix-serveren og botten selv, men <strong>ikke</strong> Apples eller Elements push-infrastruktur.</p>
+    <p>Aktivér notifikationer i iOS og Element X, start først en krypteret chat med botten, og tryk derefter på <strong>Send push-test</strong> ovenfor. Lås telefonen og kontroller, at beskeden kommer frem.</p>
+    <p class="matrix-warning">Botten krypterer beskeder og filer, men tillader endnu ikke manuel krypteringsnøgle-verifikation. Brug derfor ikke integrationen til hemmeligheder, før enhedsverifikation er implementeret. Push kan først bekræftes ved test på din rigtige iPhone.</p>
+  </div>
+  <p id="matrix-feedback" class="matrix-feedback" role="alert"></p>
+</div>
+{% endblock %}
+{% block head %}
+<style>
+.matrix-page{max-width:980px}.matrix-page .matrix-card{margin:18px 0;padding:22px}
+.matrix-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0}
+.matrix-grid>div{background:var(--surface,#191d25);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.matrix-grid small,.matrix-page p,.matrix-page small{color:var(--text-muted,#a2a9b7)}
+.matrix-grid strong{overflow-wrap:anywhere}.matrix-page .auth-field{margin:15px 0;display:flex;flex-direction:column;gap:7px}
+.matrix-page input{background:var(--input-bg,#131820);color:var(--text,#fff);border:1px solid var(--border,#434956);border-radius:9px;padding:12px;font:inherit;max-width:100%}
+.matrix-inline{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:16px 0}
+.matrix-warning{border-left:3px solid #d7a437;padding:9px 12px;margin-top:15px;font-size:.88rem}
+.matrix-result{border:1px solid var(--border,#444);padding:15px;border-radius:10px;overflow-wrap:anywhere}
+.matrix-user{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:10px 0;border-bottom:1px solid var(--border,#444)}
+.matrix-feedback{min-height:1.4em;margin-top:14px}@media(max-width:600px){.matrix-grid{grid-template-columns:1fr}.matrix-page .matrix-card{padding:16px}.matrix-inline input,.matrix-inline button{width:100%}}
+</style>
+{% endblock %}
+{% block scripts %}
+<script defer src="{{ url_for('static', filename='matrix.js', v=static_version) }}"></script>
+{% endblock %}
