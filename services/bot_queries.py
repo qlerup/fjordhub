@@ -1,5 +1,6 @@
 """Small, local intent recognizer and plain-text torrent summaries. No AI service."""
 from difflib import get_close_matches
+from html import escape
 import math
 import re
 import unicodedata
@@ -32,6 +33,23 @@ def decimal(value):
     return f'{value:.2f}'.rstrip('0').rstrip('.').replace('.', ',')
 
 
+def duration(hours):
+    minutes = int(max(0, hours) * 60)
+    return f'{minutes // 60} t {minutes % 60:02} min'
+
+
+def progress_bar(fraction):
+    filled = min(10, max(0, int(fraction * 10)))
+    return '▰' * filled + '▱' * (10 - filled)
+
+
+def torrent_message_html(body):
+    lines = body.split('\n')
+    return '<p>' + '<br>'.join(
+        '<strong>' + escape(line) + '</strong>' if i == 0 or line.startswith('🎬 ')
+        else escape(line) for i, line in enumerate(lines)).replace('<br><br>', '</p><p>') + '</p>'
+
+
 ACTIVE_SEEDS = {'uploading', 'stalledUP', 'forcedUP'}
 STATE_NAMES = {
     'uploading': 'Seeder – uploader', 'stalledUP': 'Seeder – venter på downloadere',
@@ -51,48 +69,61 @@ def torrent_messages(payload, intent='seeding'):
     rows = payload['torrents']
     seeds = [row for row in rows if row.get('state') in ACTIVE_SEEDS]
     selected = seeds if intent == 'seeding' else rows
-    heading = ('FjordSeed: Du seeder ' + str(len(seeds)) + ' torrents lige nu.' if not payload.get('more')
-               else 'FjordSeed: Du seeder mindst ' + str(len(seeds)) + ' torrents (udsnit).')
+    count = ('Mindst ' if payload.get('more') else '') + str(len(seeds)) + ' seeder'
+    uploading = sum(number(row.get('upspeed')) > 0 for row in seeds)
+    count += f' · {uploading} uploader lige nu'
     if intent != 'seeding':
-        heading += '\n' + str(len(rows)) + ' torrents i alt i oversigten.'
-    if not selected:
-        heading += '\nIngen aktive seedinger.' if intent == 'seeding' else '\nIngen torrents.'
-    blocks = [heading]
+        count = str(len(rows)) + ' torrents i oversigten · ' + count
+    blocks = []
     for index, row in enumerate(selected, 1):
         title = ' '.join(str(row.get('name') or 'Ukendt titel').split())[:200]
         state = STATE_NAMES.get(row.get('state'), 'Ukendt status')
         progress = min(1, max(0, number(row.get('progress')))) * 100
         ratio = max(0, number(row.get('credited_ratio'), number(row.get('ratio'))))
         hours = max(0, number(row.get('seeding_time'))) / 3600
-        text = f'{index}. {title}\n{state} · Download: {decimal(progress)} %'
-        text += f'\nRatio: {decimal(ratio)} · Seedet: {decimal(hours)} timer'
+        icon = ('⚠️' if row.get('state') in {'error', 'missingFiles'} else
+                '💤' if row.get('state') == 'stalledUP' else
+                '🌱' if row.get('state') in ACTIVE_SEEDS else
+                '⏸️' if row.get('state') in {'pausedUP','pausedDL','stoppedUP','stoppedDL'} else '⬇️')
+        text = f'🎬 {index}. {title}\n{icon} {state}'
+        if progress < 100 or intent != 'seeding':
+            text += f'\n⬇️ Download: {decimal(progress)} %'
         speed = max(0, number(row.get('upspeed'))) / 1024
-        text += f' · Upload: {decimal(speed)} KiB/s'
+        if speed > 0:
+            text += '\n⬆️ Upload: ' + (decimal(speed / 1024) + ' MiB/s' if speed >= 1024 else decimal(speed) + ' KiB/s')
         if row.get('seeding_unlimited') is True:
-            text += '\nFortsætter indtil manuelt stop (intet automatisk mål).'
+            text += f'\n📊 Ratio: {decimal(ratio)} · ⏱ Seedtid: {duration(hours)}'
+            text += '\n♾️ Ubegrænset seeding · manuelt stop'
         elif row.get('seeding_unlimited') is False:
             target = max(1, number(row.get('ratio_limit'), 1))
             minutes = 0 if row.get('ratio_only') else max(0, number(row.get('seeding_time_limit')))
             fraction = min(1, max(ratio / target, hours / (minutes / 60) if minutes else 0))
-            text += f'\nSeedingmål: {decimal(fraction * 100)} % · Ratio {decimal(ratio)}/{decimal(target)}'
+            text += f'\n📊 Ratio: {decimal(ratio)} / {decimal(target)}'
+            text += f'\n⏱ Seedtid: {duration(hours)}'
             if minutes:
-                text += f' eller {decimal(hours)}/{decimal(minutes / 60)} timer'
+                text += f' / {duration(minutes / 60)}'
+            text += f'\n🎯 {progress_bar(fraction)} {decimal(fraction * 100)} % af seedingmålet'
+            if minutes:
+                text += '\nStopmål: ratio ELLER seedtid'
             if row.get('waiting_for_downloaders'):
-                text += '\nMålet er nået; seeder videre, mens downloadere mangler data.'
+                text += '\n✅ Mål nået · seeder videre til aktive downloadere er færdige'
             elif row.get('seeding_goal_reached'):
-                text += '\nSeedingmålet er nået.'
+                text += '\n✅ Seedingmålet er nået'
         else:
-            text += '\nSeedingmål er ikke tilgængeligt.'
+            text += f'\n📊 Ratio: {decimal(ratio)} · ⏱ Seedtid: {duration(hours)}'
+            text += '\n❔ Seedingmål er ikke tilgængeligt'
         blocks.append(text)
     if payload.get('more'):
         blocks.append('Oversigten er begrænset til 500 torrents. Se hele listen i FjordSeed.')
-    # Deliver every displayed title across messages, rather than silently cutting at 8k.
-    messages, current = [], ''
+    # Five titles per message keeps a long list readable on a phone.
+    pages, current, items = [], '', 0
     for block in blocks:
-        if current and len(current) + len(block) + 2 > 6500:
-            messages.append(current)
-            current = ''
+        if current and (items == 5 or len(current) + len(block) + 2 > 5500):
+            pages.append(current)
+            current, items = '', 0
         current += ('\n\n' if current else '') + block
-    if current:
-        messages.append(current)
-    return messages
+        items += 1
+    pages.append(current or ('Ingen aktive seedinger.' if intent == 'seeding' else 'Ingen torrents.'))
+    heading = '🌱 FjordSeed · Seeding' if intent == 'seeding' else '📦 FjordSeed · Downloads'
+    return [heading + (f' · {i}/{len(pages)}' if len(pages) > 1 else '') + '\n' + count + '\n\n' + page
+            for i, page in enumerate(pages, 1)]

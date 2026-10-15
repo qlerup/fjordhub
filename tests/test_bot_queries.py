@@ -1,4 +1,4 @@
-from services.bot_queries import torrent_query, torrent_messages
+from services.bot_queries import torrent_query, torrent_messages, torrent_message_html
 
 
 def test_flexible_queries_and_typing_errors():
@@ -18,16 +18,16 @@ def test_summary_separates_active_seeds_and_reports_goal_alternatives():
     payload = dict(torrents=[row, dict(name='Paused', state='stoppedUP'),
                              dict(name='Next ISO', state='downloading', progress=.25)], more=False)
     text = '\n'.join(torrent_messages(payload))
-    assert 'Du seeder 1 torrents' in text
+    assert '1 seeder' in text
     assert 'venter på downloadere' in text
-    assert 'Seedingmål: 100 %' in text
-    assert 'Ratio 0,5/1' in text and '49/49 timer' in text
+    assert '100 % af seedingmålet' in text
+    assert 'Ratio: 0,5 / 1' in text and '49 t 00 min / 49 t 00 min' in text
     assert 'Paused' not in text and 'Next ISO' not in text
     text = '\n'.join(torrent_messages(payload, 'transfers'))
     assert 'Paused' in text and 'Next ISO' in text and '25 %' in text
     row['ratio_only'] = True
     text = '\n'.join(torrent_messages(payload))
-    assert 'Seedingmål: 50 %' in text and 'eller' not in text
+    assert '50 % af seedingmålet' in text and 'ELLER' not in text
 
 
 def test_all_titles_are_delivered_across_bounded_messages():
@@ -38,9 +38,22 @@ def test_all_titles_are_delivered_across_bounded_messages():
     assert all(len(message) <= 6500 for message in messages)
     for i in range(120):
         assert f'Title {i} ' in '\n'.join(messages)
-    assert 'intet automatisk mål' in messages[0]
+    assert 'Ubegrænset seeding' in messages[0]
+    assert len(messages) == 24
+    assert all(message.count('🎬 ') == 5 for message in messages)
+    assert '1/24' in messages[0] and '24/24' in messages[-1]
 
 
 def test_empty_and_truncated_counts_are_explicit():
     assert 'Ingen aktive seedinger' in torrent_messages(dict(torrents=[]))[0]
-    assert 'mindst 0' in torrent_messages(dict(torrents=[], more=True))[0]
+    assert 'Mindst 0' in torrent_messages(dict(torrents=[], more=True))[0]
+
+
+def test_rich_message_has_clear_titles_and_escapes_file_names():
+    text = torrent_messages(dict(torrents=[dict(name='<img src=x> & test', state='uploading',
+        progress=1, seeding_unlimited=True, seeding_time=4500, ratio=.25, upspeed=2*1024**2)]))[0]
+    rendered = torrent_message_html(text)
+    assert '<strong>🎬 1. &lt;img src=x&gt; &amp; test</strong>' in rendered
+    assert '<img ' not in rendered
+    assert '1 t 15 min' in text and '2 MiB/s' in text
+    assert 'Download: 100' not in text

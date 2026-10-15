@@ -15,9 +15,9 @@ from pathlib import Path
 import requests
 from nio import AsyncClient, ClientConfig, InviteEvent, LoginResponse, MatrixRoom, RoomMessageText
 if __package__:
-    from .bot_queries import torrent_query, torrent_messages
+    from .bot_queries import torrent_query, torrent_messages, torrent_message_html
 else:
-    from bot_queries import torrent_query, torrent_messages
+    from bot_queries import torrent_query, torrent_messages, torrent_message_html
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("fjordhub.matrix")
@@ -180,8 +180,11 @@ class FjordBot:
 
     async def send(self, room_id, body):
         # Payloads are encrypted; a new device must later be verified manually in Element X.
+        content = {"msgtype": "m.text", "body": body[:8000]}
+        if body.startswith(('🌱 FjordSeed', '📦 FjordSeed')):
+            content.update(format='org.matrix.custom.html', formatted_body=torrent_message_html(body[:8000]))
         await self.client.room_send(
-            room_id, "m.room.message", {"msgtype": "m.text", "body": body[:8000]},
+            room_id, "m.room.message", content,
             ignore_unverified_devices=True)
 
     async def on_message(self, room: MatrixRoom, event: RoomMessageText):
