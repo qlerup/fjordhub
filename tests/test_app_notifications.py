@@ -86,3 +86,14 @@ def test_hub_notifications_use_existing_per_app_key_and_bot_token():
             assert client.get(endpoint, headers={
                 "Authorization": "Bearer " + token
             }, environ_overrides={"REMOTE_ADDR": "8.8.8.8"}).status_code == 403
+            endpoint = '/api/matrix/bot/seeding'
+            assert client.get(endpoint).status_code == 401
+            assert client.get(endpoint, headers={'Authorization': 'Bearer seed-app-secret'}).status_code == 401
+            with patch.object(fjordhub, '_integration_app_connection', return_value=('http://seed', 'key')), patch(
+                'services.seed_status.fetch_seed_status', return_value={'ok': True, 'torrents': []}
+            ) as fetch:
+                assert client.get(endpoint, headers={'Authorization': 'Bearer '+token}).json == {
+                    'ok': True, 'torrents': []}
+                fetch.assert_called_once_with('http://seed', 'key')
+                assert client.get(endpoint, headers={'Authorization': 'Bearer '+token},
+                                  environ_overrides={'REMOTE_ADDR':'8.8.8.8'}).status_code == 403

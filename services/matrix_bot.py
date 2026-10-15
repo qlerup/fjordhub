@@ -14,6 +14,7 @@ from pathlib import Path
 
 import requests
 from nio import AsyncClient, ClientConfig, InviteEvent, LoginResponse, MatrixRoom, RoomMessageText
+from bot_queries import torrent_query, torrent_messages
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("fjordhub.matrix")
@@ -27,6 +28,8 @@ COMMANDS = {
     "hjælp": "Skriv: status, apps, rapport eller spørg: Er der downloadet noget nyt i dag?",
     "help": "Skriv: status, apps, rapport eller spørg: Er der downloadet noget nyt i dag?",
 }
+for _key in COMMANDS:
+    COMMANDS[_key] += " Du kan også spørge: Hvad seeder jeg? eller Hvor langt er mine downloads?"
 
 
 def read(path):
@@ -90,6 +93,19 @@ def asks_about_todays_downloads(message):
     today = "i dag" in text or "idag" in text
     subject = any(term in text for term in ("download", "hentet", "færdig", "ny", "rss"))
     return today and subject
+
+
+def seeding_snapshot():
+    token = read(CONFIG).get('monitor_token')
+    if not token:
+        raise RuntimeError('FjordHub-bottens læseadgang mangler.')
+    response = requests.get('http://fjordhub:8080/api/matrix/bot/seeding',
+                            headers={'Authorization': 'Bearer ' + token}, timeout=20)
+    response.raise_for_status()
+    payload = response.json()
+    if not payload.get('ok') or not isinstance(payload.get('torrents'), list):
+        raise RuntimeError('FjordSeed-status er ikke tilgængelig.')
+    return payload
 
 
 def todays_downloads_text():
@@ -176,6 +192,10 @@ class FjordBot:
             elif asks_about_todays_downloads(command):
                 answer = await asyncio.to_thread(todays_downloads_text)
                 await self.send(room.room_id, answer)
+            elif (intent := torrent_query(command)):
+                payload = await asyncio.to_thread(seeding_snapshot)
+                for answer in torrent_messages(payload, intent):
+                    await self.send(room.room_id, answer)
             elif command in ("status", "apps", "rapport"):
                 snapshot = await asyncio.to_thread(resources)
                 if command == "rapport":
@@ -183,7 +203,7 @@ class FjordBot:
                 else:
                     await self.send(room.room_id, status_text(snapshot, details=command == "apps"))
             else:
-                await self.send(room.room_id, "Jeg forstår: status, apps, rapport, hjælp eller spørg til dagens downloads.")
+                await self.send(room.room_id, "Prøv fx: Hvad seeder jeg? Hvor langt er mine downloads? Er der hentet noget i dag? Eller skriv status, apps, rapport eller hjælp. Jeg kan kun læse status.")
         except Exception:
             log.exception("Failed to handle bot command")
             await self.send(room.room_id, "Kunne ikke hente oplysninger lige nu.")

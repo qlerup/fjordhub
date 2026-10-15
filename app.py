@@ -221,6 +221,7 @@ _AUTH_EXEMPT = {
     "matrix_integration.matrix_well_known",
     "api_hub_app_notifications",
     "api_matrix_bot_downloads_today",
+    "api_matrix_bot_seeding",
 }
 
 _sso_tokens: dict = {}
@@ -859,9 +860,10 @@ def api_integration_resources():
     return response
 
 
-def _integration_app_connection(app_id):
+def _integration_app_connection(app_id, *, allow_seed=False):
     app_id = canonical_app_id(app_id)
-    if app_id not in app_integration.SUPPORTED_APPS or not _install_state.get_install_dir(app_id):
+    supported = app_id in app_integration.SUPPORTED_APPS or (allow_seed and app_id == 'fjordseed')
+    if not supported or not _install_state.get_install_dir(app_id):
         raise app_integration.AppDataError('Appen er ikke installeret.', 404)
     key = _installed_env_value(app_id, 'FJORDHUB_API_KEY')
     if not key or not _auth.verify_hub_key(app_id, key):
@@ -3530,6 +3532,15 @@ def api_hub_app_notifications():
 
 @app.get("/api/matrix/bot/downloads/today")
 def api_matrix_bot_downloads_today():
+    error = _matrix_bot_access_error()
+    if error:
+        return error
+    response = jsonify(_app_notifications.downloads_today())
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def _matrix_bot_access_error():
     # The bot calls via its private docker network, using its existing monitor
     # token. Browser sessions and regular app keys cannot access this endpoint.
     if not is_local_request(request.remote_addr, request.headers):
@@ -3539,7 +3550,21 @@ def api_matrix_bot_downloads_today():
     saved = _matrix_hub._state().get("monitor_token", "")
     if not token or not saved or not secrets.compare_digest(token, saved) or not _auth.authenticate_access_token(token):
         return jsonify(ok=False, error="Ugyldigt bot-token."), 401
-    response = jsonify(_app_notifications.downloads_today())
+    return None
+
+
+@app.get('/api/matrix/bot/seeding')
+def api_matrix_bot_seeding():
+    error = _matrix_bot_access_error()
+    if error:
+        return error
+    from services.seed_status import fetch_seed_status
+    try:
+        base_url, key = _integration_app_connection('fjordseed', allow_seed=True)
+        payload = fetch_seed_status(base_url, key)
+    except app_integration.AppDataError as exc:
+        return jsonify(ok=False, error=str(exc)), exc.status
+    response = jsonify(payload)
     response.headers["Cache-Control"] = "no-store"
     return response
 

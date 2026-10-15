@@ -636,3 +636,9 @@ Previously completed files before this update are not retroactively indexed.
 `Integrationer → Matrix / Element X → Opdater FjordHub-botten`. The last
 step builds a new bot image without resetting its Matrix account, verified
 login state, encrypted key store or previous conversation.
+
+### Ask the Matrix bot about seeding
+
+Allowlisted users in encrypted chats can ask ?Hvad seeder jeg??, ?Hvor mange seeder jeg p? lige nu?? or ?Hvor langt er mine downloads??. Common spelling errors and alternative torrent/download wording are recognized locally without an AI service. The bot lists active seeders (including those waiting for peers), titles, download percentage, credited ratio, seed time and progress toward the configured ratio-or-time goal. Paused torrents are excluded from active seeding counts but included in a general download overview. Unlimited seeding is labelled explicitly. Long lists arrive across multiple messages, up to 500 torrents per snapshot; unavailable live data is reported as an error rather than zero seeders.
+
+Update both FjordHub and FjordSeed, then update the Matrix bot under integrations. This uses a bot-specific internal endpoint with the existing bot token and an authenticated, bounded read from the installed FjordSeed port. It grants no torrent controls or additional access to other integration tokens.

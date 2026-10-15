@@ -4,6 +4,8 @@ on:
     paths:
       - 'services/notification_events.py'
       - 'services/matrix_bot.py'
+      - 'services/bot_queries.py'
+      - 'services/seed_status.py'
       - 'services/matrix_hub.py'
       - 'services/matrix_routes.py'
       - 'app.py'
@@ -22,4 +24,4 @@ jobs:
           python-version: '3.11'
       - run: pip install -r requirements.txt pytest tzdata
       - run: python -m compileall -q app.py services
-      - run: pytest -q tests/test_app_notifications.py tests/test_matrix_status_resilience.py
+      - run: pytest -q tests/test_app_notifications.py tests/test_matrix_status_resilience.py tests/test_bot_queries.py tests/test_seed_status.py
