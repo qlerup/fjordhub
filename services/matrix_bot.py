@@ -14,7 +14,10 @@ from pathlib import Path
 
 import requests
 from nio import AsyncClient, ClientConfig, InviteEvent, LoginResponse, MatrixRoom, RoomMessageText
-from bot_queries import torrent_query, torrent_messages
+if __package__:
+    from .bot_queries import torrent_query, torrent_messages
+else:
+    from bot_queries import torrent_query, torrent_messages
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("fjordhub.matrix")
@@ -153,8 +156,9 @@ class FjordBot:
 
     async def login(self):
         if self.saved.get("access_token") and self.saved.get("device_id"):
-            self.client.restore_login(self.saved["user_id"], self.saved["access_token"],
-                                      self.saved["device_id"])
+            self.client.restore_login(user_id=self.saved["user_id"],
+                                      device_id=self.saved["device_id"],
+                                      access_token=self.saved["access_token"])
             log.info("Restored Matrix device session")
             return
         response = await self.client.login(read(CONFIG)["password"], device_name="FjordHub Bot")
