@@ -1,23 +1,15 @@
-# FjordCode (mobile Codex MVP)
+# Codex system integration (FjordHub)
 
-This is an **admin-only FjordHub page** backed by a separate, low-privilege Docker service. It is **not** VS Code running inside FjordHub. The execution service can later be relocated to its own LXC while retaining the browser UI.
+Open **Integrationer → Codex / AI-kodeagent**, then **Installér Codex**, complete the official ChatGPT OAuth device-login, and choose **Åbn agentchat**.
 
-## Usage
+Codex remains accessible at the current FjordHub origin on `/fjordcode` (for example, `https://fjordhub.gleruphub.dk/fjordcode`), without new domains or Cloudflare rules.
 
-1. Rebuild/restart the full Compose project once to provision the new worker:
-   \`docker compose up -d --build\`
-2. Sign in to FjordHub as an administrator, choose **FjordCode** in the sidebar.
-3. Choose **Start ChatGPT-login**, open the device-login URL shown, and enter the one-time code on your phone.
-4. Clone a **public** GitHub project by entering \`qlerup/fjordflix\` (or another \`owner/repository\`).
-5. Select the project and send prompts. History is persisted in a named Docker volume. A running turn can be stopped and prior sessions resumed after the turn completes.
+The install button starts an asynchronous Docker SDK installation; FjordHub builds an isolated worker image from the included source and creates `fjordhub-code`, with no Docker socket or host file mounts. Worker volumes are preserved between restarts. Legacy workers deployed via Compose are reused, if present.
 
-### Security and limitations
+Only FjordHub administrators can install, authenticate, and chat. All write endpoints use FjordHub CSRF checks. The worker is accessible only on the FjordHub-internal Codex Docker network and uses a shared private-volume token. Codex device credentials never go to GitHub or the browser.
 
-- Codex runs in the \`fjordcode\` service, not in the privileged FjordHub app. No Docker socket, Proxmox API or other installed apps are mounted in the worker.
-- Workspaces and Codex credentials live in separate named volumes. Never mount server secrets or other apps' private directories into the worker.
-- Only authenticated hub administrators can reach the proxy. All mutations use the existing CSRF protection. The worker has no published host port and authenticates requests from the hub using a private-volume token.
-- **Codex CLI's workspace-write sandbox must function correctly** on the Docker/LXC host. Inspect errors before granting additional Docker privileges; do not switch to \`danger-full-access\`.
-- First release: public repository clone, prompt/continue, agent activity, changed-file status, stop. It does **not** automatically push to GitHub or handle private repos, editable model presets, multiple simultaneous Codex turns or approval prompts.
-- The worker needs outbound HTTPS to GitHub and OpenAI. The isolated bridge should be additionally restricted by host firewall rules where possible.
-- Device auth may need enabling in your ChatGPT account's security settings; no tokens or pairing codes belong in a GitHub commit.
-- This implementation has not been live-tested against your Proxmox host or ChatGPT session. If the worker cannot initialize in your LXC, review Docker security policies and logs without weakening isolation.
+The first release clones only public GitHub projects; it can modify and test them inside its isolated workspace, but **does not automatically push**. Element X bot integration, dedicated domains, private repository credentials, and a separate LXC are future work.
+
+If the Codex worker is already running from an older Compose deployment, the installation page detects it without deleting workspaces. New installations are opt-in; the Codex service is in Compose profile `codex` so ordinary FjordHub updates do not auto-install it.
+
+Device authorization must be enabled in the ChatGPT account's security settings. The installation requires outbound connectivity to GitHub, the Docker registry, and OpenAI. Confirm at runtime that Codex workspace-write sandboxing works in the selected LXC; do not grant privileged mode or disable sandbox checks to work around host restrictions.

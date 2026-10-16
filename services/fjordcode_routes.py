@@ -5,12 +5,14 @@ import secrets
 from pathlib import Path
 
 import requests
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, current_app, jsonify, render_template, request, redirect, url_for
 from flask_login import current_user, login_required
+from services.fjordcode_install import FjordCodeManager, FjordCodeError
 
 fjordcode_blueprint = Blueprint("fjordcode", __name__)
 CONTROL_DIR = Path(os.environ.get("FJORDCODE_TOKEN_DIR", "/run/fjordcode-token"))
-WORKER_URL = os.environ.get("FJORDCODE_WORKER_URL", "http://fjordcode:8811").rstrip("/")
+WORKER_URL = os.environ.get("FJORDCODE_WORKER_URL", "http://fjordhub-code:8811").rstrip("/")
+installer = FjordCodeManager()
 GET_ACTIONS = {"status", "projects", "chat/status", "git/status"}
 POST_ACTIONS = {"auth/start", "projects/clone", "chat/start", "chat/stop"}
 
@@ -29,12 +31,42 @@ def _shared_secret():
     return path.read_text(encoding="utf-8").strip()
 
 
+@fjordcode_blueprint.get("/integrations/codex")
+@login_required
+def codex_integration_page():
+    if not current_user.is_admin:
+        return "Kræver administratoradgang", 403
+    return render_template("codex_integration.html", active_page="packages")
+
+
+@fjordcode_blueprint.get("/api/fjordcode/install-status")
+@login_required
+def codex_install_status():
+    if not current_user.is_admin:
+        return jsonify(ok=False, error="Kræver administratoradgang."), 403
+    return jsonify(ok=True, **installer.status())
+
+
+@fjordcode_blueprint.post("/api/fjordcode/install")
+@login_required
+def codex_install():
+    if not current_user.is_admin:
+        return jsonify(ok=False, error="Kræver administratoradgang."), 403
+    try:
+        installer.begin_install()
+    except FjordCodeError as exc:
+        return jsonify(ok=False, error=str(exc)), 409
+    return jsonify(ok=True, phase="installing"), 202
+
+
 @fjordcode_blueprint.route("/fjordcode")
 @login_required
 def fjordcode_home():
     if not current_user.is_admin:
         return "Kræver administratoradgang", 403
-    return render_template("fjordcode.html", active_page="fjordcode")
+    if installer.status()["phase"] != "ready":
+        return redirect(url_for("fjordcode.codex_integration_page"))
+    return render_template("fjordcode.html", active_page="packages")
 
 
 @fjordcode_blueprint.route("/api/fjordcode/<path:action>", methods=["GET", "POST"])

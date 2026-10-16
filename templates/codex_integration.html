@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Codex – Integrationer – FjordHub{% endblock %}
+{% block content %}
+<div class="dashboard package-page matrix-page" style="max-width:980px">
+  <div class="dashboard-header">
+    <span class="package-eyebrow">SYSTEMINTEGRATION</span>
+    <h1>Codex / AI-kodeagent</h1>
+    <p class="dashboard-sub">Kør en isoleret AI-kodeagent på din egen server og skriv til den fra mobilen.</p>
+    <a href="{{ url_for('packages') }}" class="btn-open">← Tilbage til Integrationer</a>
+  </div>
+  <div class="settings-card fc-setup-card">
+    <div class="settings-card-head"><h2>1. Installér Codex</h2></div>
+    <p>Installationen opretter en separat Docker-container til Codex. Den får hverken Docker-socket, Proxmox-adgang eller direkte adgang til FjordHubs øvrige apps.</p>
+    <div class="fc-setup-state"><span>Status:</span> <strong id="codex-phase" role="status">Kontrollerer...</strong></div>
+    <p id="codex-install-message" role="status"></p>
+    <button type="button" class="btn-install" id="codex-install">Installér Codex</button>
+    <small>Installationen kan hente en container-image og kræver internetadgang på Docker-værten. Eksisterende projektfiler bevares ved genstart.</small>
+  </div>
+  <div class="settings-card fc-setup-card" id="codex-auth-card" hidden>
+    <div class="settings-card-head"><h2>2. Forbind din ChatGPT-konto</h2></div>
+    <p>Codex bruger det officielle <strong>ChatGPT device-login (OAuth)</strong>. Du åbner godkendelseslinket på din telefon og indtaster engangskoden. Adgangstokens gemmes alene i Codex-containerens vedvarende volumen, ikke i FjordHubs browser.</p>
+    <div class="fc-setup-state"><span>ChatGPT:</span> <strong id="codex-auth-state">Kontrollerer...</strong></div>
+    <button type="button" class="btn-install" id="codex-auth-start">Log ind med ChatGPT</button>
+    <pre class="fc-device-output" id="codex-auth-output" aria-live="polite"></pre>
+    <a id="codex-auth-link" href="#" target="_blank" rel="noopener noreferrer" hidden>Åbn ChatGPT-godkendelse ↗</a>
+    <small>Hvis enhedsgodkendelse er blokeret, skal den først aktiveres under sikkerhedsindstillingerne i din ChatGPT-konto.</small>
+  </div>
+  <div class="settings-card fc-setup-card" id="codex-chat-card" hidden>
+    <div class="settings-card-head"><h2>3. Åbn Codex-chatten</h2></div>
+    <p>Vælg dit GitHub-projekt, skriv din prompt og følg de ændringer, agenten laver.</p>
+    <a href="{{ url_for('fjordcode.fjordcode_home') }}" class="btn-install" id="codex-open-chat">Åbn agentchat →</a>
+    <p><small>Første version understøtter offentlige GitHub-repositories. Der pushes ikke automatisk til GitHub.</small></p>
+  </div>
+  <p class="fc-setup-error" id="codex-feedback" role="alert"></p>
+</div>
+{% endblock %}
+{% block head %}
+<style>
+.fc-setup-card{margin:18px 0;padding:22px}
+.fc-setup-state{display:flex;gap:10px;align-items:center;padding:13px;margin:12px 0;background:var(--surface,#191d25);border-radius:12px}
+.fc-setup-card p,.fc-setup-card small{color:var(--text-muted,#a2a9b7)}
+.fc-device-output{white-space:pre-wrap;overflow-wrap:anywhere;max-height:150px;overflow:auto;font-size:.83rem}
+.fc-setup-card button{cursor:pointer}.fc-setup-error{min-height:1.5em;color:#f87171}
+@media(max-width:640px){.fc-setup-card{padding:16px}}
+</style>
+{% endblock %}
+{% block scripts %}
+<script defer src="{{ url_for('static', filename='codex_integration.js', v=static_version) }}"></script>
+{% endblock %}
