@@ -82,6 +82,11 @@ def desktop_install():
     return jsonify(ok=True, phase="installing"), 202
 
 
+# Werkzeug distinguishes browser WebSocket upgrades from ordinary HTTP requests.
+@fjordcode_blueprint.route("/fjordcode/desktop/", defaults={"subpath": ""},
+                           methods=["GET"], websocket=True)
+@fjordcode_blueprint.route("/fjordcode/desktop/<path:subpath>",
+                           methods=["GET"], websocket=True)
 @fjordcode_blueprint.route("/fjordcode/desktop/", defaults={"subpath": ""},
                            methods=["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"])
 @fjordcode_blueprint.route("/fjordcode/desktop/<path:subpath>",

@@ -45,7 +45,6 @@ def test_desktop_install_isolated_and_shares_project_volumes():
     with patch("services.fjordcode_desktop.docker.from_env", return_value=client):
         manager._install()
     kwargs = client.containers.create.call_args.kwargs
-    assert kwargs["image"] if "image" in kwargs else True
     assert kwargs["network"] == "fjordhub_fjord-code"
     assert kwargs["ports"] == {}
     assert kwargs["volumes"]["fjordhub_fjordcode-workspaces"]["bind"] == "/workspaces"
@@ -54,7 +53,6 @@ def test_desktop_install_isolated_and_shares_project_volumes():
     assert kwargs["environment"]["SUBFOLDER"] == "/fjordcode/desktop/"
     assert "/var/run/docker.sock" not in str(kwargs)
     assert kwargs["security_opt"] == ["no-new-privileges:true"]
-    assert manager.status if True else False
     client.close.assert_called_once()
 
 
@@ -70,7 +68,7 @@ def test_nonadmin_cannot_install_or_open_desktop():
             return_value={"phase": "not_installed", "message": "", "extension": ""}
         ), patch("services.fjordcode_routes.desktop_manager.begin_install") as start:
             client = hub.app.test_client()
-            assert client.get("/api/fjordcode/desktop/status").status_code == 302
+            assert client.get("/api/fjordcode/desktop/status").status_code == 401
             with client.session_transaction() as session:
                 session["_user_id"] = auth.get_by_id(reader).get_id()
                 session["_fresh"] = True
@@ -109,3 +107,11 @@ def test_desktop_errors_do_not_disable_reinstall():
     client.containers.get.side_effect = docker.errors.NotFound("absent")
     with patch("services.fjordcode_desktop.docker.from_env", return_value=client):
         assert manager.status()["phase"] == "not_installed"
+
+def test_http_and_websocket_desktop_routes_are_separate():
+    import app as hub
+    rules = [rule for rule in hub.app.url_map.iter_rules()
+             if rule.rule.startswith("/fjordcode/desktop/")]
+    assert any(rule.websocket for rule in rules)
+    assert any(not rule.websocket for rule in rules)
+    assert all(rule.endpoint == "fjordcode.desktop_proxy" for rule in rules)

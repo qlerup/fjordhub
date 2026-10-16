@@ -12,7 +12,7 @@ import requests
 from flask import Response, jsonify, request, stream_with_context
 from flask_login import current_user
 from simple_websocket import Server as WebSocketServer, ConnectionClosed
-from websocket import create_connection, ABNF
+from websocket import create_connection, ABNF, WebSocketTimeoutException
 
 from services.fjordcode_desktop import desktop_manager, DESKTOP_PREFIX
 
@@ -108,7 +108,7 @@ def proxy_desktop(subpath=""):
 def _relay_websocket(path):
     """Bridge binary Selkies streams through the authenticated Flask endpoint."""
     try:
-        ws_client = WebSocketServer.accept(request.environ)
+        ws_client = WebSocketServer.accept(request.environ, ping_interval=25)
     except Exception:
         LOG.exception("Browser WebSocket upgrade failed")
         return jsonify(ok=False, error="WebSocket kan ikke åbnes."), 503
@@ -131,7 +131,7 @@ def _relay_websocket(path):
                         ws_client.send(payload)
                     elif opcode == ABNF.OPCODE_TEXT:
                         ws_client.send(payload.decode("utf-8", errors="replace"))
-                except TimeoutError:
+                except WebSocketTimeoutException:
                     continue
                 except Exception:
                     break
@@ -143,7 +143,7 @@ def _relay_websocket(path):
             try:
                 packet = ws_client.receive(timeout=1)
                 if packet is None:
-                    break
+                    continue
                 if isinstance(packet, bytes):
                     peer.send_binary(packet)
                 else:
