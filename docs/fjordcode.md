@@ -1,14 +1,37 @@
-# FjordHub Codex: isoleret VS Code-desktop
+# VS Code + Codex integration
 
-Integrationer → Codex / AI-kodeagent → Installér VS Code + Codex. Åbn derefter desktop under den eksisterende FjordHub-adresse på \`/fjordcode/desktop/\`.
+FjordHub > Integrationer > Codex / AI-kodeagent > Installér VS Code + Codex.
 
-## Architecture
-- FjordHub's authenticated same-origin HTTP/WebSocket gateway proxies LinuxServer's **full Linux VS Code desktop**, rather than building another AI chat. Selkies runs at port 3000 **only on the isolated Docker network**, without publishing an external port. Browser access requires HTTPS for media streaming; the existing Cloudflare Tunnel to the FjordHub app port works with WebSockets enabled.
-- Desktop install is opt-in through Docker SDK. Container image: \`lscr.io/linuxserver/vscode:latest\`. \`SUBFOLDER=/fjordcode/desktop/\` keeps browser asset and WebSocket URLs under FjordHub's current domain.
-- Installation attempts \`code --install-extension OpenAI.chatgpt --force\` as the unprivileged \`abc\` account. If extension installation fails, the page reports that it must be installed from VS Code Extensions. Sign in to Codex in the **VS Code extension** (not the legacy Codex CLI chat).
-- Persistent Docker named volume \`<compose-project>_fjordcode-vscode-config\` is mounted at \`/config\`. Existing Codex workspaces \`<project>_fjordcode-workspaces\` are mounted at \`/workspaces\`. Existing Codex CLI home \`<project>_fjordcode-home\` is mounted at \`/config/fjordcode-home\`, with \`CODEX_HOME=/config/fjordcode-home/.codex\`. This lets the editor reuse existing project files and skills.
-- Clone projects from the VS Code terminal and import your personal skills to \`/config/fjordcode-home/.codex/skills\` (or clone skill repositories there). Nothing on your Windows PC is transferred automatically.
-- Desktop container has **no Docker socket, no host filesystem bind mounts, and no published host ports**. UI is restricted to authenticated FjordHub administrators and an explicit same-origin check on WebSocket and mutating requests. Desktop has passwordless sudo **inside its own container**, so do not expose the upstream port directly.
-- Proxmox LXC support and OpenAI extension login still require a **real smoke test on your installation**; failing WebSocket transport or Linux kernel sandbox restrictions must be diagnosed without disabling security protections.
+The installation creates a dedicated full VS Code Linux desktop from
+[LinuxServer.io vscode](https://docs.linuxserver.io/images/docker-vscode/)
+and retains the existing isolated Codex CLI worker. Both share project files
+in the `<compose_project>_fjordcode-workspaces` Docker volume and Codex data
+in `<compose_project>_fjordcode-home` (Codex skills under
+`/home/codex/.codex/skills`). VS Code settings live separately in
+`<compose_project>_fjordcode-vscode-config`.
 
-The old Codex CLI worker remains installed if you already had it, and its data is not removed. The old FjordCode chat is no longer the primary UI. The Matrix/Element X bot and future domain management are out of scope.
+The VS Code desktop is available only to signed-in FjordHub administrators,
+using `/integrations/codex/desktop/` on the *existing* FjordHub origin
+(including Cloudflare Tunnel). A backend HTTP/WebSocket gateway proxies to
+the fixed Docker-internal address `fjordhub-vscode:3000`. No Docker host port
+is published for the desktop; the VS Code container never mounts the Docker
+socket, Proxmox API or other apps' directories.
+
+Install or sign in to the official OpenAI Codex extension in the full editor.
+The container image includes a best-effort extension installer, but if the
+marketplace is not available on boot, use VS Code's Extensions tab.
+Device login is offered in the integration page as a fallback.
+
+### Limitations and follow-up
+
+- Browser-streamed full VS Code is a desktop interface, not a mobile-native editor.
+- The Selkies stream must be tested behind the user's actual Cloudflare Tunnel,
+  especially HTTP upgrades and long-lived WebSockets.
+- The first installation can take several minutes because the VS Code image is
+  large. On a Proxmox LXC, ensure the Docker environment supports LinuxServer
+  desktop processes without granting host/Proxmox privileges.
+- SSH and private Git repositories can be configured in the isolated editor.
+  Never place host or FjordHub credentials into the shared volume.
+- Moving the desktop/worker to a dedicated LXC later requires migrating the
+  named volumes but no public hostname change.
+- Matrix/Element X bot control and independent domain management are future work.

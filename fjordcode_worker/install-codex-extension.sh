@@ -3,6 +3,7 @@
 # Runs locally as abc, persists in /config. Never fail VS Code startup if the
 # Marketplace is temporarily unavailable.
 set +e
+chown 10001:10001 /home/codex /home/codex/.codex /workspaces 2>/dev/null || true
 if command -v code >/dev/null 2>&1; then
   timeout 120s s6-setuidgid abc code --no-sandbox --install-extension OpenAI.chatgpt --force
   if [ $? -ne 0 ]; then

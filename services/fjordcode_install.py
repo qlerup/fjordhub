@@ -188,6 +188,7 @@ class FjordCodeManager:
                 "SUBFOLDER": IDE_PREFIX, "TITLE": "FjordCode VS Code",
                 "HOME": "/config", "CODEX_HOME": "/home/codex/.codex",
                 "PIXELFLUX_WAYLAND": "false",
+                "START_DOCKER": "false",
             },
             volumes={
                 desktop_home: {"bind": "/config", "mode": "rw"},
@@ -198,6 +199,7 @@ class FjordCodeManager:
             # for user mapping; it does NOT need Docker, Proxmox or host devices.
             security_opt=["no-new-privileges:true"],
             cap_drop=["NET_ADMIN", "SYS_ADMIN", "SYS_PTRACE", "MKNOD"],
+            cap_add=["IPC_LOCK"],
             shm_size="1g", mem_limit="4g", pids_limit=512,
             restart_policy={"Name": "unless-stopped"},
             labels={"dk.fjordhub.integration": "codex-vscode"},
