@@ -8,6 +8,7 @@ import requests
 from flask import Blueprint, current_app, jsonify, render_template, request, redirect, url_for
 from flask_login import current_user, login_required
 from services.fjordcode_install import FjordCodeManager, FjordCodeError
+from services.fjordcode_desktop import register_desktop_routes
 from services.fjordcode_desktop import desktop_manager, DesktopError
 from services.fjordcode_desktop_proxy import proxy_desktop
 
@@ -15,6 +16,7 @@ fjordcode_blueprint = Blueprint("fjordcode", __name__)
 CONTROL_DIR = Path(os.environ.get("FJORDCODE_TOKEN_DIR", "/run/fjordcode-token"))
 WORKER_URL = os.environ.get("FJORDCODE_WORKER_URL", "http://fjordhub-code:8811").rstrip("/")
 installer = FjordCodeManager()
+register_desktop_routes(fjordcode_blueprint, installer)
 GET_ACTIONS = {"status", "projects", "chat/status", "git/status"}
 POST_ACTIONS = {"auth/start", "projects/clone", "chat/start", "chat/stop"}
 
