@@ -131,8 +131,8 @@
 </div>
 
 <!-- Tilføj bruger modal -->
-<div class="modal-overlay" id="add-modal">
-  <div class="modal" style="width:560px;max-width:94vw;" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+<div class="modal-overlay user-form-overlay" id="add-modal">
+  <div class="modal user-form-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-header">
       <h2 id="modal-title">Tilføj bruger</h2>
       <button type="button" class="modal-close" id="close-add-modal" aria-label="Luk">
@@ -213,7 +213,7 @@
       </div>
       {% endif %}
 
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;">
+      <div class="user-form-actions">
         <button type="button" class="btn btn-open" id="cancel-add-modal">Annuller</button>
         <button type="submit" class="btn-install">Opret</button>
       </div>
@@ -222,8 +222,8 @@
 </div>
 
 <!-- Rediger bruger modal -->
-<div class="modal-overlay" id="edit-modal">
-  <div class="modal" style="width:560px;max-width:94vw;" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
+<div class="modal-overlay user-form-overlay" id="edit-modal">
+  <div class="modal user-form-modal" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
     <div class="modal-header">
       <h2 id="edit-modal-title">Rediger <span id="edit-user-label"></span></h2>
       <button type="button" class="modal-close" id="close-edit-modal" aria-label="Luk">
@@ -322,7 +322,7 @@
       </div>
       {% endif %}
 
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;">
+      <div class="user-form-actions">
         <button type="button" class="btn btn-open" id="cancel-edit-modal">Annuller</button>
         <button type="submit" class="btn-install">Gem ændringer</button>
       </div>
@@ -341,7 +341,17 @@
   const closeBtn = document.getElementById('close-add-modal');
   const cancelBtn = document.getElementById('cancel-add-modal');
 
-  function open() { overlay.classList.add('is-open'); document.getElementById('new-username').focus(); }
+  function open() {
+    overlay.classList.add('is-open');
+    if (overlay.firstElementChild) overlay.firstElementChild.scrollTop = 0;
+    // On phones don't open the keyboard before the user chooses an input.
+    if (typeof window !== 'undefined' && window.matchMedia &&
+        window.matchMedia('(max-width: 600px)').matches) {
+      closeBtn.focus({ preventScroll: true });
+    } else {
+      document.getElementById('new-username').focus({ preventScroll: true });
+    }
+  }
   function close() { overlay.classList.remove('is-open'); }
 
   if (openBtn) openBtn.addEventListener('click', open);
@@ -436,7 +446,13 @@ function openEditModal(user, currentUserId) {
   });
 
   overlay.classList.add('is-open');
-  document.getElementById('edit-username').focus();
+  if (overlay.firstElementChild) overlay.firstElementChild.scrollTop = 0;
+  if (typeof window !== 'undefined' && window.matchMedia &&
+      window.matchMedia('(max-width: 600px)').matches) {
+    document.getElementById('close-edit-modal').focus({ preventScroll: true });
+  } else {
+    document.getElementById('edit-username').focus({ preventScroll: true });
+  }
 }
 </script>
 {% endblock %}
