@@ -70,7 +70,7 @@
 (function(){
   "use strict";
   const $=id=>document.getElementById(id), token=document.querySelector('meta[name="csrf-token"]').content;
-  let project="", busy=false, refreshing=false;
+  let project="", busy=false, refreshing=false, lastRendered="";
   async function api(action,data,query){
     const url="/api/fjordcode/"+action+(query?"?"+new URLSearchParams(query):"");
     const resp=await fetch(url,{method:data===undefined?"GET":"POST",
@@ -93,19 +93,24 @@
     await loadChat();
   }
   async function loadChat(){
-    $("fcLog").replaceChildren();$("fcEvents").textContent="";$("fcChanges").textContent="";
-    if(!project){$("fcRunStatus").textContent="Vælg projekt";return;}
+    if(!project){$("fcRunStatus").textContent="Vælg projekt";$("fcLog").replaceChildren();lastRendered="";return;}
     try{
       const j=await api("chat/status",undefined,{project});
       const chat=j.chat||{}, messages=chat.messages||[], events=chat.events||[];
-      messages.forEach(m=>msg(m.text,m.role==="user"?"user":"assistant"));
-      if(chat.status==="failed")msg("Opgaven fejlede. Se aktiviteter for detaljer.","system");
+      const signature=JSON.stringify(messages);
+      if(signature!==lastRendered){
+        const wasNearBottom=$("fcLog").scrollHeight-$("fcLog").scrollTop-$("fcLog").clientHeight<90;
+        $("fcLog").replaceChildren();
+        messages.forEach(m=>msg(m.text,m.role==="user"?"user":"assistant"));
+        if(chat.status==="failed")msg("Opgaven fejlede. Se aktiviteter for detaljer.","system");
+        lastRendered=signature;
+        if(wasNearBottom)$("fcLog").scrollTop=$("fcLog").scrollHeight;
+      }
       busy=chat.status==="running";
       $("fcRunStatus").textContent=busy?"Codex arbejder...":chat.status==="failed"?"Fejl":messages.length?"Klar til næste prompt":"Klar";
       $("fcSend").disabled=busy;$("fcStop").hidden=!busy;
       $("fcEvents").textContent=events.map(e=>e.text).join("\n");
       $("fcChanges").textContent=j.changes?.length?"\nÆndrede filer:\n"+j.changes.join("\n"):"";
-      if(!refreshing)$("fcLog").scrollTop=$("fcLog").scrollHeight;
     }catch(e){err(e);}
   }
   async function status(){
@@ -131,7 +136,7 @@
     try{await api("projects/clone",{repository});project=repository;await loadProjects();$("fcProject").value=project;}
     catch(e){err(e);}finally{$("fcClone").disabled=false;}
   });
-  $("fcProject").addEventListener("change",()=>{project=$("fcProject").value;loadChat();});
+  $("fcProject").addEventListener("change",()=>{project=$("fcProject").value;lastRendered="";loadChat();});
   $("fcForm").addEventListener("submit",async e=>{
     e.preventDefault();const prompt=$("fcPrompt").value.trim();if(!project||!prompt||busy)return;
     $("fcSend").disabled=true;
