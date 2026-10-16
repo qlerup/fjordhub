@@ -33,6 +33,7 @@
     <p class="fc-note">Log ind med en engangskode fra din telefon. Koden bliver aldrig gemt i browseren.</p>
     <button class="fc-btn" id="fcAuthBtn" type="button">Start ChatGPT-login</button>
     <pre class="fc-auth" id="fcAuthText"></pre>
+    <a id="fcAuthLink" href="#" target="_blank" rel="noopener noreferrer" hidden>Åbn ChatGPT-login i browseren ↗</a>
   </section>
   <section class="fc-panel">
     <div class="fc-line">
@@ -119,6 +120,18 @@
       $("fcStatus").textContent=s.logged_in?"ChatGPT forbundet":"ChatGPT-login kræves";
       $("fcLogin").hidden=!!s.logged_in;
       $("fcAuthText").textContent=s.auth_output||"";
+      const urls=(s.auth_output||"").match(/https:\/\/[^\s<>"']+/g)||[];
+      let deviceUrl="";
+      for(const candidate of urls){
+        try {
+          const parsed=new URL(candidate.replace(/[).,]+$/,""));
+          if(["auth.openai.com","chatgpt.com"].includes(parsed.hostname)){
+            deviceUrl=parsed.href; break;
+          }
+        } catch(_) {}
+      }
+      $("fcAuthLink").hidden=!deviceUrl;
+      if(deviceUrl)$("fcAuthLink").href=deviceUrl;
       if(s.auth_status==="failed")$("fcAuthText").textContent+="\nLogin fejlede. Prøv igen.";
       return s;
     }catch(e){err(e);return null;}
