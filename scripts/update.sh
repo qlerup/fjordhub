@@ -505,6 +505,19 @@ else
 fi
 
 merge_env_example_new_keys
+# A browser-triggered self-update must also provision the isolated Codex worker.
+# The currently running updater may still carry the old COMPOSE_SERVICES=fjordhub
+# environment, so adapt it here after the new repository revision is fetched.
+if [ -f "$APP_DIR/fjordcode_worker/Dockerfile" ]; then
+    case " $COMPOSE_SERVICES " in
+        *" fjordhub "*)
+            case " $COMPOSE_SERVICES " in
+                *" fjordcode "*) ;;
+                *) COMPOSE_SERVICES="$COMPOSE_SERVICES fjordcode" ;;
+            esac ;;
+    esac
+fi
+
 run_optional_cleanup
 
 if [ "$NO_CACHE" = "1" ]; then

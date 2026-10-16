@@ -35,6 +35,7 @@ from services.package_manager import PackageManager, PackageError
 from services.matrix_hub import MatrixHub
 from services.notification_events import NotificationStore, NotificationError
 from services.matrix_routes import create_matrix_blueprint
+from services.fjordcode_routes import fjordcode_blueprint
 from services.password_reset import PasswordResetService
 from services.nvidia_devices import probe_gpu
 from services.media_gateway import MediaGateway, domain as media_domain, media_address
@@ -125,6 +126,7 @@ package_manager  = PackageManager(DATA_DIR)
 _matrix_hub = MatrixHub(DATA_DIR)
 _app_notifications = NotificationStore(DATA_DIR)
 app.register_blueprint(create_matrix_blueprint(_matrix_hub, _auth))
+app.register_blueprint(fjordcode_blueprint)
 
 # Five failed password attempts from the same caller lock authentication for five minutes.
 _LOGIN_FAILURE_LIMIT = 5

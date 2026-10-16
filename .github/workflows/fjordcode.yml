@@ -1,0 +1,51 @@
+name: FjordCode smoke checks
+
+on:
+  pull_request:
+    paths:
+      - "fjordcode_worker/**"
+      - "services/fjordcode_routes.py"
+      - "templates/fjordcode.html"
+      - "scripts/update.sh"
+      - "docker-compose.yml"
+      - "tests/test_fjordcode_worker.py"
+      - ".github/workflows/fjordcode.yml"
+  push:
+    branches: [feat/fjordcode-mobile-mvp]
+    paths:
+      - "fjordcode_worker/**"
+      - "services/fjordcode_routes.py"
+      - "templates/fjordcode.html"
+      - "scripts/update.sh"
+      - "docker-compose.yml"
+      - "tests/test_fjordcode_worker.py"
+      - ".github/workflows/fjordcode.yml"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install pytest -r requirements.txt
+      - name: Validate syntax and configuration
+        run: |
+          python -m py_compile app.py services/fjordcode_routes.py fjordcode_worker/worker.py
+          sh -n scripts/update.sh
+          docker compose config -q
+          python - <<'PY'
+          from pathlib import Path
+          html = Path("templates/fjordcode.html").read_text()
+          js = html.split("<script>", 1)[1].split("</script>", 1)[0]
+          Path("/tmp/fjordcode-ui.js").write_text(js)
+          PY
+          node --check /tmp/fjordcode-ui.js
+      - name: Build worker image
+        run: |
+          docker build -f fjordcode_worker/Dockerfile -t fjordcode:smoke .
+          docker run --rm fjordcode:smoke codex --version
+          docker run --rm fjordcode:smoke python3 -c 'import tomllib; tomllib.load(open("/home/codex/.codex/config.toml", "rb"))'
+      - name: Worker tests
+        run: python -m pytest -q tests/test_fjordcode_worker.py
