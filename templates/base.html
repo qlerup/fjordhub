@@ -57,13 +57,7 @@
             <path d="M6 8V6a6 6 0 0 1 12 0v2"/><path d="M4 8h16l1 13H3L4 8z"/><path d="M9 12v1M15 12v1"/>
           </svg>
         <span class="sidebar-label">Integrationsbutik</span></a>
-        {% if current_user.is_admin %}
-        <a href="{{ url_for('fjordcode.fjordcode_home') }}" class="sidebar-item{% if active_page == 'fjordcode' %} active{% endif %}" title="FjordCode">
-          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M8 6 3 12l5 6M16 6l5 6-5 6M14 4l-4 16"/>
-          </svg>
-          <span class="sidebar-label">FjordCode</span></a>
-        {% endif %}
+
         {% if current_user.is_admin %}
         <a href="{{ url_for('users') }}" class="sidebar-item{% if active_page in ('profile', 'users') %} active{% endif %}" title="Brugere">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">

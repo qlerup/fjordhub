@@ -87,6 +87,7 @@ services:
 
   # Isolated Codex execution runtime. No host filesystem or Docker socket access.
   fjordcode:
+    profiles: [codex]
     build:
       context: .
       dockerfile: fjordcode_worker/Dockerfile
