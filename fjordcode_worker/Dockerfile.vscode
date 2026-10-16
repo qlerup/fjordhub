@@ -1,0 +1,2 @@
+FROM lscr.io/linuxserver/vscode:latest
+COPY --chmod=755 install-codex-extension.sh /custom-cont-init.d/50-install-codex-extension
