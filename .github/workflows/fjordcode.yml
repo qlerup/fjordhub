@@ -16,7 +16,7 @@ on:
       - "tests/test_fjordcode_integration.py"
       - ".github/workflows/fjordcode.yml"
   push:
-    branches: [feat/codex-system-integration]
+    branches: [main]
     paths:
       - "fjordcode_worker/**"
       - "services/fjordcode_routes.py"

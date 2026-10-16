@@ -13,10 +13,9 @@ def test_manager_status_before_install():
     manager = FjordCodeManager()
     client = MagicMock()
     client.containers.get.side_effect = docker.errors.NotFound("no worker")
-    proxy = MagicMock()
-    proxy.__enter__.return_value = client
-    with patch("services.fjordcode_install.docker.from_env", return_value=proxy):
+    with patch("services.fjordcode_install.docker.from_env", return_value=client):
         assert manager.status()["phase"] == "not_installed"
+    client.close.assert_called_once()
 
 
 def test_manager_uses_hubs_existing_volume_and_network():
@@ -60,9 +59,7 @@ def test_isolated_container_creation():
             return hub
         raise AssertionError(name)
     client.containers.get.side_effect = get
-    proxy = MagicMock()
-    proxy.__enter__.return_value = client
-    with patch("services.fjordcode_install.docker.from_env", return_value=proxy), \
+    with patch("services.fjordcode_install.docker.from_env", return_value=client), \
          patch.object(manager, "_build_image") as build:
         manager._install()
     build.assert_called_once_with(client)
@@ -76,6 +73,7 @@ def test_isolated_container_creation():
     assert "/var/run/docker.sock" not in str(kwargs["volumes"])
     assert "/apps" not in str(kwargs["volumes"])
     client.containers.create.return_value.start.assert_called_once()
+    client.close.assert_called_once()
 
 
 def test_admin_only_install_chat_and_csrf():
@@ -111,3 +109,35 @@ def test_admin_only_install_chat_and_csrf():
             assert result.status_code == 202
             assert install.call_count == 1
             assert client.get("/fjordcode").status_code == 302
+
+
+def test_docker_connection_error_does_not_prevent_retry():
+    manager = FjordCodeManager()
+    with patch("services.fjordcode_install.docker.from_env",
+               side_effect=docker.errors.DockerException("socket unavailable")):
+        result = manager.status()
+    assert result["phase"] == "error"
+    assert "Docker-forbindelsen" in result["message"]
+
+
+def test_stopped_worker_is_restarted_and_docker_client_closed():
+    manager = FjordCodeManager()
+    client = MagicMock()
+    worker = MagicMock()
+    worker.status = "exited"
+    client.containers.get.return_value = worker
+    with patch("services.fjordcode_install.docker.from_env", return_value=client):
+        manager._install()
+    worker.start.assert_called_once()
+    client.close.assert_called_once()
+
+
+def test_docker_sdk_build_has_no_unsupported_timeout_keyword():
+    manager = FjordCodeManager()
+    client = MagicMock()
+    with patch("services.fjordcode_install.Path.read_bytes", return_value=b"test"):
+        manager._build_image(client)
+    assert client.images.build.call_count == 1
+    kwargs = client.images.build.call_args.kwargs
+    assert "timeout" not in kwargs
+    assert kwargs["custom_context"] is True

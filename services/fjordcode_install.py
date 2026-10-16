@@ -39,11 +39,16 @@ class FjordCodeManager:
             if self._installing:
                 return {"phase": "installing", "message": "Installerer Codex i isoleret Docker-container..."}
             last_error = self._error
+        client = None
         try:
-            with docker.from_env(timeout=5) as client:
-                status = self._container_status(client)
+            client = docker.from_env(timeout=5)
+            status = self._container_status(client)
         except Exception:
+            LOG.exception("Could not query FjordCode Docker worker status")
             return {"phase": "error", "message": "Docker-forbindelsen er ikke tilgængelig."}
+        finally:
+            if client is not None:
+                client.close()
         if status == "running":
             return {"phase": "ready", "message": "Codex-containeren kører."}
         if status == "not_installed":
@@ -96,44 +101,50 @@ class FjordCodeManager:
                 archive.addfile(member, io.BytesIO(blob))
         content.seek(0)
         client.images.build(fileobj=content, custom_context=True, tag=WORKER_IMAGE,
-                            rm=True, forcerm=True, timeout=900)
+                            rm=True, forcerm=True)
 
     def _install(self):
+        client = None
         try:
-            with docker.from_env(timeout=900) as client:
-                status = self._container_status(client)
-                if status == "running":
-                    return
-                if status != "not_installed":
-                    client.containers.get(WORKER_NAME).start()
-                    return
-                token, network, project = self._runtime_mounts_and_network(client)
-                self._build_image(client)
-                home = project + "_fjordcode-home"
-                workspace = project + "_fjordcode-workspaces"
-                client.volumes.create(name=home)
-                client.volumes.create(name=workspace)
-                container = client.containers.create(
-                    WORKER_IMAGE, name=WORKER_NAME, network=network,
-                    user="10001:10001",
-                    volumes={
-                        token: {"bind": "/run/fjordcode-token", "mode": "ro"},
-                        home: {"bind": "/home/codex", "mode": "rw"},
-                        workspace: {"bind": "/workspaces", "mode": "rw"},
-                    },
-                    environment={"HOME": "/home/codex", "CODEX_HOME": "/home/codex/.codex"},
-                    read_only=True, tmpfs={"/tmp": "size=128m"},
-                    cap_drop=["ALL"], security_opt=["no-new-privileges:true"],
-                    mem_limit="3g", pids_limit=256,
-                    restart_policy={"Name": "unless-stopped"},
-                    labels={"dk.fjordhub.integration": "codex"},
-                )
-                container.start()
+            client = docker.from_env(timeout=900)
+            status = self._container_status(client)
+            if status == "running":
+                return
+            if status != "not_installed":
+                client.containers.get(WORKER_NAME).start()
+                return
+            token, network, project = self._runtime_mounts_and_network(client)
+            self._build_image(client)
+            home = project + "_fjordcode-home"
+            workspace = project + "_fjordcode-workspaces"
+            client.volumes.create(name=home)
+            client.volumes.create(name=workspace)
+            container = client.containers.create(
+                WORKER_IMAGE, name=WORKER_NAME, network=network,
+                user="10001:10001",
+                volumes={
+                    token: {"bind": "/run/fjordcode-token", "mode": "ro"},
+                    home: {"bind": "/home/codex", "mode": "rw"},
+                    workspace: {"bind": "/workspaces", "mode": "rw"},
+                },
+                environment={"HOME": "/home/codex", "CODEX_HOME": "/home/codex/.codex"},
+                read_only=True, tmpfs={"/tmp": "size=128m"},
+                cap_drop=["ALL"], security_opt=["no-new-privileges:true"],
+                mem_limit="3g", pids_limit=256,
+                restart_policy={"Name": "unless-stopped"},
+                labels={"dk.fjordhub.integration": "codex"},
+            )
+            container.start()
         except Exception:
             LOG.exception("Could not provision FjordCode")
             with self._lock:
                 self._error = ("Installation mislykkedes. Kontrollér FjordHub-/Docker-loggen "
                                "og prøv igen.")
         finally:
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:
+                    LOG.warning("Could not close Codex Docker client", exc_info=True)
             with self._lock:
                 self._installing = False

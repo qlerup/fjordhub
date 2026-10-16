@@ -37,7 +37,7 @@
       $("codex-install-message").textContent = install.message || "";
       $("codex-install").disabled = phase === "installing" || phase === "ready";
       $("codex-install").textContent = phase === "installing" ? "Installerer..." :
-        phase === "ready" ? "Installeret" : phase === "error" ? "Prøv igen" : "Installér Codex";
+        phase === "ready" ? "Installeret" : "Installér Codex";
       $("codex-auth-card").hidden = phase !== "ready";
       $("codex-chat-card").hidden = true;
       if (phase !== "ready") return;
