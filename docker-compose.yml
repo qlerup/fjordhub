@@ -148,7 +148,6 @@ networks:
   fjord-code:
     driver: bridge
     internal: false  # GitHub/OpenAI access for cloning and Codex authentication
-    driver: bridge
 
 volumes:
   fjordhub-control-secrets:
