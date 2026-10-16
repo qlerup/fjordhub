@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}FjordCode – FjordHub{% endblock %}
+{% block head %}
+<style>
+  .fc-page{max-width:980px;margin:auto;display:flex;flex-direction:column;min-height:calc(100dvh - 115px);gap:12px}
+  .fc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .fc-head h1{font-size:1.35rem;margin:0}.fc-note{color:var(--text-muted,#969ba8);font-size:.85rem;margin:2px 0 0}
+  .fc-panel{border:1px solid var(--border,#313640);border-radius:14px;padding:14px;background:var(--surface,#1a1d24)}
+  .fc-line{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .fc-input,.fc-select,.fc-message{min-width:0;border-radius:10px;padding:11px 12px;background:var(--bg,#111419);color:inherit;border:1px solid var(--border,#3a3e47);font:inherit}
+  .fc-select{flex:1}.fc-input{flex:1}.fc-btn{border:0;border-radius:10px;padding:11px 14px;background:#2576ef;color:white;cursor:pointer;font:inherit}
+  .fc-btn:disabled{opacity:.5;cursor:not-allowed}.fc-btn-muted{background:#3b414e}.fc-btn-danger{background:#863a41}
+  .fc-log{display:flex;flex-direction:column;gap:12px;overflow-y:auto;min-height:230px;flex:1;padding:4px 0}
+  .fc-bubble{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px 14px;border-radius:14px;max-width:92%;line-height:1.45;background:#252b35;align-self:flex-start}
+  .fc-bubble.user{background:#174fa4;align-self:flex-end}.fc-bubble.system{font-size:.84rem;background:transparent;color:var(--text-muted,#a6acb7);padding:3px}
+  .fc-message{resize:vertical;min-height:65px;flex:1}
+  .fc-foot{display:flex;gap:8px;align-items:flex-end}
+  .fc-status{color:var(--text-muted,#b7bfcc);font-size:.86rem}
+  .fc-auth{white-space:pre-wrap;overflow-wrap:anywhere;font-family:ui-monospace,monospace;font-size:.82rem;color:inherit}
+  .fc-changes{font:12px/1.5 ui-monospace,monospace;white-space:pre-wrap;max-height:135px;overflow:auto}
+  @media(max-width:640px){.fc-page{min-height:calc(100dvh - 95px)}.fc-panel{padding:11px}.fc-bubble{max-width:96%}.fc-head h1{font-size:1.2rem}}
+</style>
+{% endblock %}
+{% block content %}
+<section class="fc-page">
+  <div class="fc-head">
+    <div><h1>FjordCode <span aria-hidden="true">✦</span></h1>
+      <p class="fc-note">Codex-agent på din egen server · kun administrator</p></div>
+    <span class="fc-status" id="fcStatus" role="status">Forbinder...</span>
+  </div>
+  <section class="fc-panel" id="fcLogin" hidden>
+    <strong>Forbind Codex med ChatGPT</strong>
+    <p class="fc-note">Log ind med en engangskode fra din telefon. Koden bliver aldrig gemt i browseren.</p>
+    <button class="fc-btn" id="fcAuthBtn" type="button">Start ChatGPT-login</button>
+    <pre class="fc-auth" id="fcAuthText"></pre>
+  </section>
+  <section class="fc-panel">
+    <div class="fc-line">
+      <label for="fcProject"><strong>Projekt</strong></label>
+      <select id="fcProject" class="fc-select" aria-label="Vælg projekt"><option value="">Vælg et projekt</option></select>
+      <button class="fc-btn fc-btn-muted" id="fcRefresh" type="button" title="Opdatér projekter">↻</button>
+    </div>
+    <div class="fc-line" style="margin-top:12px">
+      <input class="fc-input" id="fcRepository" placeholder="qlerup/fjordflix" aria-label="GitHub-repository" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <button class="fc-btn fc-btn-muted" id="fcClone" type="button">Hent fra GitHub</button>
+    </div>
+    <p class="fc-note">Første version understøtter offentlige GitHub-repositories. Projektfiler bliver liggende i et isoleret Docker-volume.</p>
+  </section>
+  <section class="fc-panel" style="display:flex;flex:1;flex-direction:column;min-height:340px">
+    <div class="fc-line" style="justify-content:space-between">
+      <strong>Agentchat</strong><span class="fc-status" id="fcRunStatus">Vælg projekt for at starte</span>
+    </div>
+    <div class="fc-log" id="fcLog" aria-live="polite"></div>
+    <details id="fcDetails" style="margin-bottom:8px">
+      <summary class="fc-note" style="cursor:pointer">Agentaktiviteter og ændrede filer</summary>
+      <div class="fc-changes" id="fcEvents"></div>
+      <div class="fc-changes" id="fcChanges"></div>
+    </details>
+    <form class="fc-foot" id="fcForm">
+      <textarea id="fcPrompt" class="fc-message" placeholder="Skriv til Codex – fx: undersøg hvorfor Safari ikke afspiller video korrekt..." maxlength="5000" aria-label="Din prompt"></textarea>
+      <button class="fc-btn" type="submit" id="fcSend">Send</button>
+      <button class="fc-btn fc-btn-danger" type="button" id="fcStop" hidden>Stop</button>
+    </form>
+  </section>
+  <p class="fc-note">Codex redigerer filer i en isoleret projektmappe. Ændringer pushes ikke automatisk til GitHub i denne første version.</p>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  "use strict";
+  const $=id=>document.getElementById(id), token=document.querySelector('meta[name="csrf-token"]').content;
+  let project="", busy=false, refreshing=false;
+  async function api(action,data,query){
+    const url="/api/fjordcode/"+action+(query?"?"+new URLSearchParams(query):"");
+    const resp=await fetch(url,{method:data===undefined?"GET":"POST",
+      credentials:"same-origin",cache:"no-store",
+      headers:{"X-CSRF-Token":token,...(data===undefined?{}:{"Content-Type":"application/json"})},
+      ...(data===undefined?{}:{body:JSON.stringify(data)})});
+    const json=await resp.json();
+    if(!resp.ok||!json.ok)throw new Error(json.error||"Kunne ikke forbinde");
+    return json;
+  }
+  const msg=(text,cls)=>{const el=document.createElement("div");el.className="fc-bubble "+cls;el.textContent=text;$("fcLog").appendChild(el);};
+  function err(e){$("fcStatus").textContent=e.message||"Fejl";}
+  async function loadProjects(){
+    const j=await api("projects");
+    const old=project; $("fcProject").replaceChildren(new Option("Vælg et projekt",""));
+    for(const name of j.projects)$("fcProject").add(new Option(name,name));
+    if(j.projects.includes(old))$("fcProject").value=old;
+    else if(j.projects.length===1){$("fcProject").value=j.projects[0];project=j.projects[0];}
+    else{project="";}
+    await loadChat();
+  }
+  async function loadChat(){
+    $("fcLog").replaceChildren();$("fcEvents").textContent="";$("fcChanges").textContent="";
+    if(!project){$("fcRunStatus").textContent="Vælg projekt";return;}
+    try{
+      const j=await api("chat/status",undefined,{project});
+      const chat=j.chat||{}, messages=chat.messages||[], events=chat.events||[];
+      messages.forEach(m=>msg(m.text,m.role==="user"?"user":"assistant"));
+      if(chat.status==="failed")msg("Opgaven fejlede. Se aktiviteter for detaljer.","system");
+      busy=chat.status==="running";
+      $("fcRunStatus").textContent=busy?"Codex arbejder...":chat.status==="failed"?"Fejl":messages.length?"Klar til næste prompt":"Klar";
+      $("fcSend").disabled=busy;$("fcStop").hidden=!busy;
+      $("fcEvents").textContent=events.map(e=>e.text).join("\n");
+      $("fcChanges").textContent=j.changes?.length?"\nÆndrede filer:\n"+j.changes.join("\n"):"";
+      if(!refreshing)$("fcLog").scrollTop=$("fcLog").scrollHeight;
+    }catch(e){err(e);}
+  }
+  async function status(){
+    try{
+      const s=await api("status");
+      $("fcStatus").textContent=s.logged_in?"ChatGPT forbundet":"ChatGPT-login kræves";
+      $("fcLogin").hidden=!!s.logged_in;
+      $("fcAuthText").textContent=s.auth_output||"";
+      if(s.auth_status==="failed")$("fcAuthText").textContent+="\nLogin fejlede. Prøv igen.";
+      return s;
+    }catch(e){err(e);return null;}
+  }
+  $("fcAuthBtn").addEventListener("click",async()=>{
+    $("fcAuthBtn").disabled=true;
+    try{await api("auth/start",{});$("fcAuthText").textContent="Afventer kode...";}catch(e){err(e);}
+    finally{$("fcAuthBtn").disabled=false;}
+  });
+  $("fcRefresh").addEventListener("click",()=>loadProjects().catch(err));
+  $("fcClone").addEventListener("click",async()=>{
+    const repository=$("fcRepository").value.trim();
+    if(!repository)return;
+    $("fcClone").disabled=true;
+    try{await api("projects/clone",{repository});project=repository;await loadProjects();$("fcProject").value=project;}
+    catch(e){err(e);}finally{$("fcClone").disabled=false;}
+  });
+  $("fcProject").addEventListener("change",()=>{project=$("fcProject").value;loadChat();});
+  $("fcForm").addEventListener("submit",async e=>{
+    e.preventDefault();const prompt=$("fcPrompt").value.trim();if(!project||!prompt||busy)return;
+    $("fcSend").disabled=true;
+    try{await api("chat/start",{project,prompt});$("fcPrompt").value="";await loadChat();}
+    catch(error){err(error);$("fcSend").disabled=false;}
+  });
+  $("fcStop").addEventListener("click",async()=>{try{await api("chat/stop",{});}catch(e){err(e);}});
+  $("fcPrompt").addEventListener("keydown",e=>{
+    if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("fcForm").requestSubmit();}
+  });
+  async function tick(){
+    if(refreshing)return;
+    refreshing=true;
+    try{await status();if(project)await loadChat();}finally{refreshing=false;}
+  }
+  (async()=>{await status();try{await loadProjects();}catch(e){err(e);}setInterval(tick,2500);})();
+})();
+</script>
+{% endblock %}

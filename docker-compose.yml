@@ -36,6 +36,7 @@ services:
       - "${APPS_DIR:-./apps}:/apps"
       - "${FJORDHUB_HOST_DIR:-.}:/fjordhub-src"
       - fjordhub-control-secrets:/run/fjordhub-control
+      - fjordcode-token:/run/fjordcode-token
     environment:
       DATA_DIR: /data
       NVIDIA_DEVICE_ROOT: /host/dev
@@ -75,12 +76,40 @@ services:
     networks:
       - fjord-net
       - fjord-control
+      - fjord-code
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
+    restart: unless-stopped
+
+  # Isolated Codex execution runtime. No host filesystem or Docker socket access.
+  fjordcode:
+    build:
+      context: .
+      dockerfile: fjordcode_worker/Dockerfile
+    container_name: fjordhub-code
+    user: "10001:10001"
+    environment:
+      HOME: /home/codex
+      CODEX_HOME: /home/codex/.codex
+    volumes:
+      - fjordcode-workspaces:/workspaces
+      - fjordcode-home:/home/codex
+      - fjordcode-token:/run/fjordcode-token:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 3g
+    networks:
+      - fjord-code
     restart: unless-stopped
 
   fjordhub-updater:
@@ -116,7 +145,13 @@ networks:
     driver: bridge
   fjord-net:
     name: fjord-net
+  fjord-code:
+    driver: bridge
+    internal: false  # GitHub/OpenAI access for cloning and Codex authentication
     driver: bridge
 
 volumes:
   fjordhub-control-secrets:
+  fjordcode-token:
+  fjordcode-workspaces:
+  fjordcode-home:
