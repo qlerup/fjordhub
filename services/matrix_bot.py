@@ -151,7 +151,9 @@ class FjordBot:
         self.saved = saved
         self.client.add_event_callback(self.on_invite, InviteEvent)
         self.client.add_event_callback(self.on_message, RoomMessageText)
-        self.old_status = None
+        self.old_status = {}
+        self.pending_status = {}
+        self.alerted_users = {}
         self.next_health = 0
 
     async def login(self):
@@ -256,18 +258,47 @@ class FjordBot:
     async def watch_status(self):
         try:
             snapshot = await asyncio.to_thread(resources)
-            state = {a["name"]: a["running"] == a["total"] and a["total"] > 0
-                     for a in running_apps(snapshot)}
-            if self.old_status is not None:
-                for app_name, healthy in state.items():
-                    if app_name in self.old_status and self.old_status[app_name] != healthy:
-                        text = (("✅ " if healthy else "🚨 ") + app_name +
-                                (" kører igen." if healthy else " har stoppede containere."))
-                        for recipient in read(CONFIG).get("allowed_users", []):
-                            if self.rooms_for(recipient):
-                                await self.send(self.rooms_for(recipient)[0], text)
-            self.old_status = state
+            if not snapshot.get("ok"):
+                raise RuntimeError("Invalid health snapshot")
+            state = {a["name"]: a["running"] == a["total"]
+                     for a in running_apps(snapshot) if a["total"] > 0}
+            # Missing app data is unknown, not a stopped or recovered app.
+            self.pending_status = {name: value for name, value in self.pending_status.items()
+                                   if name in state}
+            for app_name, healthy in state.items():
+                if app_name not in self.old_status and healthy:
+                    self.old_status[app_name] = True
+                if self.old_status.get(app_name) == healthy:
+                    self.pending_status.pop(app_name, None)
+                    continue
+                previous, count = self.pending_status.get(app_name, (None, 0))
+                count = count + 1 if previous == healthy else 1
+                self.pending_status[app_name] = (healthy, count)
+                log.info("Health candidate %s: running=%s sample=%s", app_name, healthy, count)
+                # Polls are one minute apart: require confirmation in both directions.
+                if count < 2:
+                    continue
+                recipients = set(read(CONFIG).get("allowed_users", []))
+                alerted = self.alerted_users.setdefault(app_name, set())
+                targets = recipients & alerted if healthy else recipients - alerted
+                for recipient in targets:
+                    rooms = self.rooms_for(recipient)
+                    if not rooms:
+                        continue
+                    text = (("✅ " if healthy else "🚨 ") + app_name +
+                            (" kører igen." if healthy else " har stoppede containere."))
+                    await self.send(rooms[0], text)
+                    if healthy:
+                        alerted.discard(recipient)
+                    else:
+                        alerted.add(recipient)
+                self.old_status[app_name] = healthy
+                self.pending_status.pop(app_name, None)
+                if healthy:
+                    self.alerted_users.pop(app_name, None)
+                log.info("Confirmed health change %s: running=%s", app_name, healthy)
         except Exception:
+            self.pending_status.clear()
             log.exception("Failed to retrieve FjordHub health snapshot")
 
     async def run(self):
