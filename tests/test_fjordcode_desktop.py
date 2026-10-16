@@ -47,6 +47,7 @@ def test_desktop_install_isolated_and_shares_project_volumes():
     kwargs = client.containers.create.call_args.kwargs
     assert kwargs["network"] == "fjordhub_fjord-code"
     assert kwargs["ports"] == {}
+    assert kwargs["cap_add"] == ["IPC_LOCK"]
     assert kwargs["volumes"]["fjordhub_fjordcode-workspaces"]["bind"] == "/workspaces"
     assert kwargs["volumes"]["fjordhub_fjordcode-home"]["bind"] == "/config/fjordcode-home"
     assert kwargs["environment"]["CODEX_HOME"] == "/config/fjordcode-home/.codex"

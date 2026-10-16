@@ -143,6 +143,7 @@ class CodexDesktop:
                     },
                     ports={},
                     shm_size="1g",
+                    cap_add=["IPC_LOCK"],
                     cap_drop=["NET_RAW", "SYS_ADMIN"],
                     security_opt=["no-new-privileges:true"],
                     mem_limit="4g",

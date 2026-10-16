@@ -96,7 +96,7 @@ def _static_version() -> str:
     """Change asset URLs whenever bundled CSS/JS changes."""
     static_dir = Path(app.static_folder or (Path(__file__).parent / "static"))
     try:
-        return str(max((static_dir / name).stat().st_mtime_ns for name in ("styles.css", "app.js", "packages.js", "matrix.js")))
+        return str(max((static_dir / name).stat().st_mtime_ns for name in ("styles.css", "app.js", "packages.js", "matrix.js", "codex_integration.js")))
     except OSError:
         return str(int(time.time()))
 
