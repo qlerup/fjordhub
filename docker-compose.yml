@@ -146,6 +146,7 @@ networks:
     driver: bridge
   fjord-net:
     name: fjord-net
+    driver: bridge
   fjord-code:
     driver: bridge
     internal: false  # GitHub/OpenAI access for cloning and Codex authentication
