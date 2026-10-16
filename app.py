@@ -309,6 +309,7 @@ def _auth_gate():
 
 _USER_ENDPOINTS = {
     'dashboard', 'packages', 'app_store', 'open_package', 'package_asset',
+    'fjordcode.desktop_proxy',
     'logout', 'profile', 'profile_info', 'api_hub_sso_token', 'app_sso_url',
     'api_apps_status', 'api_apps_updates', 'api_registry_status',
     'api_account_access',
@@ -327,6 +328,10 @@ def _browser_security_gate():
         return None
     if endpoint not in _USER_ENDPOINTS | _PUBLIC_FORM_ENDPOINTS and not current_user.is_admin:
         return jsonify(ok=False, error='Kræver administratoradgang.'), 403
+    # Desktop requests are authenticated and perform strict same-origin checks
+    # in the desktop proxy itself, since Selkies cannot send FjordHub CSRF headers.
+    if endpoint == "fjordcode.desktop_proxy":
+        return None
     return check_csrf()
 
 

@@ -3,66 +3,43 @@
   const $ = id => document.getElementById(id);
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content || "";
   let refreshing = false;
+  const feedback = error => { $("codex-feedback").textContent = error?.message || String(error || ""); };
   async function api(action, post = false) {
-    const result = await fetch("/api/fjordcode/" + action, {
+    const response = await fetch("/api/fjordcode/desktop/" + action, {
       method: post ? "POST" : "GET",
-      headers: post ? {"Content-Type":"application/json","X-CSRF-Token":csrf} : {},
+      credentials:"same-origin", cache:"no-store",
+      headers:post ? {"Content-Type":"application/json","X-CSRF-Token":csrf} : {},
       body: post ? "{}" : undefined,
-      credentials:"same-origin", cache:"no-store"
     });
-    const body = await result.json();
-    if (!result.ok || !body.ok) throw new Error(body.error || "Forbindelsen fejlede");
-    return body;
-  }
-  function feedback(error) { $("codex-feedback").textContent = error?.message || String(error); }
-  function deviceLink(output) {
-    const matches = output.match(/https:\/\/[^\s<>"']+/g) || [];
-    for (const raw of matches) {
-      try {
-        const parsed = new URL(raw.replace(/[).,]+$/, ""));
-        if (["auth.openai.com","chatgpt.com"].includes(parsed.hostname)) return parsed.href;
-      } catch (_) {}
-    }
-    return "";
+    const json = await response.json();
+    if (!response.ok || !json.ok) throw new Error(json.error || "Forbindelsen fejlede.");
+    return json;
   }
   async function refresh() {
     if (refreshing) return;
     refreshing = true;
     try {
-      const install = await api("install-status");
-      const phase = install.phase || "not_installed";
-      $("codex-phase").textContent = {
-        ready:"Installeret", installing:"Installerer...", not_installed:"Ikke installeret", error:"Fejl"
-      }[phase] || phase;
-      $("codex-install-message").textContent = install.message || "";
-      $("codex-install").disabled = phase === "installing" || phase === "ready";
-      $("codex-install").textContent = phase === "installing" ? "Installerer..." :
-        phase === "ready" ? "Installeret" : "Installér Codex";
-      $("codex-auth-card").hidden = phase !== "ready";
-      $("codex-chat-card").hidden = true;
-      if (phase !== "ready") return;
-      const auth = await api("status");
-      $("codex-auth-state").textContent = auth.logged_in ? "Forbundet" :
-        auth.auth_status === "running" ? "Afventer godkendelse..." : "Ikke forbundet";
-      $("codex-auth-start").disabled = auth.logged_in || auth.auth_status === "running";
-      $("codex-auth-start").hidden = !!auth.logged_in;
-      $("codex-auth-output").textContent = auth.logged_in ? "" : (auth.auth_output || "");
-      const link = auth.logged_in ? "" : deviceLink(auth.auth_output || "");
-      $("codex-auth-link").hidden = !link;
-      if (link) $("codex-auth-link").href = link;
-      $("codex-chat-card").hidden = !auth.logged_in;
-    } catch (error) { feedback(error); }
+      const data = await api("status");
+      const phase = data.phase || "not_installed";
+      const names = {ready:"Installeret",installing:"Installerer...",not_installed:"Ikke installeret",stopped:"Stoppet",error:"Fejl"};
+      $("codex-phase").textContent = names[phase] || phase;
+      $("codex-install-message").textContent = data.message || "";
+      $("codex-install").disabled = phase === "ready" || phase === "installing";
+      $("codex-install").textContent = phase === "ready" ? "Installeret" :
+        phase === "installing" ? "Installerer..." :
+        phase === "stopped" ? "Start VS Code" : "Installér VS Code + Codex";
+      $("codex-chat-card").hidden = phase !== "ready";
+      $("codex-extension-note").textContent = data.extension === "manual" ?
+        "Codex-udvidelsen blev ikke installeret automatisk. I VS Code: Extensions → søg OpenAI Codex → Install." :
+        data.extension === "installed" ? "OpenAI Codex-udvidelsen er installeret. Log ind i Codex-panelet." : "";
+      feedback("");
+    } catch (e) { feedback(e); }
     finally { refreshing = false; }
   }
   $("codex-install").addEventListener("click", async () => {
     $("codex-install").disabled = true;
     try { feedback(""); await api("install",true); await refresh(); }
-    catch(error) { feedback(error); $("codex-install").disabled = false; }
-  });
-  $("codex-auth-start").addEventListener("click", async () => {
-    $("codex-auth-start").disabled = true;
-    try { feedback(""); await api("auth/start",true); await refresh(); }
-    catch(error) { feedback(error); $("codex-auth-start").disabled = false; }
+    catch (e) { feedback(e); $("codex-install").disabled = false; }
   });
   refresh();
   setInterval(refresh, 4000);

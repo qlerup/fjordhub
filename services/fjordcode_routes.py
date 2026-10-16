@@ -8,6 +8,8 @@ import requests
 from flask import Blueprint, current_app, jsonify, render_template, request, redirect, url_for
 from flask_login import current_user, login_required
 from services.fjordcode_install import FjordCodeManager, FjordCodeError
+from services.fjordcode_desktop import desktop_manager, DesktopError
+from services.fjordcode_desktop_proxy import proxy_desktop
 
 fjordcode_blueprint = Blueprint("fjordcode", __name__)
 CONTROL_DIR = Path(os.environ.get("FJORDCODE_TOKEN_DIR", "/run/fjordcode-token"))
@@ -57,6 +59,35 @@ def codex_install():
     except FjordCodeError as exc:
         return jsonify(ok=False, error=str(exc)), 409
     return jsonify(ok=True, phase="installing"), 202
+
+
+
+@fjordcode_blueprint.get("/api/fjordcode/desktop/status")
+@login_required
+def desktop_status():
+    if not current_user.is_admin:
+        return jsonify(ok=False, error="Kræver administratoradgang."), 403
+    return jsonify(ok=True, **desktop_manager.status())
+
+
+@fjordcode_blueprint.post("/api/fjordcode/desktop/install")
+@login_required
+def desktop_install():
+    if not current_user.is_admin:
+        return jsonify(ok=False, error="Kræver administratoradgang."), 403
+    try:
+        desktop_manager.begin_install()
+    except DesktopError as error:
+        return jsonify(ok=False, error=str(error)), 409
+    return jsonify(ok=True, phase="installing"), 202
+
+
+@fjordcode_blueprint.route("/fjordcode/desktop/", defaults={"subpath": ""},
+                           methods=["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"])
+@fjordcode_blueprint.route("/fjordcode/desktop/<path:subpath>",
+                           methods=["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"])
+def desktop_proxy(subpath):
+    return proxy_desktop(subpath)
 
 
 @fjordcode_blueprint.route("/fjordcode")

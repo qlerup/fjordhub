@@ -9,27 +9,19 @@
     <a href="{{ url_for('packages') }}" class="btn-open">← Tilbage til Integrationer</a>
   </div>
   <div class="settings-card fc-setup-card">
-    <div class="settings-card-head"><h2>1. Installér Codex</h2></div>
-    <p>Installationen opretter en separat Docker-container til Codex. Den får hverken Docker-socket, Proxmox-adgang eller direkte adgang til FjordHubs øvrige apps.</p>
+    <div class="settings-card-head"><h2>1. Installér Visual Studio Code</h2></div>
+    <p>Installerer den <strong>rigtige Linux-version af VS Code</strong> i en separat Docker-container med OpenAI Codex-udvidelsen. Projektfiler, Codex-skills og indstillinger bevares på serveren ved genstart.</p>
     <div class="fc-setup-state"><span>Status:</span> <strong id="codex-phase" role="status">Kontrollerer...</strong></div>
     <p id="codex-install-message" role="status"></p>
-    <button type="button" class="btn-install" id="codex-install">Installér Codex</button>
-    <small>Installationen kan hente en container-image og kræver internetadgang på Docker-værten. Eksisterende projektfiler bevares ved genstart.</small>
-  </div>
-  <div class="settings-card fc-setup-card" id="codex-auth-card" hidden>
-    <div class="settings-card-head"><h2>2. Forbind din ChatGPT-konto</h2></div>
-    <p>Codex bruger det officielle <strong>ChatGPT device-login (OAuth)</strong>. Du åbner godkendelseslinket på din telefon og indtaster engangskoden. Adgangstokens gemmes alene i Codex-containerens vedvarende volumen, ikke i FjordHubs browser.</p>
-    <div class="fc-setup-state"><span>ChatGPT:</span> <strong id="codex-auth-state">Kontrollerer...</strong></div>
-    <button type="button" class="btn-install" id="codex-auth-start">Log ind med ChatGPT</button>
-    <pre class="fc-device-output" id="codex-auth-output" aria-live="polite"></pre>
-    <a id="codex-auth-link" href="#" target="_blank" rel="noopener noreferrer" hidden>Åbn ChatGPT-godkendelse ↗</a>
-    <small>Hvis enhedsgodkendelse er blokeret, skal den først aktiveres under sikkerhedsindstillingerne i din ChatGPT-konto.</small>
+    <button type="button" class="btn-install" id="codex-install">Installér VS Code + Codex</button>
+    <small>Den første installation downloader et større image og kan tage nogle minutter. Ingen nye domæner eller porte åbnes.</small>
   </div>
   <div class="settings-card fc-setup-card" id="codex-chat-card" hidden>
-    <div class="settings-card-head"><h2>3. Åbn Codex-chatten</h2></div>
-    <p>Vælg dit GitHub-projekt, skriv din prompt og følg de ændringer, agenten laver.</p>
-    <a href="{{ url_for('fjordcode.fjordcode_home') }}" class="btn-install" id="codex-open-chat">Åbn agentchat →</a>
-    <p><small>Første version understøtter offentlige GitHub-repositories. Der pushes ikke automatisk til GitHub.</small></p>
+    <div class="settings-card-head"><h2>2. Åbn VS Code og log ind på Codex</h2></div>
+    <p>Åbn det fulde skrivebord i browseren. Vælg Codex i VS Code, og log ind med din ChatGPT-konto. Alle fremtidige kodeopgaver kan så arbejde med projekter under <code>/workspaces</code>.</p>
+    <a href="{{ url_for('fjordcode.desktop_proxy', subpath='') }}" class="btn-install" id="codex-open-chat">Åbn Visual Studio Code →</a>
+    <p id="codex-extension-note" class="fc-device-output"></p>
+    <p><small>Skills fra din PC skal importeres én gang til <code>/config/fjordcode-home/.codex/skills</code>. Det samme projektlager deles med den tidligere Codex-worker. VS Code-udvidelsens login foretages i selve editoren.</small></p>
   </div>
   <p class="fc-setup-error" id="codex-feedback" role="alert"></p>
 </div>

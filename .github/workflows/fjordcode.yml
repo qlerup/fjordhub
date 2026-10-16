@@ -6,6 +6,11 @@ on:
       - "fjordcode_worker/**"
       - "services/fjordcode_routes.py"
       - "services/fjordcode_install.py"
+      - "services/fjordcode_desktop.py"
+      - "services/fjordcode_desktop_proxy.py"
+      - "tests/test_fjordcode_desktop.py"
+      - "requirements.txt"
+      - "Dockerfile"
       - "templates/codex_integration.html"
       - "static/codex_integration.js"
       - "templates/packages.html"
@@ -21,6 +26,11 @@ on:
       - "fjordcode_worker/**"
       - "services/fjordcode_routes.py"
       - "services/fjordcode_install.py"
+      - "services/fjordcode_desktop.py"
+      - "services/fjordcode_desktop_proxy.py"
+      - "tests/test_fjordcode_desktop.py"
+      - "requirements.txt"
+      - "Dockerfile"
       - "templates/codex_integration.html"
       - "static/codex_integration.js"
       - "templates/packages.html"
@@ -42,7 +52,7 @@ jobs:
       - run: python -m pip install pytest -r requirements.txt
       - name: Validate syntax and configuration
         run: |
-          python -m py_compile app.py services/fjordcode_routes.py services/fjordcode_install.py fjordcode_worker/worker.py
+          python -m py_compile app.py services/fjordcode_routes.py services/fjordcode_install.py services/fjordcode_desktop.py services/fjordcode_desktop_proxy.py fjordcode_worker/worker.py
           sh -n scripts/update.sh
           docker compose config -q
           python - <<'PY'
@@ -59,4 +69,4 @@ jobs:
           docker run --rm fjordcode:smoke codex --version
           docker run --rm fjordcode:smoke python3 -c 'import tomllib; tomllib.load(open("/home/codex/.codex/config.toml", "rb"))'
       - name: Worker tests
-        run: python -m pytest -q tests/test_fjordcode_worker.py tests/test_fjordcode_integration.py
+        run: python -m pytest -q tests/test_fjordcode_worker.py tests/test_fjordcode_integration.py tests/test_fjordcode_desktop.py
