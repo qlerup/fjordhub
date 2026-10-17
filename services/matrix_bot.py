@@ -13,7 +13,8 @@ import time
 from pathlib import Path
 
 import requests
-from nio import AsyncClient, ClientConfig, InviteEvent, LoginResponse, MatrixRoom, RoomMessageText
+from nio import (AsyncClient, ClientConfig, InviteEvent, LoginResponse, MatrixRoom,
+                 RoomMessageText, RoomMessagesResponse, RoomRedactResponse)
 if __package__:
     from .bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages
 else:
@@ -31,8 +32,10 @@ COMMANDS = {
     "hjælp": "Skriv: status, apps, rapport eller spørg: Er der downloadet noget nyt i dag?",
     "help": "Skriv: status, apps, rapport eller spørg: Er der downloadet noget nyt i dag?",
 }
+CLEAR_BOT_COMMANDS = {'ryd botbeskeder', 'ryd bot beskeder', 'clear bot messages'}
+
 for _key in COMMANDS:
-    COMMANDS[_key] += " Du kan også spørge: Hvad seeder nu? Hvad downloader nu? Har du downloadet noget nyt siden i går? Hvad er downloadet de sidste 7 dage?"
+    COMMANDS[_key] += " Du kan også spørge: Hvad seeder nu? Hvad downloader nu? Har du downloadet noget nyt siden i går? Hvad er downloadet de sidste 7 dage? Skriv ryd botbeskeder for at fjerne mine beskeder i denne samtale."
 
 
 def read(path):
@@ -147,6 +150,7 @@ class FjordBot:
         self.pending_status = {}
         self.alerted_users = {}
         self.next_health = 0
+        self.cleaning_rooms = set()
 
     async def login(self):
         if self.saved.get("access_token") and self.saved.get("device_id"):
@@ -173,13 +177,77 @@ class FjordBot:
                 if room.encrypted and user_id in room.users and self.client.user_id in room.users]
 
     async def send(self, room_id, body):
-        # Payloads are encrypted; a new device must later be verified manually in Element X.
+        # E2E is enabled. Account cross-signing is not implemented by this bot,
+        # so Element may still flag the sending device as unverified.
         content = {"msgtype": "m.text", "body": body[:8000]}
         if body.startswith(('FjordSeed · Seeding', 'FjordSeed · Downloads')):
             content.update(format='org.matrix.custom.html', formatted_body=torrent_message_html(body[:8000]))
         await self.client.room_send(
             room_id, "m.room.message", content,
             ignore_unverified_devices=True)
+
+    async def clear_bot_messages(self, room, requester):
+        # This is intentionally limited to the requester's private bot chat.
+        # Never remove another participant's messages or any room state.
+        if (not room.encrypted or not allowed(requester) or
+                set(room.users) != {requester, self.client.user_id}):
+            await self.send(room.room_id, "Jeg kan kun rydde mine beskeder i din private, krypterede samtale med mig.")
+            return
+        cleaning = getattr(self, 'cleaning_rooms', None)
+        if cleaning is None:
+            self.cleaning_rooms = cleaning = set()
+        if room.room_id in cleaning:
+            return
+        cleaning.add(room.room_id)
+        removed = 0
+        incomplete = False
+        limited = False
+        try:
+            cursor = None
+            seen_cursors = set()
+            seen_events = set()
+            for page in range(50):
+                response = await self.client.room_messages(room.room_id, start=cursor, limit=100,
+                    message_filter={'senders': [self.client.user_id],
+                                    'types': ['m.room.message', 'm.room.encrypted']})
+                if not isinstance(response, RoomMessagesResponse):
+                    incomplete = True
+                    break
+                for event in response.chunk:
+                    source = getattr(event, 'source', {}) or {}
+                    event_id = getattr(event, 'event_id', None)
+                    if (getattr(event, 'sender', None) != self.client.user_id or not event_id or
+                            event_id in seen_events or source.get('type') not in {'m.room.message', 'm.room.encrypted'} or
+                            source.get('unsigned', {}).get('redacted_because')):
+                        continue
+                    seen_events.add(event_id)
+                    result = await self.client.room_redact(room.room_id, event_id,
+                                                          reason='Ryd botbeskeder · anmodet af samtalens bruger')
+                    if not isinstance(result, RoomRedactResponse):
+                        incomplete = True
+                        break
+                    removed += 1
+                if incomplete or not response.end:
+                    break
+                if response.end == cursor or response.end in seen_cursors:
+                    incomplete = True
+                    break
+                seen_cursors.add(response.end)
+                cursor = response.end
+            else:
+                limited = True
+        except Exception:
+            log.exception('Bot message cleanup interrupted')
+            incomplete = True
+        finally:
+            cleaning.discard(room.room_id)
+        text = f'Fjernede indholdet af {removed} af mine beskeder. Dine beskeder er bevaret.'
+        if incomplete:
+            text += ' Oprydningen blev afbrudt; ikke alle botbeskeder kunne fjernes.'
+        elif limited:
+            text += ' Oprydningen nåede sin grænse; ældre botbeskeder kan være tilbage.'
+        text += ' Element kan stadig vise markeringer for slettede beskeder.'
+        await self.send(room.room_id, text)
 
     async def on_message(self, room: MatrixRoom, event: RoomMessageText):
         if not room.encrypted or not event.decrypted or not allowed(event.sender):
@@ -188,7 +256,9 @@ class FjordBot:
             return
         command = event.body.strip().lower().lstrip("/")
         try:
-            if command in COMMANDS:
+            if command in CLEAR_BOT_COMMANDS:
+                await self.clear_bot_messages(room, event.sender)
+            elif command in COMMANDS:
                 await self.send(room.room_id, COMMANDS[command])
             elif (period := download_period(command)):
                 for answer in await asyncio.to_thread(download_history, period):
