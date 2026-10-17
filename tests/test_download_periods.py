@@ -35,3 +35,11 @@ def test_yesterday_on_end_of_summer_time_includes_both_repeated_hours(tmp_path):
         insert(store,ident,datetime(2026,10,25,hour,30,tzinfo=timezone.utc))
     report=store.downloads_period('yesterday',datetime(2026,10,26,12,tzinfo=COPENHAGEN))
     assert {row['filename'] for row in report['completed']} == {'first hour','second hour'}
+
+
+def test_period_label_stays_text_with_recorded_downloads(tmp_path):
+    store = NotificationStore(tmp_path)
+    now = datetime(2026,10,17,12,tzinfo=COPENHAGEN)
+    insert(store, 'Finished', now)
+    insert(store, 'Pending', now, 'download_started')
+    assert store.downloads_period('last_7_days', now)['label'] == 'de sidste 7 dage'

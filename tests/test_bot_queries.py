@@ -95,3 +95,15 @@ def test_download_period_questions_and_completion_only_replies():
     assert 'Done' in text and 'Still running' not in text and 'siden i går' in text
     payload['completed'] = [{'filename':str(i)} for i in range(24)]
     assert len(download_history_messages(payload)) == 3
+
+
+def test_readable_download_history():
+    from services.bot_queries import download_history_messages
+    text = download_history_messages({'label': 'de sidste 7 dage', 'completed': [
+        {'filename': 'Temptation.Island.Danmark.S01E30.NORDiC.1080p.VIAP.WEB-DL.DDP2.0.H.264-ADDiCTiON.mkv'},
+        {'filename': 'Luksusfaelden.S32.DANISH.1080p.VIAP.WEB-DL.H.264-NORViNE'}]})[0]
+    assert 'de sidste 7 dage' in text
+    assert '1. Temptation Island Danmark\n   Sæson 1 · Episode 30' in text
+    assert '\n\n2. Luksusfaelden\n   Sæson 32' in text
+    assert 'WEB-DL' not in text
+    assert '2 færdige downloads' in text

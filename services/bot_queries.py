@@ -45,17 +45,36 @@ def download_period(message):
     return None
 
 
+def download_title(filename):
+    name = ' '.join(str(filename or 'Ukendt fil').split())[:200]
+    name = re.sub(r'\.(?:mkv|mp4|avi|mov|m4v|ts)$', '', name, flags=re.I)
+    # Only remove a suffix when it starts with a recognizable release tag.
+    name = re.split(r'[. _-]+(?:DANISH|NORDIC|MULTI|1080[pi]|2160p|720p|480p|WEB-DL|WEBRip|BluRay|HDTV)\b', name, maxsplit=1, flags=re.I)[0]
+    episode = re.search(r'(?:[. _-]+)(S(\d{1,2})(?:E(\d{1,3}))?)$', name, re.I)
+    detail = ''
+    if episode:
+        detail = 'Sæson ' + str(int(episode[2]))
+        if episode[3]:
+            detail += ' · Episode ' + str(int(episode[3]))
+        name = name[:episode.start()]
+    title = re.sub(r'[._]+', ' ', name).strip(' -') or 'Ukendt fil'
+    return title + ('\n   ' + detail if detail else '')
+
+
 def download_history_messages(payload):
-    label = payload.get('label') or 'i dag'
+    label = payload.get('label')
+    if not isinstance(label, str) or not label.strip():
+        label = 'i dag'
     done = payload.get('completed', [])
     if not done:
         return [f'FjordSeed: Ingen færdige downloads registreret {label}.']
     heading = f'FjordSeed · Færdigdownloadet {label}'
     pages = []
     for offset in range(0, len(done), 10):
-        lines = ['• ' + ' '.join(str(item.get('filename') or 'Ukendt fil').split())[:200]
-                 for item in done[offset:offset + 10]]
-        pages.append(heading + '\n\n' + '\n'.join(lines))
+        lines = [f'{offset + index}. ' + download_title(item.get('filename'))
+                 for index, item in enumerate(done[offset:offset + 10], 1)]
+        page = f' · Side {offset // 10 + 1}/{math.ceil(len(done) / 10)}' if len(done) > 10 else ''
+        pages.append(heading + page + f'\n{len(done)} færdige downloads\n\n' + '\n\n'.join(lines))
     if payload.get('more'):
         pages[-1] += '\n\nDer er flere registreringer end vist her.'
     return pages

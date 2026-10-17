@@ -142,14 +142,14 @@ class NotificationStore:
         started = []
         unique_done = set()
         for record in records:
-            label = {"filename": record["filename"], "feed": record["feed"]}
-            identity = (label["filename"], label["feed"])
+            item = {"filename": record["filename"], "feed": record["feed"]}
+            identity = (item["filename"], item["feed"])
             if record["kind"].endswith("_completed"):
                 if identity not in unique_done:
-                    completed.append(label)
+                    completed.append(item)
                     unique_done.add(identity)
             else:
-                started.append(label)
+                started.append(item)
         started = [row for row in started if (row["filename"], row["feed"]) not in unique_done]
         return {"ok": True, "date": str(today), "timezone": "Europe/Copenhagen",
                 "period": period, "label": label, "from": str(first), "until": str(last),
