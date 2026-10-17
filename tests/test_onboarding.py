@@ -65,6 +65,23 @@ def test_test_and_save_uses_shared_mail_settings(client):
     assert page.count('id="mail-settings-form"') == 1
 
 
+
+def test_settings_does_not_activate_smtp_credentials_until_edit(client):
+    csrf = create(client)
+    assert client.post('/setup/preferences', data={'action': 'skip', 'csrf_token': csrf}).status_code == 302
+    assert client.post('/setup/preferences', data={'action': 'skip_storage', 'csrf_token': csrf}).status_code == 302
+    page = client.get('/settings').get_data(as_text=True)
+    assert '<button id="mail-settings-edit"' in page
+    assert 'aria-expanded="false"' in page
+    assert 'id="mail-settings-container" hidden' in page
+    start = page.index('<template id="mail-settings-template">')
+    end = page.index('</template>', start) + len('</template>')
+    assert 'id="mail-settings-form"' in page[start:end]
+    assert 'id="smtp_password"' in page[start:end]
+    assert 'type="password"' not in (page[:start] + page[end:])
+    assert "fjordhub:mail-form-ready" in page
+
+
 def test_failure_keeps_setup_open_and_allows_skip(client):
     token = create(client)
     hub._password_reset._smtp.side_effect = RuntimeError('sensitive upstream failure')

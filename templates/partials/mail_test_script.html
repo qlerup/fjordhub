@@ -1,6 +1,8 @@
 (function () {
-  var form = document.getElementById('mail-settings-form');
-  if (!form) return;
+  function initMailTest() {
+    var form = document.getElementById('mail-settings-form');
+    if (!form || form.dataset.mailTestBound === 'true') return;
+    form.dataset.mailTestBound = 'true';
   var modal = document.getElementById('mail-test-modal');
   var askStep = document.getElementById('mail-test-ask');
   var sentStep = document.getElementById('mail-test-sent');
@@ -72,4 +74,8 @@
     closeModal();
     form.requestSubmit();
   });
+  }
+
+  document.addEventListener('fjordhub:mail-form-ready', initMailTest);
+  initMailTest();
 })();
