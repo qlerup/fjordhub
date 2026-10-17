@@ -145,6 +145,7 @@ class MatrixHub:
             "bot_ready": (bot == "running" and
                           time.time() - float(runtime.get("updated", 0)) < 120 and
                           runtime.get("connected", False)),
+            "bot_identity": runtime.get("identity", {"status":"pending", "message":"Opdatér botten for automatisk enhedsverificering."}),
             "users": sorted(self._load(self.bot_dir / "config.json").get("allowed_users", [])),
             "push": "Element X App Store → Elements pushgateway → Apple APNs",
         }
@@ -301,7 +302,7 @@ with open(p, 'w', encoding='utf-8') as f: yaml.safe_dump(config, f, sort_keys=Fa
         root = Path(__file__).resolve().parent
         bundle = io.BytesIO()
         with tarfile.open(fileobj=bundle, mode="w") as archive:
-            for filename in ("matrix_bot.py", "bot_queries.py", "matrix_bot.Dockerfile"):
+            for filename in ("matrix_bot.py", "bot_queries.py", "bot_identity.py", "matrix_bot.Dockerfile"):
                 data = (root / filename).read_bytes()
                 item = tarfile.TarInfo("Dockerfile" if filename.endswith(".Dockerfile") else filename)
                 item.size = len(data)

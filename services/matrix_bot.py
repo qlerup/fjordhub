@@ -16,8 +16,10 @@ import requests
 from nio import (AsyncClient, ClientConfig, InviteEvent, LoginResponse, MatrixRoom,
                  RoomMessageText, RoomMessagesResponse, RoomRedactResponse)
 if __package__:
+    from .bot_identity import ensure_identity
     from .bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages
 else:
+    from bot_identity import ensure_identity
     from bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -151,6 +153,8 @@ class FjordBot:
         self.alerted_users = {}
         self.next_health = 0
         self.cleaning_rooms = set()
+        self.identity_state = {"status":"pending","message":"Klargør bottens identitet."}
+        self.next_identity_check = 0
 
     async def login(self):
         if self.saved.get("access_token") and self.saved.get("device_id"):
@@ -166,6 +170,21 @@ class FjordBot:
                         "access_token": response.access_token})
         log.info("Created new Matrix bot device")
 
+    async def verify_identity(self):
+        self.next_identity_check = time.time() + 300
+        try:
+            if self.client.should_upload_keys:
+                await self.client.keys_upload()
+            self.identity_state = await asyncio.to_thread(
+                ensure_identity, SERVER, self.client.user_id, self.client.device_id,
+                self.client.access_token, read(CONFIG).get('password', ''),
+                self.client.olm.account, ROOT / 'cross-signing.json')
+            log.info('Bot identity: %s', self.identity_state['status'])
+        except Exception:
+            # Never log server response bodies or credentials during UI auth.
+            log.warning('Bot identity verification unavailable; retrying in five minutes')
+            self.identity_state = {'status':'retrying','message':'Kunne ikke verificere botenheden endnu. Prøver igen automatisk.'}
+
     async def on_invite(self, room: MatrixRoom, event: InviteEvent):
         if not allowed(event.sender):
             log.warning("Ignored Matrix invite from unauthorized user")
@@ -177,8 +196,8 @@ class FjordBot:
                 if room.encrypted and user_id in room.users and self.client.user_id in room.users]
 
     async def send(self, room_id, body):
-        # E2E is enabled. Account cross-signing is not implemented by this bot,
-        # so Element may still flag the sending device as unverified.
+        # The managed bot signs its own device at startup. Recipient devices
+        # still follow their existing encryption and trust settings.
         content = {"msgtype": "m.text", "body": body[:8000]}
         if body.startswith(('FjordSeed · Seeding', 'FjordSeed · Downloads')):
             content.update(format='org.matrix.custom.html', formatted_body=torrent_message_html(body[:8000]))
@@ -311,10 +330,12 @@ class FjordBot:
                 except Exception:
                     log.exception("Could not deliver Matrix notification")
             now = time.time()
+            if now >= self.next_identity_check and self.identity_state.get('status') != 'verified':
+                await self.verify_identity()
             if now >= self.next_health:
                 self.next_health = now + 60
                 await self.watch_status()
-            write(HEALTH, {"updated": time.time(), "connected": True})
+            write(HEALTH, {"updated": time.time(), "connected": True, "identity": self.identity_state})
             await asyncio.sleep(6)
 
     async def watch_status(self):
@@ -366,6 +387,7 @@ class FjordBot:
     async def run(self):
         await self.login()
         try:
+            await self.verify_identity()
             # Sync runs continuously, including encrypted key exchange.
             await asyncio.gather(self.client.sync_forever(timeout=30000, full_state=True),
                                  self.poll_outbox())

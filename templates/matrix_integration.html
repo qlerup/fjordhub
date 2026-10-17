@@ -20,6 +20,7 @@
     <p id="matrix-connectivity-result" aria-live="polite"></p>
     <button class="btn-open" type="button" id="matrix-bot-update" {% if matrix.phase != 'ready' %}hidden{% endif %}>Opdater FjordHub-botten</button>
     <p id="matrix-bot-update-message" aria-live="polite">{{ matrix.bot_update_message }}</p>
+    <p id="matrix-bot-identity" aria-live="polite">{{ (matrix.bot_identity|default({})).get('message', '') }}</p>
   </div>
   <div class="settings-card matrix-card" id="matrix-install-card">
     <div class="settings-card-head"><h2>1. Installer selvhostet Matrix</h2></div>

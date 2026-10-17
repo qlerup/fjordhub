@@ -39,6 +39,7 @@
       $('matrix-bot-update').hidden = data.phase !== 'ready';
       $('matrix-bot-update').disabled = data.bot_update === 'running';
       $('matrix-bot-update-message').textContent = data.bot_update_message || '';
+      $('matrix-bot-identity').textContent = data.bot_identity?.message || '';
       $('matrix-message').textContent = data.message || '';
       $('matrix-install').disabled = data.phase === 'ready' || data.phase === 'installing' || !previewDomain;
       $('matrix-connectivity').hidden = data.phase !== 'ready';
