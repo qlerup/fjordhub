@@ -3568,7 +3568,7 @@ def api_hub_app_notifications():
     if not isinstance(payload, dict):
         return jsonify(ok=False, error="Ugyldig hændelse."), 400
     app_id = payload.get("app_id")
-    if app_id not in ("fjordvpn", "fjordseed") or not _auth.verify_hub_key(
+    if app_id not in ("fjordvpn", "fjordseed", "fjordlens") or not _auth.verify_hub_key(
             app_id, request.headers.get("X-Hub-Key", "")):
         return jsonify(ok=False, error="Ugyldig appnøgle."), 403
     try:

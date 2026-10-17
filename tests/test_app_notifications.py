@@ -114,3 +114,34 @@ def test_seed_notification_uses_readable_title():
     assert 'Example Show\n   Sæson 2 · Episode 3' in text
     assert 'WEB-DL' not in text
     assert '\n\nRSS-feed: My feed' in text
+
+
+def test_lens_upload_summary_is_validated_readable_and_deduplicated(tmp_path):
+    from services.notification_events import clean_event, NotificationError
+    import pytest
+    counts = ('files', 'images', 'videos', 'indexed', 'heic_converted', 'faces_done', 'face_count',
+              'ai_done', 'ai_desc_done', 'index_errors', 'thumb_errors', 'faces_errors', 'ai_errors', 'ai_desc_errors')
+    stats = {k: 0 for k in counts}
+    stats.update(files=3, images=2, videos=1, indexed=3, faces_done=2, face_count=7,
+                 faces_enabled=True, ai_enabled=False, ai_desc_enabled=False, thumb_errors=1)
+    raw = dict(type='upload_finished', event_id='lens-event-1', uploader='Owner', status='completed', stats=stats)
+    hub = MatrixHub(tmp_path)
+    hub.bot_dir.mkdir(parents=True, exist_ok=True)
+    hub._save_state(phase='ready')
+    hub._save(hub.bot_dir / 'config.json', {'allowed_users': ['@owner:test']})
+    store = NotificationStore(tmp_path)
+    assert store.record('fjordlens', raw, hub)['ok']
+    assert store.record('fjordlens', raw, hub)['duplicate']
+    paths = list((hub.bot_dir / 'outbox').glob('*.json'))
+    assert len(paths) == 1
+    import json
+    text = json.loads(paths[0].read_text())['text']
+    assert 'Fundne ansigter: 7' in text
+    assert 'Billeder: 2' in text and 'Videoer: 1' in text
+    assert 'Miniaturer: 1' in text and 'behandlet med fejl' in text
+    with pytest.raises(NotificationError):
+        clean_event('fjordseed', raw)
+    with pytest.raises(NotificationError):
+        clean_event('fjordlens', dict(raw, stats=dict(stats, face_count=-1)))
+    with pytest.raises(NotificationError):
+        clean_event('fjordlens', dict(raw, stats=dict(stats, files=True)))

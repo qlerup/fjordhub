@@ -13,6 +13,7 @@ import uuid
 from zoneinfo import ZoneInfo
 
 ALLOWED_TYPES = {
+    "fjordlens": {"upload_finished"},
     "fjordvpn": {"vpn_failed", "vpn_recovered"},
     "fjordseed": {"rss_started", "rss_completed", "download_started", "download_completed"},
 }
@@ -46,6 +47,19 @@ def clean_event(app_id, value):
             raise NotificationError("Angiv 1–20 VPN-profilnavne.")
         profiles = list(dict.fromkeys(safe_label(x, 90) for x in profiles))
         return {"type": kind, "event_id": event_id, "profiles": profiles}
+    if app_id == 'fjordlens':
+        stats = value.get('stats')
+        counts = ('files', 'images', 'videos', 'indexed', 'heic_converted', 'faces_done', 'face_count',
+                  'ai_done', 'ai_desc_done', 'index_errors', 'thumb_errors', 'faces_errors', 'ai_errors', 'ai_desc_errors')
+        flags = ('faces_enabled', 'ai_enabled', 'ai_desc_enabled')
+        if not isinstance(stats, dict) or set(stats) != set(counts + flags) or any(
+                type(stats.get(k)) is not int or not 0 <= stats[k] <= 100000000 for k in counts) or any(
+                type(stats.get(k)) is not bool for k in flags):
+            raise NotificationError('Ugyldig uploadstatistik.')
+        if stats['images'] + stats['videos'] != stats['files'] or value.get('status') not in {'completed', 'stopped', 'failed'}:
+            raise NotificationError('Ugyldig uploadstatus.')
+        return {'type': kind, 'event_id': event_id, 'stats': {k: stats[k] for k in counts + flags},
+                'status': value['status'], 'uploader': safe_label(value.get('uploader'), 90)}
     filename = safe_label(value.get("filename"), 200)
     if not filename:
         raise NotificationError("Angiv filnavnet.")
@@ -59,6 +73,26 @@ def notification_text(app_id, entry):
         heading = ("🚨 FjordVPN: Forbindelsesfejl" if kind == "vpn_failed" else
                    "✅ FjordVPN: Forbindelsen virker igen")
         return heading + "\n" + "\n".join("• " + n for n in entry["profiles"])
+    if app_id == 'fjordlens':
+        st = entry['stats']
+        errors = [('Metadata/konvertering', st['index_errors']), ('Miniaturer', st['thumb_errors']),
+                  ('Ansigtsanalyse', st['faces_errors']), ('Billedanalyse', st['ai_errors']), ('Beskrivelser', st['ai_desc_errors'])]
+        count = sum(n for _, n in errors)
+        heading = ('⚠️ FjordLens · Behandling afbrudt' if entry['status'] == 'stopped' else
+                   '🚨 FjordLens · Behandling fejlede' if entry['status'] == 'failed' else
+                   '⚠️ FjordLens · Upload behandlet med fejl' if count else '✅ FjordLens · Upload færdigbehandlet')
+        blocks = [heading]
+        if entry['uploader']:
+            blocks.append('Uploadet af: ' + entry['uploader'])
+        blocks.append(f"Filer: {st['files']}\nBilleder: {st['images']}\nVideoer: {st['videos']}\nIndekseret: {st['indexed']}\nKonverteret: {st['heic_converted']}")
+        blocks.append(f"Ansigtsanalyse\nFiler analyseret: {st['faces_done']}\nFundne ansigter: {st['face_count']}" if st['faces_enabled'] else 'Ansigtsanalyse: slået fra')
+        blocks.append('Billedanalyse: ' + (str(st['ai_done']) + ' filer' if st['ai_enabled'] else 'slået fra') +
+                      '\nBeskrivelser: ' + (str(st['ai_desc_done']) + ' filer' if st['ai_desc_enabled'] else 'slået fra'))
+        blocks.append('Fejl\n' + '\n'.join(f'• {name}: {n}' for name, n in errors if n) if count else
+                      'Behandlingen kunne ikke gennemføres. Se detaljer i FjordLens.' if entry['status'] != 'completed' else 'Ingen registrerede behandlingsfejl.')
+        if count or entry['status'] != 'completed':
+            blocks.append('Se fejl og mulighed for genkørsel i FjordLens.')
+        return '\n\n'.join(blocks)
     heading = ("⬇️ FjordSeed: RSS-download startet" if kind == "rss_started" else
                "✅ FjordSeed: Download færdig")
     text = heading + "\n\n" + download_title(entry["filename"])
@@ -96,7 +130,7 @@ class NotificationStore:
             row = con.execute("SELECT queued FROM events WHERE app_id=? AND event_id=?",
                               (app_id, entry["event_id"])).fetchone()
             # Not installed yet: still keep history for "what downloaded today?".
-            notify = entry["type"] in {"vpn_failed", "vpn_recovered", "rss_started"}
+            notify = entry["type"] in {"vpn_failed", "vpn_recovered", "rss_started", "upload_finished"}
             if row["queued"] == 0 and notify and matrix_hub._state().get("phase") == "ready":
                 allowed = matrix_hub._load(matrix_hub.bot_dir / "config.json").get("allowed_users", [])
                 for recipient in allowed[:50]:
