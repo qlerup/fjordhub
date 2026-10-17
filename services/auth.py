@@ -939,6 +939,65 @@ class AuthService:
             "email_error": email_error,
         }
 
+    def complete_app_first_login(
+        self, app_id: str, user_id: int, session_version: int,
+        first_login_email: str = '', first_login_password: str = '',
+        first_login_password_confirm: str = '',
+    ) -> Optional[dict]:
+        """Finish a previously authenticated first sign-in using a short-lived Hub ticket."""
+        app_id = canonical_app_id(app_id)
+        user = self.get_by_id(int(user_id))
+        if (not user or user.session_version != int(session_version)
+                or not self.get_user_app_role(user.id, app_id)
+                or not (user.email_required or user.must_change_password)):
+            return None
+        if user.must_change_password:
+            if first_login_password != first_login_password_confirm:
+                raise ValueError('De nye adgangskoder matcher ikke.')
+            if len(first_login_password) < 6 or len(first_login_password) > 128:
+                raise ValueError('Adgangskoden skal være mellem 6 og 128 tegn.')
+        elif first_login_password:
+            raise ValueError('Adgangskoden skal ikke ændres for denne konto.')
+
+        email = _normalize_email(first_login_email, required=True) if user.email_required else user.email
+        with closing(self._conn()) as conn:
+            current = conn.execute(
+                'SELECT password_hash, session_version, email_required, must_change_password FROM users WHERE id=?',
+                (user.id,),
+            ).fetchone()
+            if not current or int(current['session_version']) != int(session_version):
+                return None
+            if user.must_change_password and _verify_password(str(current['password_hash']), first_login_password):
+                raise ValueError('Vælg en anden adgangskode end den midlertidige.')
+            password_hash = _hash_password(first_login_password) if user.must_change_password else None
+            try:
+                updated = conn.execute(
+                    """UPDATE users SET email=?, email_required=0,
+                       password_hash=COALESCE(?, password_hash), must_change_password=0,
+                       session_version=session_version+1
+                       WHERE id=? AND session_version=? AND email_required=? AND must_change_password=?""",
+                    (email, password_hash, user.id, int(session_version),
+                     int(user.email_required), int(user.must_change_password)),
+                )
+                if updated.rowcount != 1:
+                    return None
+                conn.commit()
+            except sqlite3.IntegrityError as exc:
+                raise ValueError('Email-adressen er allerede i brug.') from exc
+        updated_user = self.get_by_id(user.id)
+        role = self.get_user_app_role(user.id, app_id)
+        if not updated_user or not role:
+            return None
+        return {
+            'id': updated_user.id, 'username': updated_user.username,
+            'first_name': updated_user.first_name, 'last_name': updated_user.last_name,
+            'email': updated_user.email, 'language': updated_user.language,
+            'hub_role': updated_user.role, 'role': role,
+            'created_at': updated_user.created_at,
+            'must_change_password': updated_user.must_change_password,
+            'email_required': updated_user.email_required,
+        }
+
     def change_app_user_password(
         self, app_id: str, username: str, current_password: str, new_password: str
     ) -> Optional[dict]:

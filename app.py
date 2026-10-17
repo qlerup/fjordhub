@@ -16,6 +16,7 @@ import requests
 import docker
 from flask import Flask, render_template, jsonify, request, redirect, url_for, Response, send_file, session, g
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from services.auth import AuthService
 from services.local_network import is_local_request
@@ -1906,7 +1907,50 @@ def api_hub_app_authenticate():
         _login_rate_failure(rate_key)
         return jsonify({"ok": False, "error": "Forkert login eller ingen adgang til appen"}), 401
     _login_rate_success(rate_key)
-    return jsonify({"ok": True, "user": user})
+    response = {"ok": True, "user": user}
+    if user.get('email_required') or user.get('must_change_password'):
+        account = _auth.get_by_id(int(user['id']))
+        if account is not None:
+            response['first_login_token'] = URLSafeTimedSerializer(
+                app.secret_key, salt='fjordhub-app-first-login-v1'
+            ).dumps({'app_id': app_id, 'user_id': account.id,
+                     'session_version': account.session_version})
+    return jsonify(response)
+
+
+@app.route("/api/hub/apps/first-login/complete", methods=["POST"])
+def api_hub_app_first_login_complete():
+    data = request.get_json(silent=True) or {}
+    app_id, error_response = _require_app_key(data)
+    if error_response:
+        return error_response
+    token = str(data.get('first_login_token') or '')
+    if not token or len(token) > 2048:
+        return jsonify(ok=False, error='Førstegangslogin er udløbet. Log ind igen.'), 400
+    try:
+        verified = URLSafeTimedSerializer(
+            app.secret_key, salt='fjordhub-app-first-login-v1'
+        ).loads(token, max_age=600)
+        if not isinstance(verified, dict):
+            raise BadSignature('Invalid setup token')
+        if verified.get('app_id') != app_id:
+            return jsonify(ok=False, error='Opsætningen tilhører en anden app.'), 403
+        user_id = int(verified['user_id'])
+        session_version = int(verified['session_version'])
+    except (BadSignature, SignatureExpired, KeyError, ValueError, TypeError):
+        return jsonify(ok=False, error='Førstegangslogin er udløbet. Log ind igen.'), 400
+    try:
+        user = _auth.complete_app_first_login(
+            app_id, user_id, session_version,
+            str(data.get('first_login_email') or ''),
+            str(data.get('first_login_password') or ''),
+            str(data.get('first_login_password_confirm') or ''),
+        )
+    except ValueError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+    if not user:
+        return jsonify(ok=False, error='Førstegangslogin er udløbet. Log ind igen.'), 400
+    return jsonify(ok=True, user=user)
 
 
 @app.route("/api/hub/apps/change-password", methods=["POST"])

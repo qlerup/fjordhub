@@ -572,6 +572,43 @@ class AppUrlTests(unittest.TestCase):
                 self.assertEqual(login().status_code, 401)
                 self.assertEqual(login(password='new-personal').status_code, 200)
 
+    def test_fjordlens_first_login_ticket_finishes_without_reentering_temporary_password(self):
+        auth = fjordhub._auth
+        uid = auth.create_user('first-time', 'temporary-secret', require_password_change=True)
+        auth.set_user_app_access(uid, 'fjordlens')
+        auth.save_hub_key('fjordlens', 'key-lens')
+        auth.save_hub_key('fjordflix', 'key-flix')
+        with fjordhub.app.test_client() as client:
+            login = client.post('/api/hub/apps/authenticate', headers={'X-Hub-Key': 'key-lens'},
+                json={'app_id': 'fjordlens', 'username': 'first-time', 'password': 'temporary-secret'})
+            self.assertEqual(login.status_code, 200)
+            token = login.json.get('first_login_token')
+            self.assertTrue(token)
+            self.assertNotIn('temporary-secret', token)
+            endpoint = '/api/hub/apps/first-login/complete'
+            payload = {'app_id': 'fjordlens', 'first_login_token': token,
+                       'first_login_email': 'new-user@example.com',
+                       'first_login_password': 'my-new-password',
+                       'first_login_password_confirm': 'my-new-password'}
+            wrong_app = client.post(endpoint, headers={'X-Hub-Key': 'key-flix'},
+                json={**payload, 'app_id': 'fjordflix'})
+            self.assertEqual(wrong_app.status_code, 403)
+            mismatch = client.post(endpoint, headers={'X-Hub-Key': 'key-lens'},
+                json={**payload, 'first_login_password_confirm': 'not-matching'})
+            self.assertEqual(mismatch.status_code, 400)
+            self.assertTrue(auth.get_by_id(uid).must_change_password)
+            ok = client.post(endpoint, headers={'X-Hub-Key': 'key-lens'}, json=payload)
+            self.assertEqual(ok.status_code, 200)
+            self.assertFalse(ok.json['user']['must_change_password'])
+            self.assertFalse(ok.json['user']['email_required'])
+            self.assertEqual(auth.get_by_id(uid).email, 'new-user@example.com')
+            self.assertEqual(client.post(endpoint, headers={'X-Hub-Key': 'key-lens'},
+                                         json=payload).status_code, 400)
+            self.assertEqual(client.post('/api/hub/apps/authenticate',
+                headers={'X-Hub-Key': 'key-lens'},
+                json={'app_id': 'fjordlens', 'username': 'first-time',
+                      'password': 'my-new-password'}).status_code, 200)
+
     def test_email_entered_by_admin_still_requires_confirmation_in_every_app(self):
         auth = fjordhub._auth
         for app_id in ('fjordseed','fjordvpn','fjordflix','fjordcasino','fjordbudget',
