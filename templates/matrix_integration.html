@@ -43,9 +43,10 @@
       <button class="btn btn-install" type="submit">Opret Matrix-bruger</button>
     </form>
     <div class="matrix-result" id="matrix-credentials" hidden></div>
+    <p>Giv kun opdateringsadgang til brugere, der må administrere dine apps. Botten beder om bekræftelse før hver opdatering.</p>
     <div class="matrix-users" id="matrix-users">
       {% for user_id in matrix.users %}
-      <div class="matrix-user"><span>{{ user_id }}</span><button class="btn btn-open" data-test-user="{{ user_id }}">Send push-test</button></div>
+      <div class="matrix-user"><span>{{ user_id }}</span><label><input type="checkbox" data-update-user="{{ user_id }}" {% if user_id in matrix.update_users %}checked{% endif %}> Tillad opdateringer via botten</label><button class="btn btn-open" data-test-user="{{ user_id }}">Send push-test</button></div>
       {% endfor %}
     </div>
   </div>
@@ -71,6 +72,7 @@
 .matrix-grid small,.matrix-page p,.matrix-page small{color:var(--text-muted,#a2a9b7)}
 .matrix-grid strong{overflow-wrap:anywhere}.matrix-page .auth-field{margin:15px 0;display:flex;flex-direction:column;gap:7px}
 .matrix-page input{background:var(--input-bg,#131820);color:var(--text,#fff);border:1px solid var(--border,#434956);border-radius:9px;padding:12px;font:inherit;max-width:100%}
+.matrix-page input[type="checkbox"]{width:18px;height:18px;accent-color:var(--accent)}
 .matrix-inline{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:16px 0}
 .matrix-warning{border-left:3px solid #d7a437;padding:9px 12px;margin-top:15px;font-size:.88rem}
 .matrix-result{border:1px solid var(--border,#444);padding:15px;border-radius:10px;overflow-wrap:anywhere}

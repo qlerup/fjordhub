@@ -226,6 +226,7 @@ _AUTH_EXEMPT = {
     "api_matrix_bot_downloads_today",
     "api_matrix_bot_downloads",
     "api_matrix_bot_seeding",
+    "api_matrix_bot_updates",
 }
 
 _sso_tokens: dict = {}
@@ -3617,6 +3618,21 @@ def _matrix_bot_access_error():
     if not token or not saved or not secrets.compare_digest(token, saved) or not _auth.authenticate_access_token(token):
         return jsonify(ok=False, error="Ugyldigt bot-token."), 401
     return None
+
+
+@app.post('/api/matrix/bot/updates')
+def api_matrix_bot_updates():
+    error = _matrix_bot_access_error()
+    if error:
+        return error
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(ok=False, error='Ugyldige oplysninger.'), 400
+    from services.bot_updates import handle_updates
+    payload, code = handle_updates(_matrix_hub, _update_manager, _install_state, _get_apps(), data)
+    response = jsonify(payload)
+    response.headers['Cache-Control'] = 'no-store'
+    return response, code
 
 
 @app.get('/api/matrix/bot/seeding')

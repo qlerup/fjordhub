@@ -146,6 +146,7 @@ class MatrixHub:
                           time.time() - float(runtime.get("updated", 0)) < 120 and
                           runtime.get("connected", False)),
             "bot_identity": runtime.get("identity", {"status":"pending", "message":"Opdatér botten for automatisk enhedsverificering."}),
+            "update_users": self._load(self.bot_dir / "config.json").get("update_users", []),
             "users": sorted(self._load(self.bot_dir / "config.json").get("allowed_users", [])),
             "push": "Element X App Store → Elements pushgateway → Apple APNs",
         }

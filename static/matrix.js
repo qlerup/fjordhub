@@ -133,9 +133,24 @@
     button.className = 'btn btn-open';
     button.dataset.testUser = id;
     button.textContent = 'Send push-test';
-    div.append(span,button);
+    const label = document.createElement('label');
+    const permission = document.createElement('input');
+    permission.type = 'checkbox';
+    permission.dataset.updateUser = id;
+    label.append(permission, document.createTextNode(' Tillad opdateringer via botten'));
+    div.append(span,label,button);
     $('matrix-users').append(div);
   };
+  $('matrix-users').addEventListener('change', async e => {
+    const input = e.target.closest('[data-update-user]');
+    if (!input) return;
+    input.disabled = true;
+    try {
+      await post('/api/matrix/update-permission', {user_id:input.dataset.updateUser, enabled:input.checked});
+      message('Opdateringsadgang gemt.');
+    } catch (err) { input.checked = !input.checked; message(err.message,true); }
+    finally { input.disabled = false; }
+  });
   $('matrix-users').addEventListener('click', async e => {
     const button = e.target.closest('[data-test-user]');
     if (!button) return;

@@ -1,4 +1,4 @@
-"""FjordHub's Matrix bot: encrypted chats, read-only status and alert messages.
+"""FjordHub's Matrix bot: encrypted chats, status, confirmed app updates and alerts.
 
 No Docker socket, server admin credentials or shell access is mounted here.
 A Matrix account must be explicitly allowlisted from the FjordHub admin UI.
@@ -36,6 +36,7 @@ HELP_TEXT = "\n".join((
     "• apps",
     "• rapport",
     "• hjælp",
+    "• opdateringer – tjek hvilke apps der kan opdateres",
     "",
     "Du kan også spørge:",
     "• Hvad seeder nu?",
@@ -66,6 +67,26 @@ def write(path, payload):
 
 def allowed(user_id):
     return user_id in read(CONFIG).get("allowed_users", [])
+
+
+def update_request(action, sender, room, confirmation=''):
+    config = read(CONFIG)
+    endpoint = API.split('/api/', 1)[0] + '/api/matrix/bot/updates'
+    with requests.Session() as session:
+        session.trust_env = False
+        response = session.post(endpoint, json={'action': action, 'sender': sender,
+            'room': room, 'confirmation': confirmation},
+            headers={'Authorization': 'Bearer ' + config.get('monitor_token', '')},
+            timeout=(5, 180), allow_redirects=False)
+        payload = response.json()
+        if not response.ok or not payload.get('ok'):
+            raise RuntimeError(payload.get('error') or 'Opdateringsforespørgslen mislykkedes.')
+        return payload
+
+
+def update_question(command):
+    text = command.lower().replace("é", "e")
+    return any(word in text for word in ('opdatering', 'opdatere', 'opdater ', 'update')) or text in {'opdater', 'opdatér'}
 
 
 def resources():
@@ -278,6 +299,65 @@ class FjordBot:
         text += ' Element kan stadig vise markeringer for slettede beskeder.'
         await self.send(room.room_id, text)
 
+    async def handle_updates(self, room, sender, command):
+        if set(room.users) != {sender, self.client.user_id}:
+            await self.send(room.room_id, 'Opdateringer kan kun styres i din private, krypterede samtale med mig.')
+            return
+        pending = getattr(self, 'pending_updates', None)
+        if pending is None:
+            pending = self.pending_updates = {}
+        key = (sender, room.room_id)
+        plan = pending.get(key)
+        confirming = command in {'ja', 'ja opdater', 'ja opdatér', 'bekræft opdatering'}
+        cancelling = command in {'nej', 'annuller', 'annullér'}
+        if confirming or cancelling:
+            pending.pop(key, None)
+            if not plan or plan['expires'] < time.time():
+                await self.send(room.room_id, 'Bekræftelsen er udløbet. Skriv opdateringer for at tjekke igen.')
+                return
+            try:
+                result = await asyncio.to_thread(update_request, 'confirm' if confirming else 'cancel', sender, room.room_id, plan['token'])
+            except Exception as exc:
+                await self.send(room.room_id, str(exc))
+                return
+            if cancelling:
+                await self.send(room.room_id, 'Opdatering annulleret.')
+            else:
+                queued = result.get('queued', [])
+                names = plan['names']
+                text = 'FjordHub · Opdateringer\n\n'
+                text += 'Sat i den normale opdateringskø:\n' + '\n'.join('• ' + names.get(i, i) for i in queued) if queued else 'Ingen apps blev sat i kø. De kan allerede være opdateret eller optaget.'
+                if result.get('skipped'):
+                    text += '\n\nKunne ikke sættes i kø:\n' + '\n'.join('• ' + names.get(i, i) for i in result['skipped'])
+                await self.send(room.room_id, text + '\n\nSe fremdriften i FjordHub.')
+            return
+        pending.pop(key, None)
+        await self.send(room.room_id, 'FjordHub · Opdateringer\n\nJeg tjekker dine installerede apps…')
+        try:
+            result = await asyncio.to_thread(update_request, 'check', sender, room.room_id)
+        except Exception:
+            await self.send(room.room_id, 'Kunne ikke tjekke opdateringer lige nu. Prøv igen senere.')
+            return
+        rows = result.get('apps', [])
+        available = [r for r in rows if r.get('update_available') and not r.get('blocked') and not r.get('running') and not r.get('error')]
+        blocks = ['FjordHub · Appopdateringer']
+        if available:
+            blocks.append('Klar til opdatering:\n' + '\n'.join('• ' + r['name'] for r in available))
+        else:
+            blocks.append('Ingen nye appopdateringer klar.')
+        for field, title in [('running', 'Opdaterer allerede'), ('blocked', 'Kræver manuel håndtering (lokale ændringer)'), ('error', 'Kunne ikke kontrolleres')]:
+            entries = [r['name'] for r in rows if r.get(field)]
+            if entries:
+                blocks.append(title + ':\n' + '\n'.join('• ' + name for name in entries))
+        token = result.get('confirmation')
+        if token:
+            pending[key] = {'token': token, 'expires': time.time() + 300, 'names': {r['id']: r['name'] for r in available}}
+            blocks.append('Skal jeg opdatere appsene under Klar til opdatering?\nSvar ja eller nej inden 5 minutter.')
+        elif available:
+            blocks.append('Aktivér Tillad opdateringer via botten for din Matrix-bruger i FjordHub → Integrationer → Matrix, hvis jeg skal starte dem for dig.')
+        blocks.append('Dette tjek gælder installerede apps. FjordHub og selve botten opdateres fra FjordHub.')
+        await self.send(room.room_id, '\n\n'.join(blocks))
+
     async def on_message(self, room: MatrixRoom, event: RoomMessageText):
         if not room.encrypted or not event.decrypted or not allowed(event.sender):
             return
@@ -285,7 +365,9 @@ class FjordBot:
             return
         command = event.body.strip().lower().lstrip("/")
         try:
-            if command in CLEAR_BOT_COMMANDS:
+            if update_question(command) or (command in {'ja', 'ja opdater', 'ja opdatér', 'bekræft opdatering', 'nej', 'annuller', 'annullér'} and (event.sender, room.room_id) in getattr(self, 'pending_updates', {})):
+                await self.handle_updates(room, event.sender, command)
+            elif command in CLEAR_BOT_COMMANDS:
                 await self.clear_bot_messages(room, event.sender)
             elif command in COMMANDS:
                 await self.send(room.room_id, COMMANDS[command])

@@ -160,7 +160,7 @@ def create_matrix_blueprint(hub, auth):
                 raise MatrixError("Matrix-domænet kan ikke ændres efter første installering.")
             token = state.get("monitor_token")
             if not token:
-                token = auth.create_access_token("Matrix-bot (kun læseadgang)", current_user.id,
+                token = auth.create_access_token("Matrix-bot (status og godkendte appopdateringer)", current_user.id,
                                                  days=0)
             hub.begin_install(domain, token)
             hub._save_state(monitor_token=token)
@@ -191,6 +191,27 @@ def create_matrix_blueprint(hub, auth):
         except MatrixError as exc:
             return private({"ok": False, "error": str(exc)}, 409)
         return private({"ok": True, "message": "Botten opdateres. Samtaler og nøgler bevares."}, 202)
+
+    @bp.post("/api/matrix/update-permission")
+    def update_permission():
+        if not admin():
+            return private({"ok": False}, 403)
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return private({'ok': False}, 400)
+        user_id = data.get('user_id')
+        if not isinstance(user_id, str) or type(data.get('enabled')) is not bool:
+            return private({'ok': False}, 400)
+        with hub._lock:
+            path = hub.bot_dir / 'config.json'
+            config = hub._load(path)
+            if user_id not in config.get('allowed_users', []):
+                return private({'ok': False, 'error': 'Ukendt Matrix-bruger.'}, 400)
+            users = set(config.get('update_users', []))
+            users.add(user_id) if data['enabled'] else users.discard(user_id)
+            config['update_users'] = sorted(users)
+            hub._save(path, config)
+        return private({'ok': True})
 
     @bp.post("/api/matrix/test")
     def test_message():
