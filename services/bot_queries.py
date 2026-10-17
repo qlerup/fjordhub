@@ -17,12 +17,48 @@ def torrent_query(message):
     if set(tokens) & {'stop', 'stoppe', 'slet', 'slette', 'fjern', 'fjernelse', 'pause', 'start'}:
         return None
     seed = {'seed', 'seeder', 'seeding', 'seede', 'seedning'}
-    transfer = {'torrent', 'torrents', 'download', 'downloads', 'downloader', 'hentninger'}
-    for vocabulary, intent in ((seed, 'seeding'), (transfer, 'transfers')):
+    download = {'download', 'downloads', 'downloader', 'downloading', 'henter', 'hentninger'}
+    transfer = {'torrent', 'torrents'}
+    for vocabulary, intent in ((seed, 'seeding'), (download, 'downloading'), (transfer, 'transfers')):
         if any(token in vocabulary or (len(token) >= 5 and
                get_close_matches(token, sorted(vocabulary), n=1, cutoff=0.8)) for token in tokens):
             return intent
     return None
+
+
+def download_period(message):
+    tokens = words(message)
+    if set(tokens) & {'stop', 'stoppe', 'slet', 'slette', 'fjern', 'pause', 'start'}:
+        return None
+    text = ' '.join(tokens)
+    if not any(term in text for term in ('download', 'hentet', 'hent', 'frdig', 'nyt', 'rss')):
+        return None
+    if re.search(r'\bsiden (?:i gar|igar|yesterday)\b', text) or 'since yesterday' in text:
+        return 'since_yesterday'
+    match = re.search(r'\b(?:sidste|seneste|last) (\d{1,3}) (?:dage|days)\b', text)
+    if match and 1 <= int(match[1]) <= 366:
+        return 'last_' + str(int(match[1])) + '_days'
+    if re.search(r'\b(?:i gar|igar|yesterday)\b', text):
+        return 'yesterday'
+    if re.search(r'\b(?:i dag|idag|today)\b', text):
+        return 'today'
+    return None
+
+
+def download_history_messages(payload):
+    label = payload.get('label') or 'i dag'
+    done = payload.get('completed', [])
+    if not done:
+        return [f'FjordSeed: Ingen færdige downloads registreret {label}.']
+    heading = f'FjordSeed · Færdigdownloadet {label}'
+    pages = []
+    for offset in range(0, len(done), 10):
+        lines = ['• ' + ' '.join(str(item.get('filename') or 'Ukendt fil').split())[:200]
+                 for item in done[offset:offset + 10]]
+        pages.append(heading + '\n\n' + '\n'.join(lines))
+    if payload.get('more'):
+        pages[-1] += '\n\nDer er flere registreringer end vist her.'
+    return pages
 
 
 def number(value, fallback=0):
@@ -62,6 +98,7 @@ def torrent_message_html(body):
 
 
 ACTIVE_SEEDS = {'uploading', 'stalledUP', 'forcedUP'}
+ACTIVE_DOWNLOADS = {'downloading', 'forcedDL', 'stalledDL', 'metaDL', 'forcedMetaDL'}
 STATE_NAMES = {
     'uploading': 'Seeder – uploader', 'stalledUP': 'Seeder – venter på downloadere',
     'forcedUP': 'Seeder – tvunget start', 'queuedUP': 'I kø til seeding',
@@ -79,11 +116,14 @@ STATE_NAMES = {
 def torrent_messages(payload, intent='seeding'):
     rows = payload['torrents']
     seeds = [row for row in rows if row.get('state') in ACTIVE_SEEDS]
-    selected = seeds if intent == 'seeding' else rows
+    downloads = [row for row in rows if row.get('state') in ACTIVE_DOWNLOADS and number(row.get('progress')) < 1]
+    selected = seeds if intent == 'seeding' else downloads if intent == 'downloading' else rows
     count = ('Mindst ' if payload.get('more') else '') + str(len(seeds)) + ' seeder'
     uploading = sum(number(row.get('upspeed')) > 0 for row in seeds)
     count += f' · {uploading} uploader lige nu'
-    if intent != 'seeding':
+    if intent == 'downloading':
+        count = ('Mindst ' if payload.get('more') else '') + str(len(downloads)) + ' downloader lige nu'
+    elif intent != 'seeding':
         count = str(len(rows)) + ' torrents i oversigten · ' + count
     blocks = []
     for index, row in enumerate(selected, 1):
@@ -95,6 +135,9 @@ def torrent_messages(payload, intent='seeding'):
         text = f'{index}. {title}\n{state}'
         if progress < 100 or intent != 'seeding':
             text += f'\nDownload: {progress_bar(progress / 100)} {decimal(progress)} %'
+        if intent == 'downloading':
+            blocks.append(text)
+            continue
         speed = max(0, number(row.get('upspeed'))) / 1024
         if speed > 0:
             text += '\nUpload: ' + (decimal(speed / 1024) + ' MiB/s' if speed >= 1024 else decimal(speed) + ' KiB/s')
@@ -130,7 +173,7 @@ def torrent_messages(payload, intent='seeding'):
             current, items = '', 0
         current += ('\n\n\n' if current else '') + block
         items += 1
-    pages.append(current or ('Ingen aktive seedinger.' if intent == 'seeding' else 'Ingen torrents.'))
+    pages.append(current or ('Ingen aktive seedinger.' if intent == 'seeding' else 'Ingen aktive downloads.' if intent == 'downloading' else 'Ingen torrents.'))
     heading = 'FjordSeed · Seeding' if intent == 'seeding' else 'FjordSeed · Downloads'
     return [heading + (f' · {i}/{len(pages)}' if len(pages) > 1 else '') + '\n' + count + '\n\n' + page
             for i, page in enumerate(pages, 1)]

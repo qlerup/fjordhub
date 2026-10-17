@@ -9,11 +9,12 @@ FIELDS = ('name', 'state', 'progress', 'upspeed', 'credited_ratio', 'ratio',
           'seeding_unlimited', 'seeding_goal_reached', 'waiting_for_downloaders')
 
 
-def fetch_seed_status(base_url, key):
+def fetch_seed_status(base_url, key, activity='all'):
     try:
         with requests.Session() as client:
             client.trust_env = False
-            with client.get(base_url + '/api/hub/bot/seeding', headers={'X-Hub-Key': key},
+            suffix = '' if activity == 'all' else '?activity=' + activity
+            with client.get(base_url + '/api/hub/bot/seeding' + suffix, headers={'X-Hub-Key': key},
                             timeout=(2, 12), allow_redirects=False, stream=True) as response:
                 if response.status_code != 200:
                     raise AppDataError('FjordSeed er ikke klar. Kontrollér at appen er startet og opdateret.')

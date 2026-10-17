@@ -38,3 +38,11 @@ def test_rejects_unavailable_invalid_or_unbounded_data(item):
     with patch('services.seed_status.requests.Session', return_value=client_for(item)):
         with pytest.raises(AppDataError):
             fetch_seed_status('http://seed', 'secret')
+
+
+@pytest.mark.parametrize('activity', ['downloading','seeding'])
+def test_requests_filtered_activity_before_server_limit(activity):
+    client=client_for(response())
+    with patch('services.seed_status.requests.Session',return_value=client):
+        fetch_seed_status('http://seed','secret',activity=activity)
+    assert client.get.call_args.args[0] == 'http://seed/api/hub/bot/seeding?activity='+activity

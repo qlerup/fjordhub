@@ -112,9 +112,24 @@ class NotificationStore:
             return {"ok": True, "duplicate": bool(row["queued"])}
 
     def downloads_today(self):
-        today = datetime.now(COPENHAGEN).date()
-        start = datetime.combine(today, datetime.min.time(), tzinfo=COPENHAGEN)
-        end = start + timedelta(days=1)
+        return self.downloads_period('today')
+
+    def downloads_period(self, period, now=None):
+        today = (now or datetime.now(COPENHAGEN)).astimezone(COPENHAGEN).date()
+        days = re.fullmatch(r'last_([0-9]{1,3})_days', period)
+        if period == 'today':
+            first, last, label = today, today + timedelta(days=1), 'i dag'
+        elif period == 'yesterday':
+            first, last, label = today - timedelta(days=1), today, 'i går'
+        elif period == 'since_yesterday':
+            first, last, label = today - timedelta(days=1), today + timedelta(days=1), 'siden i går'
+        elif days and 1 <= int(days[1]) <= 366:
+            first, last = today - timedelta(days=int(days[1]) - 1), today + timedelta(days=1)
+            label = 'de sidste ' + days[1] + ' dage'
+        else:
+            raise ValueError('Ugyldig periode. Brug i dag, i går, siden i går eller de sidste 1–366 dage.')
+        start = datetime.combine(first, datetime.min.time(), tzinfo=COPENHAGEN)
+        end = datetime.combine(last, datetime.min.time(), tzinfo=COPENHAGEN)
         with self.lock, self._connect() as con:
             records = con.execute("""SELECT filename,feed,kind,occurred_at FROM events
                 WHERE app_id='fjordseed' AND
@@ -137,5 +152,6 @@ class NotificationStore:
                 started.append(label)
         started = [row for row in started if (row["filename"], row["feed"]) not in unique_done]
         return {"ok": True, "date": str(today), "timezone": "Europe/Copenhagen",
+                "period": period, "label": label, "from": str(first), "until": str(last),
                 "completed": completed[:50], "started": started[:50],
                 "more": len(records) > 500 or len(completed) > 50 or len(started) > 50}

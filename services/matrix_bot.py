@@ -15,9 +15,9 @@ from pathlib import Path
 import requests
 from nio import AsyncClient, ClientConfig, InviteEvent, LoginResponse, MatrixRoom, RoomMessageText
 if __package__:
-    from .bot_queries import torrent_query, torrent_messages, torrent_message_html
+    from .bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages
 else:
-    from bot_queries import torrent_query, torrent_messages, torrent_message_html
+    from bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("fjordhub.matrix")
@@ -32,7 +32,7 @@ COMMANDS = {
     "help": "Skriv: status, apps, rapport eller spørg: Er der downloadet noget nyt i dag?",
 }
 for _key in COMMANDS:
-    COMMANDS[_key] += " Du kan også spørge: Hvad seeder jeg? eller Hvor langt er mine downloads?"
+    COMMANDS[_key] += " Du kan også spørge: Hvad seeder nu? Hvad downloader nu? Har du downloadet noget nyt siden i går? Hvad er downloadet de sidste 7 dage?"
 
 
 def read(path):
@@ -98,11 +98,12 @@ def asks_about_todays_downloads(message):
     return today and subject
 
 
-def seeding_snapshot():
+def seeding_snapshot(intent='seeding'):
     token = read(CONFIG).get('monitor_token')
     if not token:
         raise RuntimeError('FjordHub-bottens læseadgang mangler.')
     response = requests.get('http://fjordhub:8080/api/matrix/bot/seeding',
+                            params={'activity': intent if intent in {'seeding', 'downloading'} else 'all'},
                             headers={'Authorization': 'Bearer ' + token}, timeout=20)
     response.raise_for_status()
     payload = response.json()
@@ -111,31 +112,22 @@ def seeding_snapshot():
     return payload
 
 
-def todays_downloads_text():
+def download_history(period='today'):
     token = read(CONFIG).get("monitor_token")
     if not token:
         raise RuntimeError("FjordHub-bottens læseadgang mangler.")
-    response = requests.get(
-        "http://fjordhub:8080/api/matrix/bot/downloads/today",
-        headers={"Authorization": "Bearer " + token}, timeout=10)
+    response = requests.get("http://fjordhub:8080/api/matrix/bot/downloads",
+                            params={'period': period},
+                            headers={"Authorization": "Bearer " + token}, timeout=10)
     response.raise_for_status()
     payload = response.json()
     if not payload.get("ok"):
         raise RuntimeError("FjordHub kan ikke hente FjordSeed-hændelser.")
-    done = payload.get("completed", [])
-    started = payload.get("started", [])
-    if not done and not started:
-        return "FjordSeed: Ingen nye downloads registreret i dag."
-    parts = ["FjordSeed i dag (" + payload["date"] + "):"]
-    if done:
-        parts.append("✅ Færdigdownloadet:\n" + "\n".join(
-            "• " + item["filename"] for item in done[:15]))
-    if started:
-        parts.append("⬇️ Startet, men ikke færdig:\n" + "\n".join(
-            "• " + item["filename"] for item in started[:15]))
-    if payload.get("more") or len(done) > 15 or len(started) > 15:
-        parts.append("Der er flere filer end vist her.")
-    return "\n\n".join(parts)
+    return download_history_messages(payload)
+
+
+def todays_downloads_text():
+    return '\n\n'.join(download_history('today'))
 
 
 class FjordBot:
@@ -198,11 +190,11 @@ class FjordBot:
         try:
             if command in COMMANDS:
                 await self.send(room.room_id, COMMANDS[command])
-            elif asks_about_todays_downloads(command):
-                answer = await asyncio.to_thread(todays_downloads_text)
-                await self.send(room.room_id, answer)
+            elif (period := download_period(command)):
+                for answer in await asyncio.to_thread(download_history, period):
+                    await self.send(room.room_id, answer)
             elif (intent := torrent_query(command)):
-                payload = await asyncio.to_thread(seeding_snapshot)
+                payload = await asyncio.to_thread(seeding_snapshot, intent)
                 for answer in torrent_messages(payload, intent):
                     await self.send(room.room_id, answer)
             elif command in ("status", "apps", "rapport"):

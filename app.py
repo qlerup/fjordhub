@@ -224,6 +224,7 @@ _AUTH_EXEMPT = {
     "matrix_integration.matrix_well_known",
     "api_hub_app_notifications",
     "api_matrix_bot_downloads_today",
+    "api_matrix_bot_downloads",
     "api_matrix_bot_seeding",
 }
 
@@ -3581,6 +3582,20 @@ def api_hub_app_notifications():
     return response
 
 
+@app.get("/api/matrix/bot/downloads")
+def api_matrix_bot_downloads():
+    error = _matrix_bot_access_error()
+    if error:
+        return error
+    try:
+        payload = _app_notifications.downloads_period(request.args.get('period', 'today'))
+    except ValueError as exc:
+        return jsonify(ok=False, error=str(exc)), 400
+    response = jsonify(payload)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 @app.get("/api/matrix/bot/downloads/today")
 def api_matrix_bot_downloads_today():
     error = _matrix_bot_access_error()
@@ -3609,10 +3624,13 @@ def api_matrix_bot_seeding():
     error = _matrix_bot_access_error()
     if error:
         return error
+    activity = request.args.get('activity', 'all')
+    if activity not in {'all', 'seeding', 'downloading'}:
+        return jsonify(ok=False, error='Ugyldig aktivitet'), 400
     from services.seed_status import fetch_seed_status
     try:
         base_url, key = _integration_app_connection('fjordseed', allow_seed=True)
-        payload = fetch_seed_status(base_url, key)
+        payload = fetch_seed_status(base_url, key) if activity == 'all' else fetch_seed_status(base_url, key, activity=activity)
     except app_integration.AppDataError as exc:
         return jsonify(ok=False, error=str(exc)), exc.status
     response = jsonify(payload)
