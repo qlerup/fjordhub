@@ -43,7 +43,7 @@ def test_events_enqueue_once_for_allowlisted_matrix_user_and_query_downloads():
         assert store.record("fjordseed", payload, matrix)["duplicate"]
         outbox = list((matrix.bot_dir / "outbox").glob("*.json"))
         assert len(outbox) == 1
-        assert "new Linux.iso" in outbox[0].read_text()
+        assert "new Linux iso" in outbox[0].read_text()
         store.record("fjordseed", {"type": "rss_completed", "event_id": "a2",
                                     "filename": "new Linux.iso", "feed": "Linux RSS"}, matrix)
         store.record("fjordseed", {"type": "download_completed", "event_id": "a3",
@@ -105,3 +105,12 @@ def test_hub_notifications_use_existing_per_app_key_and_bot_token():
                 fetch.assert_called_once_with('http://seed', 'key')
                 assert client.get(endpoint, headers={'Authorization': 'Bearer '+token},
                                   environ_overrides={'REMOTE_ADDR':'8.8.8.8'}).status_code == 403
+
+
+def test_seed_notification_uses_readable_title():
+    from services.notification_events import notification_text
+    text = notification_text('fjordseed', {'type': 'rss_started',
+        'filename': 'Example.Show.S02E03.DANISH.1080p.WEB-DL.H264.mkv', 'feed': 'My feed'})
+    assert 'Example Show\n   Sæson 2 · Episode 3' in text
+    assert 'WEB-DL' not in text
+    assert '\n\nRSS-feed: My feed' in text

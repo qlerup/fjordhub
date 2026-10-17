@@ -3,6 +3,7 @@
 Applications can submit *typed* events using their existing FjordHub app key.
 No app controls the recipient, Matrix room, or arbitrary bot instructions.
 """
+from .bot_queries import download_title
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
@@ -60,9 +61,9 @@ def notification_text(app_id, entry):
         return heading + "\n" + "\n".join("• " + n for n in entry["profiles"])
     heading = ("⬇️ FjordSeed: RSS-download startet" if kind == "rss_started" else
                "✅ FjordSeed: Download færdig")
-    text = heading + "\nFil: " + entry["filename"]
+    text = heading + "\n\n" + download_title(entry["filename"])
     if entry["feed"]:
-        text += "\nRSS-feed: " + entry["feed"]
+        text += "\n\nRSS-feed: " + entry["feed"]
     return text
 
 

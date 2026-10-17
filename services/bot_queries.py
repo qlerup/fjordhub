@@ -151,7 +151,7 @@ def torrent_messages(payload, intent='seeding'):
         progress = min(1, max(0, number(row.get('progress')))) * 100
         ratio = max(0, number(row.get('credited_ratio'), number(row.get('ratio'))))
         hours = max(0, number(row.get('seeding_time'))) / 3600
-        text = f'{index}. {title}\n{state}'
+        text = f'{index}. {download_title(title)}\n{state}'
         if progress < 100 or intent != 'seeding':
             text += f'\nDownload: {progress_bar(progress / 100)} {decimal(progress)} %'
         if intent == 'downloading':
@@ -161,7 +161,7 @@ def torrent_messages(payload, intent='seeding'):
         if speed > 0:
             text += '\nUpload: ' + (decimal(speed / 1024) + ' MiB/s' if speed >= 1024 else decimal(speed) + ' KiB/s')
         if row.get('seeding_unlimited') is True:
-            text += f'\nRatio: {decimal(ratio)} · Seedtid: {duration(hours)}'
+            text += f'\nRatio: {decimal(ratio)}\nSeedtid: {duration(hours)}'
             text += '\nUbegrænset seeding · manuelt stop'
         elif row.get('seeding_unlimited') is False:
             target = max(1, number(row.get('ratio_limit'), 1))
@@ -179,7 +179,7 @@ def torrent_messages(payload, intent='seeding'):
             elif row.get('seeding_goal_reached'):
                 text += '\nSeedingmålet er nået'
         else:
-            text += f'\nRatio: {decimal(ratio)} · Seedtid: {duration(hours)}'
+            text += f'\nRatio: {decimal(ratio)}\nSeedtid: {duration(hours)}'
             text += '\nSeedingmål er ikke tilgængeligt'
         blocks.append(text)
     if payload.get('more'):
