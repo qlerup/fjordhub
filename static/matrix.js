@@ -111,7 +111,7 @@
       });
       const copy = document.createElement('button');
       copy.type = 'button';
-      copy.className = 'btn-open';
+      copy.className = 'btn btn-open';
       copy.textContent = 'Kopiér loginoplysninger';
       copy.addEventListener('click', () => navigator.clipboard?.writeText(
         'Server: ' + data.url + '\nBruger: ' + data.user_id + '\nAdgangskode: ' + data.password
@@ -130,7 +130,7 @@
     span.textContent = id;
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'btn-open';
+    button.className = 'btn btn-open';
     button.dataset.testUser = id;
     button.textContent = 'Send push-test';
     div.append(span,button);

@@ -6,7 +6,7 @@
     <span class="package-eyebrow">SYSTEMINTEGRATION</span>
     <h1>Matrix / Element X</h1>
     <p class="dashboard-sub">Din egen krypterede beskedserver, FjordHub-bot og push til iPhone.</p>
-    <a href="{{ url_for('packages') }}" class="btn-open">← Tilbage til Integrationer</a>
+    <a href="{{ url_for('packages') }}" class="btn btn-open">← Tilbage til Integrationer</a>
   </div>
   <div class="settings-card matrix-card">
     <div class="settings-card-head"><h2>Driftsstatus</h2></div>
@@ -16,9 +16,9 @@
       <div><small>Bot</small><strong id="matrix-bot">{{ "Online" if matrix.bot_ready else matrix.bot }}</strong></div>
     </div>
     <p id="matrix-message" role="status">{{ matrix.message }}</p>
-    <button class="btn-open" type="button" id="matrix-connectivity" {% if matrix.phase != 'ready' %}hidden{% endif %}>Test offentlig Matrix-forbindelse</button>
+    <button class="btn btn-open" type="button" id="matrix-connectivity" {% if matrix.phase != 'ready' %}hidden{% endif %}>Test offentlig Matrix-forbindelse</button>
     <p id="matrix-connectivity-result" aria-live="polite"></p>
-    <button class="btn-open" type="button" id="matrix-bot-update" {% if matrix.phase != 'ready' %}hidden{% endif %}>Opdater FjordHub-botten</button>
+    <button class="btn btn-open" type="button" id="matrix-bot-update" {% if matrix.phase != 'ready' %}hidden{% endif %}>Opdater FjordHub-botten</button>
     <p id="matrix-bot-update-message" aria-live="polite">{{ matrix.bot_update_message }}</p>
     <p id="matrix-bot-identity" aria-live="polite">{{ (matrix.bot_identity|default({})).get('message', '') }}</p>
   </div>
@@ -31,7 +31,7 @@
         <input type="text" id="matrix-domain" value="{{ matrix.domain }}" readonly aria-readonly="true" data-hub-public-url="{{ hub_public_url }}">
         <small>Matrix deler FjordHubs adresse og Cloudflare Tunnel. Du skal ikke oprette et nyt domæne eller ændre tunnelens destination. Åbn FjordHub via HTTPS-adressen for at installere, hvis den ikke allerede er konfigureret i FjordHub.</small>
       </div>
-      <button class="btn-install" type="submit" id="matrix-install" {% if matrix.phase in ('ready','installing') %}disabled{% endif %}>{{ "Installeret" if matrix.phase == 'ready' else "Installer Matrix" }}</button>
+      <button class="btn btn-install" type="submit" id="matrix-install" {% if matrix.phase in ('ready','installing') %}disabled{% endif %}>{{ "Installeret" if matrix.phase == 'ready' else "Installer Matrix" }}</button>
     </form>
     <div class="matrix-warning">Matrix-identiteten er permanent bundet til FjordHubs eksisterende domæne. Der oprettes ikke offentlige brugerkonti, og føderation er slået fra.</div>
   </div>
@@ -40,12 +40,12 @@
     <p>Opret en Matrix-bruger, og brug legitimationsoplysningerne til at logge ind i Element X på din iPhone. Adgangskoden vises kun én gang. Start derefter en <strong>krypteret</strong> chat med <code id="matrix-bot-id">@fjordhub-bot:{{ matrix.domain or 'ditdomæne.dk' }}</code> og skriv <code>hjælp</code>.</p>
     <form id="matrix-user-form" class="matrix-inline">
       <input type="text" id="matrix-username" placeholder="Brugernavn" maxlength="31" required>
-      <button class="btn-install" type="submit">Opret Matrix-bruger</button>
+      <button class="btn btn-install" type="submit">Opret Matrix-bruger</button>
     </form>
     <div class="matrix-result" id="matrix-credentials" hidden></div>
     <div class="matrix-users" id="matrix-users">
       {% for user_id in matrix.users %}
-      <div class="matrix-user"><span>{{ user_id }}</span><button class="btn-open" data-test-user="{{ user_id }}">Send push-test</button></div>
+      <div class="matrix-user"><span>{{ user_id }}</span><button class="btn btn-open" data-test-user="{{ user_id }}">Send push-test</button></div>
       {% endfor %}
     </div>
   </div>
@@ -61,6 +61,11 @@
 {% block head %}
 <style>
 .matrix-page{max-width:980px}.matrix-page .matrix-card{margin:18px 0;padding:22px}
+.matrix-page .btn{min-height:44px;max-width:100%;white-space:normal;text-align:center;overflow-wrap:anywhere;flex:0 1 auto;font-family:inherit}
+.matrix-page .btn[hidden]{display:none}
+.matrix-page .btn:disabled{opacity:.4;cursor:not-allowed}
+.matrix-page .btn:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.matrix-page .btn-install:hover:not(:disabled){background:var(--accent-hover,var(--accent))}
 .matrix-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0}
 .matrix-grid>div{background:var(--surface,#191d25);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:8px;min-width:0}
 .matrix-grid small,.matrix-page p,.matrix-page small{color:var(--text-muted,#a2a9b7)}
@@ -70,7 +75,7 @@
 .matrix-warning{border-left:3px solid #d7a437;padding:9px 12px;margin-top:15px;font-size:.88rem}
 .matrix-result{border:1px solid var(--border,#444);padding:15px;border-radius:10px;overflow-wrap:anywhere}
 .matrix-user{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:10px 0;border-bottom:1px solid var(--border,#444)}
-.matrix-feedback{min-height:1.4em;margin-top:14px}@media(max-width:600px){.matrix-grid{grid-template-columns:1fr}.matrix-page .matrix-card{padding:16px}.matrix-inline input,.matrix-inline button{width:100%}}
+.matrix-feedback{min-height:1.4em;margin-top:14px}@media(max-width:600px){.matrix-grid{grid-template-columns:1fr}.matrix-page .matrix-card{padding:16px}.matrix-page .btn{width:100%;justify-content:center}.matrix-inline input,.matrix-inline button{width:100%}.matrix-user span{min-width:0;overflow-wrap:anywhere}}
 </style>
 {% endblock %}
 {% block scripts %}
