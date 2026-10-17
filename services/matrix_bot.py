@@ -30,14 +30,24 @@ HEALTH = ROOT / "health.json"
 SESSION = ROOT / "session.json"
 SERVER = os.environ.get("MATRIX_HOMESERVER", "")
 API = os.environ.get("FJORDHUB_RESOURCE_API", "")
-COMMANDS = {
-    "hjælp": "Skriv: status, apps, rapport eller spørg: Er der downloadet noget nyt i dag?",
-    "help": "Skriv: status, apps, rapport eller spørg: Er der downloadet noget nyt i dag?",
-}
+HELP_TEXT = "\n".join((
+    "Kommandoer:",
+    "• status",
+    "• apps",
+    "• rapport",
+    "• hjælp",
+    "",
+    "Du kan også spørge:",
+    "• Hvad seeder nu?",
+    "• Hvad downloader nu?",
+    "• Er der downloadet noget nyt i dag?",
+    "• Har du downloadet noget nyt siden i går?",
+    "• Hvad er downloadet de sidste 7 dage?",
+    "",
+    "• ryd botbeskeder – fjern mine beskeder i denne samtale.",
+))
+COMMANDS = {"hjælp": HELP_TEXT, "help": HELP_TEXT}
 CLEAR_BOT_COMMANDS = {'ryd botbeskeder', 'ryd bot beskeder', 'clear bot messages'}
-
-for _key in COMMANDS:
-    COMMANDS[_key] += " Du kan også spørge: Hvad seeder nu? Hvad downloader nu? Har du downloadet noget nyt siden i går? Hvad er downloadet de sidste 7 dage? Skriv ryd botbeskeder for at fjerne mine beskeder i denne samtale."
 
 
 def read(path):
@@ -293,7 +303,7 @@ class FjordBot:
                 else:
                     await self.send(room.room_id, status_text(snapshot, details=command == "apps"))
             else:
-                await self.send(room.room_id, "Prøv fx: Hvad seeder jeg? Hvor langt er mine downloads? Er der hentet noget i dag? Eller skriv status, apps, rapport eller hjælp. Jeg kan kun læse status.")
+                await self.send(room.room_id, "Jeg genkendte ikke kommandoen.\n\n" + HELP_TEXT)
         except Exception:
             log.exception("Failed to handle bot command")
             await self.send(room.room_id, "Kunne ikke hente oplysninger lige nu.")
