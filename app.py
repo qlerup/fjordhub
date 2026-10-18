@@ -97,7 +97,7 @@ def _static_version() -> str:
     """Change asset URLs whenever bundled CSS/JS changes."""
     static_dir = Path(app.static_folder or (Path(__file__).parent / "static"))
     try:
-        return str(max((static_dir / name).stat().st_mtime_ns for name in ("styles.css", "app.js", "packages.js", "matrix.js", "codex_integration.js")))
+        return str(max((static_dir / name).stat().st_mtime_ns for name in ("styles.css", "app.js", "packages.js", "matrix.js", "codex_integration.js", "nfs-helper.js")))
     except OSError:
         return str(int(time.time()))
 
@@ -3252,7 +3252,8 @@ def api_verify_nfs_mount():
         fstype = fields[0] if fields else ""
         source = fields[1] if len(fields) > 1 else ""
         if expected_export and source != expected_export:
-            return jsonify(mounted=False, error="Det valgte NFS-export er ikke monteret på stien.")
+            return jsonify(mounted=False, source=source, fstype=fstype,
+                           error=f"Forventede {expected_export} på {path}, men fandt {source or 'intet mount'}. Kontrollér NAS-tilladelser og mountkommandoens output.")
         if fstype in ("nfs", "nfs4", "nfs3"):
             return jsonify({"mounted": True, "fstype": fstype})
         elif fstype:

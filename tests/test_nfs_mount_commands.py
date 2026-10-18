@@ -17,11 +17,13 @@ class NfsMountCommandsTests(unittest.TestCase):
         template = (Path(__file__).resolve().parents[1] / 'static/nfs-helper.js').read_text(encoding='utf-8')
         cls.function = template[template.index('function nfsLxcMountCommands('):template.index('function renderNfsCommands(')]
 
-    def run_commands(self, config, target='/mnt/nas', fail_config=False, active=True, fail_shutdown=False):
+    def run_commands(self, config, target='/mnt/nas', fail_config=False, active=True, fail_shutdown=False, nfs_ready=True):
         script = subprocess.check_output([
             'node', '-e', self.function + '\nconsole.log(nfsLxcMountCommands("100", ' + json.dumps(target) + ').join("\\n"));'
         ], text=True)
-        fake = '''pct() {
+        fake = '''findmnt() { [ "$NFS_READY" = 1 ] || return 1; printf 'nfs\\n'; }
+export -f findmnt
+pct() {
   if [ "$1" = config ]; then
     [ "$FAIL_CONFIG" = 0 ] || return 1
     printf '%s\\n' "$PCT_CONFIG"
@@ -38,7 +40,8 @@ class NfsMountCommandsTests(unittest.TestCase):
 export -f pct
 '''
         env = dict(os.environ, PCT_CONFIG=config, FAIL_CONFIG='1' if fail_config else '0',
-                   MOUNT_ACTIVE='1' if active else '0', FAIL_SHUTDOWN='1' if fail_shutdown else '0')
+                   MOUNT_ACTIVE='1' if active else '0', FAIL_SHUTDOWN='1' if fail_shutdown else '0',
+                   NFS_READY='1' if nfs_ready else '0')
         return subprocess.run([self.bash], input=fake + script, text=True, capture_output=True, env=env)
 
     def test_occupied_slots_are_preserved(self):
@@ -85,6 +88,13 @@ export -f pct
         result = self.run_commands('', fail_config=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertNotIn('CALL', result.stdout)
+
+    def test_nas_mount_failure_never_changes_or_restarts_lxc_even_if_configured(self):
+        for config in ('', 'mp0: /mnt/nas,mp=/mnt/nas'):
+            result = self.run_commands(config, nfs_ready=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('NAS-tilladelserne', result.stdout)
+            self.assertNotIn('CALL', result.stdout)
 
 
 if __name__ == '__main__':

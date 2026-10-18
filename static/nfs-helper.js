@@ -226,6 +226,8 @@ function nfsLxcMountCommands(vmid, root) {
 set -euo pipefail
 ctid=${quote(vmid)}
 target=${quote(root.replace(/\/+$/, ''))}
+fstype=$(findmnt -rn -M "$target" -o FSTYPE || true)
+case "$fstype" in nfs|nfs4|nfs3) ;; *) echo 'STOP: NFS er ikke monteret paa PVE. Kontroller NAS-tilladelserne for PVE-hostens IP. LXC aendres ikke.'; exit 1;; esac
 config=$(pct config "$ctid")
 slot=''
 for i in $(seq 0 255); do
@@ -285,7 +287,7 @@ function renderNfsCommands() {
 
   const setupType = document.querySelector('input[name="nfs-setup-type"]:checked')?.value || 'proxmox';
   const isWSL2 = setupType === 'wsl2';
-  const s = isWSL2 ? 'sudo ' : '';
+  const quote = value => "'" + String(value).replace(/'/g, "'\"'\"'") + "'";
 
   const finalPath = subdir ? `${root.replace(/\/$/, '')}/${subdir}` : root;
   const c = text => ({comment: true, text});
@@ -311,7 +313,8 @@ function renderNfsCommands() {
         `echo "${exp} ${root} nfs ${options} 0 0" | sudo tee -a /etc/fstab`,
         '',
         c('# 3. Montér nu'),
-        'sudo mount -a',
+        `sudo mount ${quote(root)}`,
+        `findmnt -rn -M ${quote(root)} -o FSTYPE | grep -Eq '^nfs[34]?$' || { echo 'STOP: NFS-mount fejlede. Kontroller NAS-tilladelserne.'; exit 1; }`,
         ...(subdir ? ['', c('# 4. Opret undermappe'), `sudo mkdir -p ${finalPath}`] : []),
         '',
         c(`# Base-sti til brug i wizard-felterne: ${finalPath}`),
@@ -330,7 +333,9 @@ function renderNfsCommands() {
         `echo "${exp} ${root} nfs ${options} 0 0" | tee -a /etc/fstab`,
         '',
         c('# 3. Montér nu'),
-        'mount -a',
+        'if command -v systemctl >/dev/null 2>&1; then systemctl daemon-reload; fi',
+        `mount ${quote(root)}`,
+        `findmnt -rn -M ${quote(root)} -o FSTYPE | grep -Eq '^nfs[34]?$' || { echo 'STOP: NAS-mount fejlede. Tillad PVE-hostens IP i NASens NFS-regel. LXC aendres ikke.'; exit 1; }`,
         ...(subdir ? ['', c('# 4. Opret undermappe'), `mkdir -p ${finalPath}`] : []),
         '',
         c('# 5. Find ledig mountplads, tilføj bind-mount og genstart LXC'),
@@ -352,7 +357,9 @@ function renderNfsCommands() {
         `echo "${exp} ${root} nfs ${options} 0 0" | tee -a /etc/fstab`,
         '',
         c('# 3. Montér nu'),
-        'mount -a',
+        'if command -v systemctl >/dev/null 2>&1; then systemctl daemon-reload; fi',
+        `mount ${quote(root)}`,
+        `findmnt -rn -M ${quote(root)} -o FSTYPE | grep -Eq '^nfs[34]?$' || { echo 'STOP: NFS-mount fejlede. Kontroller NAS-tilladelserne.'; exit 1; }`,
         ...(subdir ? ['', c('# 4. Opret undermappe'), `mkdir -p ${finalPath}`] : []),
         '',
         c(`# Base-sti til brug i wizard-felterne: ${finalPath}`),
@@ -374,6 +381,10 @@ function renderNfsCommands() {
   } else {
     block.replaceChildren();
     sections.forEach(sec => {
+      // A pasted command block must stop at mount failure, before touching LXC.
+      // nofail in fstab can mask mount's exit code, so findmnt also verifies NFS.
+      sec.lines = [isWSL2 ? "sudo bash <<'FJORDHUB_NFS_SETUP'" : "bash <<'FJORDHUB_NFS_SETUP'",
+        'set -euo pipefail', ...sec.lines, 'FJORDHUB_NFS_SETUP'];
       const section = document.createElement('div');
       section.className = 'nfs-code-section';
       const header = document.createElement('div');

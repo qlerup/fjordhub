@@ -46,6 +46,18 @@ def test_verification_reports_docker_failure_and_timeout():
         assert hub.api_verify_nfs_mount.__wrapped__().json['error'] == 'Timeout'
 
 
+def test_helper_changes_invalidate_static_asset_urls(tmp_path, monkeypatch):
+    import os
+    for name in ('styles.css','app.js','packages.js','matrix.js','codex_integration.js','nfs-helper.js'):
+        file = tmp_path / name
+        file.write_text('fixture')
+        os.utime(file, ns=(100, 100))
+    monkeypatch.setattr(hub.app, 'static_folder', str(tmp_path))
+    before = hub._static_version()
+    os.utime(tmp_path / 'nfs-helper.js', ns=(200, 200))
+    assert hub._static_version() != before
+
+
 def test_mount_failure_is_reported_without_success_path():
     with hub.app.test_request_context('/api/mount-nfs',method='POST',json={'export':'nas:/media','mount_root':'/mnt/new-nas'}), \
          patch.object(hub,'_nfs_runtime_info',return_value={'auto_mount_supported':True}), \

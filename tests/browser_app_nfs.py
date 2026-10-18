@@ -53,6 +53,9 @@ with sync_playwright() as pw:
             assert 'pct shutdown "$ctid" --timeout 60' in code
             assert 'pct start "$ctid"' in code
             assert 'pct reboot' not in code
+            assert "bash <<'FJORDHUB_NFS_SETUP'\nset -euo pipefail" in code
+            assert "mount '/mnt/fjordseed'" in code
+            assert 'findmnt -rn -M' in code
             verify_status = 503
             page.evaluate("startMountPolling('/mnt/fjordseed')")
             expect(page.locator('#nfs-mount-status')).to_contain_text('HTTP 503')
