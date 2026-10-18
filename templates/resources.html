@@ -383,11 +383,11 @@ function containerRows(group) {
             <span class="status-dot" data-status="${escapeHtml(container.status)}"></span>
             <span>${escapeHtml(container.name)}</span>
           </div>
-          <span>${escapeHtml(statusLabel(container.status))}</span>
-          <span>${escapeHtml(displayCpuLabel(container))}</span>
-          <span>${escapeHtml(container.memory_usage_label || '0 B')}</span>
-          <span>${escapeHtml(ioPair(container.net_rx_label, container.net_tx_label))}</span>
-          <span>${escapeHtml(ioPair(container.block_read_label, container.block_write_label))}</span>
+          <span><small>Status</small>${escapeHtml(statusLabel(container.status))}</span>
+          <span><small>CPU</small>${escapeHtml(displayCpuLabel(container))}</span>
+          <span><small>RAM</small>${escapeHtml(container.memory_usage_label || '0 B')}</span>
+          <span><small>Netværk ind / ud</small>${escapeHtml(ioPair(container.net_rx_label, container.net_tx_label))}</span>
+          <span><small>Disk læst / skrevet</small>${escapeHtml(ioPair(container.block_read_label, container.block_write_label))}</span>
         </div>
       `).join('')}
     </div>`;
