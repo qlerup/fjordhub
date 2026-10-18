@@ -968,6 +968,7 @@ a { color: inherit; text-decoration: none; }
   justify-content: center;
   z-index: 200;
 }
+#nfs-modal { z-index: 350; }
 .nfs-modal {
   background: var(--surface);
   border: 1px solid var(--border);

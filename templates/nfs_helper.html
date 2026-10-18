@@ -1,0 +1,66 @@
+  <div id="nfs-modal" class="nfs-modal-overlay" style="display:none;" onclick="if(event.target===this)closeNfsHelper()">
+    <div class="nfs-modal" role="dialog" aria-modal="true" aria-labelledby="nfs-title">
+      <h3 id="nfs-title">🗄 NFS mount hjælper — <span id="nfs-field-label">{{ nfs_app_name|default('') }}</span></h3>
+      <p class="nfs-modal-desc">Generer de præcise kommandoer til at mounte dit NFS-share og skrive det til <code>/etc/fstab</code>.</p>
+      <div class="nfs-input-row">
+        <label>Opsætningstype</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          {% set nfs_is_docker_desktop = nfs_runtime and nfs_runtime.runtime == 'docker_desktop' %}
+          <label class="nfs-type-label" id="nfs-type-label-proxmox" {% if nfs_is_docker_desktop %}style="opacity:.55" title="Automatisk Proxmox/LXC-mount er ikke tilgaengeligt paa Docker Desktop."{% endif %}>
+            <input type="radio" name="nfs-setup-type" id="nfs-type-proxmox" value="proxmox" {% if not nfs_is_docker_desktop %}checked{% endif %} {% if nfs_is_docker_desktop %}disabled{% endif %} onchange="onNfsTypeChange()">
+            Proxmox (LXC)
+          </label>
+          <label class="nfs-type-label" id="nfs-type-label-wsl2">
+            <input type="radio" name="nfs-setup-type" id="nfs-type-wsl2" value="wsl2" {% if nfs_is_docker_desktop %}checked{% endif %} onchange="onNfsTypeChange()">
+            Windows (Docker Desktop)
+          </label>
+        </div>
+      </div>
+      <div class="nfs-input-row">
+        <label>NAS server IP</label>
+        <div style="display:flex;gap:8px;">
+          <input id="nfs-server-ip" type="text" placeholder="10.10.0.161" onkeydown="if(event.key==='Enter')fetchNfsExports()" style="flex:1;">
+          <button type="button" class="btn-nfs-helper" id="nfs-fetch-btn" onclick="fetchNfsExports()" style="white-space:nowrap;">Connect</button>
+        </div>
+        <div id="nfs-fetch-result" style="margin-top:6px;font-size:.8rem;display:none;"></div>
+      </div>
+      <div class="nfs-input-row">
+        <label>NFS export <span style="font-weight:400;color:var(--text-muted)">(NFS share på serveren)</span></label>
+        <select id="nfs-export-select" onchange="renderNfsCommands()" style="width:100%;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:.9rem;" disabled>
+          <option value="">— Tryk Connect først —</option>
+        </select>
+      </div>
+      <div class="nfs-input-row">
+        <label>Lokalt mount-punkt <span style="font-weight:400;color:var(--text-muted)">(hvor NFS skal hænges op)</span></label>
+        <input id="nfs-mount-root" type="text" placeholder="/mnt/nas-fjord" oninput="renderNfsCommands()" disabled>
+      </div>
+      <div class="nfs-input-row">
+        <label>Undermappe til denne sti <span style="font-weight:400;color:var(--text-muted)">(tom = mount-roden bruges direkte)</span></label>
+        <input id="nfs-subdir" type="text" placeholder="uploads" oninput="renderNfsCommands()" disabled>
+      </div>
+      <div class="nfs-input-row">
+        <label>fstab options</label>
+        <input id="nfs-options" type="text" value="vers=3,resvport,_netdev,nofail" oninput="renderNfsCommands()" disabled>
+      </div>
+      <div class="nfs-input-row" id="nfs-vmid-row" style="display:none;">
+        <label>Proxmox LXC VMID</label>
+        <input id="nfs-vmid" type="text" placeholder="f.eks. 100" oninput="renderNfsCommands()">
+      </div>
+      <div>
+        <p style="font-size:.8rem;font-weight:600;color:var(--text-muted);margin-bottom:6px;">Genererede kommandoer</p>
+        <div id="nfs-code-block"><span style="color:var(--text-muted)">Udfyld felterne ovenfor…</span></div>
+      </div>
+      <div id="nfs-mount-status" style="display:none;font-size:.8rem;margin-top:4px;"></div>
+      <div id="nfs-field-selector" style="display:none;margin-top:12px;">
+        <p style="font-size:.82rem;font-weight:600;margin-bottom:8px;color:var(--text);">Anvend NFS-stien på:</p>
+        <p id="nfs-recommendation" style="display:none;font-size:.78rem;color:#22c55e;margin:0 0 8px;"></p>
+        <div id="nfs-field-list"></div>
+      </div>
+      <div class="nfs-modal-actions">
+        <button type="button" id="nfs-copy-btn" class="btn-copy" onclick="copyNfsCommands()">Kopiér</button>
+        <button type="button" id="nfs-done-btn" class="btn btn-open" onclick="finishNfsHelper()" disabled style="opacity:.35;cursor:not-allowed;">✓ Færdig</button>
+        <button type="button" class="btn btn-toggle" onclick="closeNfsHelper()">Luk</button>
+      </div>
+    </div>
+  </div>
+

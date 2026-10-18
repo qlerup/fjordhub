@@ -28,6 +28,19 @@ FjordHub is a lightweight control panel for a small fleet of self-hosted apps. I
 
 It is built for the home-lab case: one Linux host (bare metal, VM or Proxmox LXC) running Docker, administered by one or a few people.
 
+## Adding NFS storage after installation
+
+Open an installed app's settings (the gear button) and select **Tilføj NFS-mount**.
+The modal reuses the installation wizard's NAS discovery, export selection,
+mount path and persistent NFS setup. Privileged Proxmox LXCs support automatic
+mounting; other environments display the existing setup commands.
+Use a separate, empty path under `/mnt`, `/media` or `/srv` for each share.
+Automatic mounting refuses a path used by another drive or containing local files.
+
+Once the mount is confirmed, select its displayed host path in FjordSeed's
+download-location browser. New mounts appear when browsing the host again;
+adding a mount does not change the app's selected download location.
+
 ## Optional public HTTPS
 
 FjordHub works over HTTP on a home network without a domain or certificate.

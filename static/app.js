@@ -688,6 +688,7 @@ document.getElementById('app-sections')?.addEventListener('click', e => {
 let _settingsAppId = null;
 
 function closeAppSettings() {
+  if (typeof closeNfsHelper === 'function') closeNfsHelper();
   closeStorageMount();
   clearTimeout(_storagePollTimer);
   _settingsAppId = null;
@@ -698,6 +699,7 @@ async function openAppSettings(card) {
   const appId = card?.dataset.appId;
   if (!appId) return;
   _settingsAppId = appId;
+  document.getElementById('app-nfs-result').textContent = '';
   document.getElementById('app-gpu-section').hidden = true;
   loadAppStorage(appId);
   const guide = document.getElementById('media-guide');
@@ -768,6 +770,24 @@ document.getElementById('app-settings-form')?.addEventListener('submit', async e
   } finally {
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Gem adresse'; }
   }
+});
+
+document.getElementById('app-nfs-add')?.addEventListener('click', () => {
+  if (!_settingsAppId) return;
+  const appId = _settingsAppId;
+  const name = document.getElementById('app-settings-title').textContent.split(' · ')[0];
+  window.nfsHelperContext = {
+    name,
+    onComplete(path) {
+      if (_settingsAppId !== appId) return;
+      document.getElementById('app-nfs-result').textContent = `Mountet er klar: ${path}. Vælg stien i appens mappevælger.`;
+    },
+  };
+  document.getElementById('nfs-field-label').textContent = name;
+  // Each addition has its own mount point; no existing app storage is migrated.
+  document.getElementById('nfs-mount-root').value = '';
+  document.getElementById('nfs-subdir').value = '';
+  openNfsHelper([]);
 });
 
 document.getElementById('app-settings-close')?.addEventListener('click', closeAppSettings);

@@ -192,6 +192,12 @@
         <button type="submit" class="btn-install" id="app-settings-save">Gem adresse</button>
       </div>
     </form>
+    <section id="app-nfs-section" style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px;">
+      <h3>NFS-mounts</h3>
+      <p class="field-hint">Tilføj et NAS-drev med samme guide som ved installationen. I FjordSeed kan du derefter vælge mappen under downloadplaceringer ved at åbne /mnt.</p>
+      <button type="button" class="btn btn-open" id="app-nfs-add">Tilføj NFS-mount</button>
+      <p id="app-nfs-result" class="field-hint" aria-live="polite"></p>
+    </section>
     <section id="app-storage-section" style="margin-top:24px;border-top:1px solid var(--border);padding-top:20px;">
       <h3>Filplaceringer</h3>
       <p class="field-hint">Flyt appens filer til en anden lokal disk eller et monteret NAS-drev. Stien skal være synlig på den server, der kører Docker.</p>
@@ -252,6 +258,8 @@
 {% endblock %}
 
 {% block scripts %}
+{% include 'nfs_helper.html' %}
+<script src="{{ url_for('static', filename='nfs-helper.js', v=static_version) }}"></script>
 <script>
   const APP_PORTS = {};
   {% for app in apps %}APP_PORTS["{{ app.id }}"] = {{ app.default_port }};

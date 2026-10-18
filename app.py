@@ -3099,6 +3099,15 @@ def api_mount_nfs():
         return jsonify({"ok": False, "error": "Ugyldig mount-sti"}), 400
     if not re.fullmatch(r"[a-zA-Z0-9/_.-]+", mount_root):
         return jsonify({"ok": False, "error": "Ugyldig mount-sti"}), 400
+    if (not mount_root.startswith(("/mnt/", "/media/", "/srv/"))
+            or any(part in (".", "..") for part in mount_root.split("/"))):
+        return jsonify(ok=False, error="Vælg en mappe under /mnt, /media eller /srv."), 400
+    if (any(part in (".", "..") for part in subdir.split("/"))
+            or re.search(r"[\s\\]", nfs_export)
+            or not nfs_export.split(":", 1)[1].startswith("/")
+            or not re.fullmatch(r"[a-zA-Z0-9_=,.-]+", options)):
+        return jsonify(ok=False, error="Ugyldig export, undermappe eller NFS-indstillinger."), 400
+    mount_root = re.sub(r"/+", "/", mount_root).rstrip("/")
     if _nfs_runtime_info().get("auto_mount_supported") is not True:
         return jsonify(
             {
@@ -3117,6 +3126,16 @@ def api_mount_nfs():
     lxc_script = "\n".join(
         [
             "set -eu",
+            f"target={shlex.quote(mount_root.rstrip('/'))}",
+            f"source={shlex.quote(nfs_export)}",
+            'current=$(awk -v p="$target" \'$2==p{print $1; exit}\' /proc/mounts)',
+            'configured=$(awk -v p="$target" \'$1 !~ /^#/ && $2==p{print $1}\' /etc/fstab)',
+            'if { [ -n "$current" ] && [ "$current" != "$source" ]; } || { [ -n "$configured" ] && [ "$configured" != "$source" ]; }; then',
+            "  echo 'Mount-punktet bruges allerede af et andet drev. Vælg en anden sti.' >&2; exit 44",
+            'fi',
+            'if [ -z "$current" ] && [ -d "$target" ] && [ -n "$(ls -A "$target")" ]; then',
+            "  echo 'Mappen indeholder allerede filer. Vælg et tomt mount-punkt.' >&2; exit 44",
+            'fi',
             "if ! command -v mount.nfs >/dev/null 2>&1 && [ ! -x /sbin/mount.nfs ] && [ ! -x /usr/sbin/mount.nfs ]; then",
             "  if command -v apt-get >/dev/null 2>&1; then",
             "    export DEBIAN_FRONTEND=noninteractive",
@@ -3142,12 +3161,12 @@ def api_mount_nfs():
             f"client_ip=$(ip route get {shlex.quote(nfs_host)} 2>/dev/null | sed -n 's/.* src \\([^ ]*\\).*/\\1/p' | head -n1 || true)",
             '[ -n "$client_ip" ] && echo "FJORDHUB_NFS_CLIENT_IP=$client_ip"',
             f"mkdir -p {shlex.quote(mount_root)}",
-            f"grep -qF {shlex.quote(fstab_line)} /etc/fstab || printf '%s\\n' {shlex.quote(fstab_line)} >> /etc/fstab",
             f"if awk -v p={shlex.quote(mount_root)} '$2==p{{found=1}} END{{exit found?0:1}}' /proc/mounts; then",
             "  :",
             "else",
             f"  mount -t nfs -o {shlex.quote(mount_options)} {shlex.quote(nfs_export)} {shlex.quote(mount_root)}",
             "fi",
+            f"grep -qxF {shlex.quote(fstab_line)} /etc/fstab || printf '%s\\n' {shlex.quote(fstab_line)} >> /etc/fstab",
             f"mkdir -p {shlex.quote(final_path)}" if subdir else ":",
         ]
     )
@@ -3214,13 +3233,18 @@ def api_verify_nfs_mount():
     path = request.args.get("path", "").strip()
     if not path or not path.startswith("/"):
         return jsonify({"mounted": False, "error": "Ugyldig sti"})
+    expected_export = request.args.get("export", "").strip()
     try:
         result = subprocess.run(
             ["docker", "run", "--rm", f"--volume={path}:/d", "alpine",
-             "sh", "-c", "awk '$2==\"/d\"{print $3; exit}' /proc/mounts"],
+             "sh", "-c", "awk '$2==\"/d\"{print $3, $1; exit}' /proc/mounts"],
             capture_output=True, text=True, timeout=15,
         )
-        fstype = result.stdout.strip()
+        fields = result.stdout.strip().split(maxsplit=1)
+        fstype = fields[0] if fields else ""
+        source = fields[1] if len(fields) > 1 else ""
+        if expected_export and source != expected_export:
+            return jsonify(mounted=False, error="Det valgte NFS-export er ikke monteret på stien.")
         if fstype in ("nfs", "nfs4", "nfs3"):
             return jsonify({"mounted": True, "fstype": fstype})
         elif fstype:

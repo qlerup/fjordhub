@@ -8,8 +8,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 
-template = (Path(__file__).resolve().parents[1] / 'templates/wizard.html').read_text(encoding='utf-8')
-script = template[template.index('let _nfsPathFields ='):template.index('function _copyFallback(')]
+script = (Path(__file__).resolve().parents[1] / 'static/nfs-helper.js').read_text(encoding='utf-8')
 html = '''
 <input id="nfs-server-ip" value="192.0.2.1">
 <select id="nfs-export-select"></select>
