@@ -3229,17 +3229,25 @@ def api_mkdir():
 @app.route("/api/verify-nfs-mount")
 @login_required
 def api_verify_nfs_mount():
-    import subprocess
+    import re, subprocess
     path = request.args.get("path", "").strip()
-    if not path or not path.startswith("/"):
+    if (not path.startswith(("/mnt/", "/media/", "/srv/"))
+            or not re.fullmatch(r"[a-zA-Z0-9/_.-]+", path)
+            or any(part in (".", "..") for part in path.split("/"))):
         return jsonify({"mounted": False, "error": "Ugyldig sti"})
+    path = re.sub(r"/+", "/", path).rstrip("/")
     expected_export = request.args.get("export", "").strip()
     try:
         result = subprocess.run(
-            ["docker", "run", "--rm", f"--volume={path}:/d", "alpine",
+            ["docker", "run", "--rm", "--mount", f"type=bind,source={path},target=/d,readonly", "alpine",
              "sh", "-c", "awk '$2==\"/d\"{print $3, $1; exit}' /proc/mounts"],
             capture_output=True, text=True, timeout=15,
         )
+        if result.returncode != 0:
+            detail = result.stderr.strip()
+            if "bind source path does not exist" in detail:
+                detail = "Stien findes ikke i FjordHubs LXC/Docker-server. Kontrollér LXC-ID og afslut stop/start af containeren."
+            return jsonify(mounted=False, error=detail[:500] or "Mountkontrollen fejlede på Docker-serveren.")
         fields = result.stdout.strip().split(maxsplit=1)
         fstype = fields[0] if fields else ""
         source = fields[1] if len(fields) > 1 else ""

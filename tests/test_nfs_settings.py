@@ -21,9 +21,29 @@ def test_invalid_mount_cannot_start_host_command(change):
 @pytest.mark.parametrize('source,expected', [('nas:/media',True),('other:/media',False)])
 def test_verification_requires_selected_export(source, expected):
     with hub.app.test_request_context('/api/verify-nfs-mount?path=/mnt/new-nas&export=nas:/media'), \
-         patch.object(hub.subprocess,'run',return_value=Mock(stdout=f'nfs {source}')):
+         patch.object(hub.subprocess,'run',return_value=Mock(returncode=0,stdout=f'nfs {source}')):
         response = hub.api_verify_nfs_mount.__wrapped__()
     assert response.json['mounted'] is expected
+
+
+def test_verification_does_not_create_a_missing_host_directory():
+    with hub.app.test_request_context('/api/verify-nfs-mount?path=/mnt/missing&export=nas:/media'), \
+         patch.object(hub.subprocess,'run',return_value=Mock(returncode=125,stdout='',stderr='bind source path does not exist: /mnt/missing')) as run:
+        response = hub.api_verify_nfs_mount.__wrapped__()
+    assert not response.json['mounted']
+    assert 'LXC-ID' in response.json['error']
+    command = run.call_args.args[0]
+    assert 'type=bind,source=/mnt/missing,target=/d,readonly' in command
+    assert not any(arg.startswith('--volume=') for arg in command)
+
+
+def test_verification_reports_docker_failure_and_timeout():
+    with hub.app.test_request_context('/api/verify-nfs-mount?path=/mnt/nas'), \
+         patch.object(hub.subprocess,'run',return_value=Mock(returncode=1,stdout='',stderr='Docker unavailable')):
+        assert hub.api_verify_nfs_mount.__wrapped__().json['error'] == 'Docker unavailable'
+    with hub.app.test_request_context('/api/verify-nfs-mount?path=/mnt/nas'), \
+         patch.object(hub.subprocess,'run',side_effect=hub.subprocess.TimeoutExpired('docker',15)):
+        assert hub.api_verify_nfs_mount.__wrapped__().json['error'] == 'Timeout'
 
 
 def test_mount_failure_is_reported_without_success_path():

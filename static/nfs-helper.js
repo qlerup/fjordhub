@@ -194,6 +194,7 @@ async function autoMountNfs() {
 }
 
 function _onMountConfirmed() {
+  _nfsCheckGeneration++;
   clearInterval(_nfsMountPollTimer);
   const statusEl = document.getElementById('nfs-mount-status');
   const doneBtn  = document.getElementById('nfs-done-btn');
@@ -234,20 +235,32 @@ for i in $(seq 0 255); do
   if [ "$existing" = "$target" ]; then
     source=$(printf '%s\n' "$line" | cut -d ' ' -f 2- | cut -d ',' -f 1)
     if [ "$source" = "$target" ]; then
-      echo "Mount findes allerede paa mp$i; eksisterende indstillinger bevares."
-      exit 0
+      slot="mp$i"
+      echo "Mount findes allerede paa $slot; eksisterende indstillinger bevares."
+      if pct exec "$ctid" -- mountpoint -q "$target"; then
+        echo 'Mountet er aktivt i LXC.'
+        exit 0
+      fi
+      break
     fi
     echo "Mappen $target bruges allerede af et andet lager paa mp$i. Vaelg en anden mappesti."
     exit 1
   fi
 done
-for i in $(seq 0 255); do
-  if ! printf '%s\n' "$config" | grep -q "^mp$i:"; then slot="mp$i"; break; fi
-done
-[ -n "$slot" ] || { echo 'Ingen ledige mountpladser i LXC.'; exit 1; }
-echo "Tilfoejer mount paa $slot"
-pct set "$ctid" "-$slot" "$target,mp=$target"
-pct reboot "$ctid"
+if [ -z "$slot" ]; then
+  for i in $(seq 0 255); do
+    if ! printf '%s\n' "$config" | grep -q "^mp$i:"; then slot="mp$i"; break; fi
+  done
+  [ -n "$slot" ] || { echo 'Ingen ledige mountpladser i LXC.'; exit 1; }
+  echo "Tilfoejer mount paa $slot"
+  pct set "$ctid" "-$slot" "$target,mp=$target"
+fi
+# Afslut uploads foerst: denne LXC og dens apps lukkes ned og startes igen.
+if pct status "$ctid" | grep -q 'status: running'; then
+  pct shutdown "$ctid" --timeout 60
+fi
+pct start "$ctid"
+pct exec "$ctid" -- mountpoint -q "$target" || { echo 'Mountet er stadig ikke aktivt i LXC. Kontroller mount og LXC-ID.'; exit 1; }
 FJORDHUB_NFS_LXC`.split('\n');
 }
 
@@ -408,13 +421,20 @@ function startMountPolling(mountRoot) {
   doneBtn.disabled = true;
   doneBtn.style.opacity = '.35';
   doneBtn.style.cursor = 'not-allowed';
+  let checking = false;
   const check = async () => {
+    if (checking || generation !== _nfsCheckGeneration) return;
+    checking = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
     try {
       const ip = document.getElementById('nfs-server-ip').value.trim();
       const exportPath = document.getElementById('nfs-export-select').value;
-      const res  = await fetch(`/api/verify-nfs-mount?path=${encodeURIComponent(mountRoot)}&export=${encodeURIComponent(`${ip}:${exportPath}`)}`);
+      const res  = await fetch(`/api/verify-nfs-mount?path=${encodeURIComponent(mountRoot)}&export=${encodeURIComponent(`${ip}:${exportPath}`)}`, {signal: controller.signal, cache: 'no-store'});
+      if (!res.ok) throw new Error(res.status === 401 ? 'Log ind i FjordHub igen.' : `Mountkontrollen svarede med HTTP ${res.status}.`);
       const data = await res.json();
-      if (data.mounted && generation === _nfsCheckGeneration) {
+      if (generation !== _nfsCheckGeneration) return;
+      if (data.mounted) {
         clearInterval(_nfsMountPollTimer);
         _onMountConfirmed();
         if (_nfsLxcPrivileged === false) {
@@ -428,8 +448,15 @@ function startMountPolling(mountRoot) {
             });
           }
         }
+      } else {
+        _setNfsStatus(statusEl, `Mountet er ikke klar: ${data.error || 'Kontrollér kommandoens output og LXC-ID.'} Kontrollerer igen automatisk.`, 'var(--text-muted)');
       }
-    } catch(_) {}
+    } catch(error) {
+      if (generation === _nfsCheckGeneration) _setNfsStatus(statusEl, `Mountkontrollen kunne ikke gennemføres: ${error.name === 'AbortError' ? 'Serveren svarede ikke i tide.' : error.message} Kontrollerer igen automatisk.`, 'var(--text-muted)');
+    } finally {
+      clearTimeout(timeout);
+      checking = false;
+    }
   };
   check();
   _nfsMountPollTimer = setInterval(check, 5000);

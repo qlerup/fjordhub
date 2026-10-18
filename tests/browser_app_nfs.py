@@ -13,7 +13,9 @@ with hub.app.test_request_context('/'), patch.object(hub, 'current_user', Mock(i
     html = hub.render_template('dashboard.html', apps=[manifest], reg_status={}, active_page='apps')
 with sync_playwright() as pw:
     browser = pw.chromium.launch()
-    for width in (1280, 390):
+    for width, privileged in ((1280, True), (390, True), (1280, False), (390, False)):
+        mount = {'mounted':False, 'error':'Mount mangler i LXC. <img data-error-marker> Kontrollér LXC-ID.'}
+        verify_status = 200
         page = browser.new_page(viewport={'width':width,'height':900})
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
@@ -24,9 +26,9 @@ with sync_playwright() as pw:
             elif path.startswith('/static/'):
                 file = root / path.lstrip('/')
                 route.fulfill(body=file.read_bytes(), content_type='text/css' if file.suffix=='.css' else 'application/javascript' if file.suffix=='.js' else 'image/svg+xml') if file.exists() else route.abort()
-            elif path == '/api/lxc-type': route.fulfill(json={'privileged':True})
+            elif path == '/api/lxc-type': route.fulfill(json={'privileged':privileged,'vmid':'1000'})
             elif path == '/api/list-nfs-exports': route.fulfill(json={'exports':['/volume1/media']})
-            elif path == '/api/verify-nfs-mount': route.fulfill(json={'mounted':False})
+            elif path == '/api/verify-nfs-mount': route.fulfill(status=verify_status,json=mount)
             elif path == '/api/mount-nfs': route.fulfill(json={'ok':True,'path':'/mnt/fjordseed'})
             elif path.endswith('/settings'): route.fulfill(json={'ok':True})
             else: route.fulfill(json={})
@@ -40,9 +42,26 @@ with sync_playwright() as pw:
         page.locator('#nfs-fetch-btn').click()
         expect(page.locator('#nfs-export-select')).to_be_enabled()
         page.locator('#nfs-export-select').select_option('/volume1/media')
-        expect(page.locator('#nfs-auto-btn')).to_be_visible()
-        page.locator('#nfs-auto-btn').click()
+        expect(page.locator('#nfs-mount-status')).to_contain_text('Kontrollér LXC-ID')
+        assert page.locator('[data-error-marker]').count() == 0
+        if privileged:
+            expect(page.locator('#nfs-auto-btn')).to_be_visible()
+            page.locator('#nfs-auto-btn').click()
+        else:
+            code = page.locator('#nfs-code-block').text_content()
+            assert 'ctid=\'1000\'' in code
+            assert 'pct shutdown "$ctid" --timeout 60' in code
+            assert 'pct start "$ctid"' in code
+            assert 'pct reboot' not in code
+            verify_status = 503
+            page.evaluate("startMountPolling('/mnt/fjordseed')")
+            expect(page.locator('#nfs-mount-status')).to_contain_text('HTTP 503')
+            expect(page.locator('#nfs-done-btn')).to_be_disabled()
+            verify_status = 200
+            mount = {'mounted':True,'fstype':'nfs'}
+            page.evaluate("startMountPolling('/mnt/fjordseed')")
         expect(page.locator('#nfs-done-btn')).to_be_enabled()
+        expect(page.locator('#nfs-mount-status')).to_contain_text('NFS mount bekræftet')
         page.locator('#nfs-done-btn').click()
         expect(page.locator('#nfs-modal')).to_be_hidden()
         expect(page.locator('#app-nfs-result')).to_contain_text('/mnt/fjordseed')
