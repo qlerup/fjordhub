@@ -3,6 +3,7 @@ from services.cloudflare_routes import create_cloudflare_blueprint
 from services.app_identity import canonical_app_id
 import os
 import copy
+import hashlib
 import shutil
 import subprocess
 import time
@@ -99,7 +100,12 @@ def _static_version() -> str:
     """Change asset URLs whenever bundled CSS/JS changes."""
     static_dir = Path(app.static_folder or (Path(__file__).parent / "static"))
     try:
-        return str(max((static_dir / name).stat().st_mtime_ns for name in ("styles.css", "app.js", "packages.js", "matrix.js", "codex_integration.js", "nfs-helper.js")))
+        digest = hashlib.sha256()
+        for path in sorted(p for p in static_dir.rglob('*') if p.is_file() and p.suffix.lower() in {'.css', '.js'}):
+            digest.update(path.relative_to(static_dir).as_posix().encode())
+            digest.update(str(path.stat().st_mtime_ns).encode())
+            digest.update(path.read_bytes())
+        return str(int.from_bytes(digest.digest()[:8], 'big'))
     except OSError:
         return str(int(time.time()))
 
