@@ -11,6 +11,72 @@
     return result;
   }
   function element(tag, value, className) { const node = document.createElement(tag); node.textContent = value; if (className) node.className = className; return node; }
+  const customSelects = [];
+  document.querySelectorAll('#cf-editor select').forEach(select => {
+    const wrapper = element('div', '', 'cf-select');
+    select.before(wrapper); wrapper.append(select); select.classList.add('cf-native-select');
+    select.tabIndex = -1; select.setAttribute('aria-hidden', 'true');
+    const trigger = element('button', '', 'cf-select-trigger'); trigger.type = 'button';
+    trigger.id = select.id + '-trigger'; trigger.setAttribute('aria-haspopup', 'listbox'); trigger.setAttribute('aria-expanded', 'false');
+    const label = document.querySelector('label[for="' + select.id + '"]');
+    if (label) { label.id = select.id + '-label'; label.htmlFor = trigger.id; trigger.setAttribute('aria-labelledby', label.id + ' ' + trigger.id); }
+    const list = element('div', '', 'cf-select-options'); list.id = select.id + '-options';
+    list.setAttribute('role', 'listbox'); list.setAttribute('popover', 'manual');
+    if (label) list.setAttribute('aria-labelledby', label.id);
+    trigger.setAttribute('aria-controls', list.id); wrapper.append(trigger, list);
+    const close = () => { list.hidePopover(); trigger.setAttribute('aria-expanded', 'false'); };
+    const sync = () => {
+      trigger.textContent = select.selectedOptions[0]?.textContent || 'Vælg …';
+      trigger.disabled = select.matches(':disabled') || !select.options.length;
+      if (trigger.disabled) close();
+    };
+    const choose = option => { select.value = option.value; select.dispatchEvent(new Event('change', {bubbles:true})); sync(); close(); trigger.focus(); };
+    const open = (last = false) => {
+      if (trigger.disabled) return;
+      customSelects.forEach(item => item.close());
+      const options = [...select.options].filter(o => !o.disabled && !o.hidden);
+      list.replaceChildren(...options.map(option => {
+        const item = element('button', option.textContent, 'cf-select-option'); item.type = 'button'; item.tabIndex = -1;
+        item.setAttribute('role', 'option'); item.setAttribute('aria-selected', String(option.selected));
+        item.onclick = () => choose(option); return item;
+      }));
+      const box = trigger.getBoundingClientRect();
+      const below = innerHeight - box.bottom - 12, above = box.top - 12;
+      const upward = below < 160 && above > below;
+      list.style.width = box.width + 'px'; list.style.left = box.left + 'px';
+      list.style.maxHeight = Math.min(240, upward ? above : below) + 'px';
+      list.showPopover();
+      list.style.top = (upward ? box.top - list.getBoundingClientRect().height - 5 : box.bottom + 5) + 'px';
+      trigger.setAttribute('aria-expanded', 'true');
+      const items = [...list.children];
+      (items.find(i => i.getAttribute('aria-selected') === 'true') || (last ? items.at(-1) : items[0]))?.focus();
+    };
+    trigger.onclick = () => list.matches(':popover-open') ? close() : open();
+    trigger.onkeydown = event => { if (['ArrowDown','ArrowUp','Home','End'].includes(event.key)) { event.preventDefault(); open(['ArrowUp','End'].includes(event.key)); } };
+    let typed = '', typedAt = 0;
+    list.onkeydown = event => {
+      const items = [...list.children], index = items.indexOf(document.activeElement);
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); trigger.focus(); }
+      else if (event.key === 'Tab') close();
+      else if (['ArrowDown','ArrowUp','Home','End'].includes(event.key)) {
+        event.preventDefault();
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+        items[next]?.focus();
+      } else if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey && event.key !== ' ') {
+        event.preventDefault(); typed = Date.now() - typedAt > 700 ? event.key : typed + event.key; typedAt = Date.now();
+        items.find(i => i.textContent.toLocaleLowerCase().startsWith(typed.toLocaleLowerCase()))?.focus();
+      }
+    };
+    select.addEventListener('change', sync);
+    select.addEventListener('focus', () => trigger.focus());
+    select.addEventListener('invalid', () => trigger.focus());
+    new MutationObserver(sync).observe(select, {childList:true, subtree:true, attributes:true});
+    document.addEventListener('pointerdown', event => { if (!wrapper.contains(event.target)) close(); });
+    select.closest('dialog').addEventListener('close', close);
+    select.closest('dialog').addEventListener('scroll', close);
+    window.addEventListener('resize', close);
+    customSelects.push({sync, close}); sync();
+  });
   function button(label, action) { const b = element('button', label, 'btn-settings'); b.type = 'button'; b.onclick = () => run(b, action); return b; }
   async function run(control, action) {
     if (control.disabled) return;
@@ -109,6 +175,7 @@
     const tunnels = (createView?.tunnels || []).filter(t => t.config_src === 'cloudflare' && !t.error && t.version != null);
     $('cf-create-tunnel').replaceChildren(...tunnels.map(t => {const option = element('option',t.name || t.id); option.value = t.id; return option;}));
     $('cf-create-tunnel-help').textContent = tunnels.length ? 'Vælg den tunnel, som kan nå den lokale service.' : 'Ingen redigerbare tunneler fundet. Tunnelen skal være styret hos Cloudflare og tokenet skal have Cloudflare Tunnel Edit.';
+    customSelects.forEach(item => item.sync());
   }
   function updateAddressPreview() {
     const zone = state.domains.find(d => String(d.id) === $('cf-create-domain').value);
