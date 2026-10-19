@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Cloudflare — FjordHub{% endblock %}
+{% block title %}Cloudflare domæneadministration — FjordHub{% endblock %}
 {% block content %}
 <div class="settings-page cf-page">
-  <div class="dashboard-header"><h1>Cloudflare</h1><p class="dashboard-sub">Domæner, DNS og tunneladresser samlet i FjordHub.</p></div>
-  <nav class="settings-tabs"><a class="settings-tab" href="{{ url_for('settings') }}">Tilbage til indstillinger</a><a class="settings-tab active" href="{{ url_for('cloudflare.page') }}">Cloudflare</a></nav>
+  <div class="dashboard-header"><h1>Cloudflare domæneadministration</h1><p class="dashboard-sub">Domæner, DNS og tunneladresser samlet i FjordHub.</p></div>
+  <nav class="settings-tabs"><a class="settings-tab" href="{{ url_for('settings') }}">Tilbage til indstillinger</a><a class="settings-tab active" href="{{ url_for('cloudflare.page') }}">Cloudflare domæneadministration</a></nav>
   <p id="cf-status" role="status" aria-live="polite"></p>
   <div class="settings-card">
     <label><input id="cf-enabled" type="checkbox" disabled> Aktivér Cloudflare-administration</label>
