@@ -12,8 +12,8 @@
   <p id="cf-status" role="status" aria-live="polite"></p>
   <div id="cf-content" hidden>
     <div class="settings-card">
-      <div class="settings-card-head"><h2>Forbind et domæne</h2><span class="cf-tag">Ét token pr. domæne</span></div>
-      <p class="field-hint">Tilknyt hvert domæne med sit eget API-token fra din Cloudflare-bruger. Derefter kan du oprette, redigere og slette DNS-poster og subdomæner direkte her.</p>
+      <div class="settings-card-head"><h2>Tilføj en forbindelse</h2><span class="cf-tag">Ét token pr. domæne</span></div>
+      <p class="field-hint">Giv forbindelsen et navn, og tilføj dit API-token. Domænet findes automatisk. Du kan tilføje flere forbindelser med hver sit token og administrere deres DNS-poster og subdomæner her.</p>
       <details class="cf-guide" open>
         <summary><span>Sådan opretter du et API-token</span><span class="cf-guide-chevron" aria-hidden="true">⌄</span></summary>
         <div class="cf-guide-body">
@@ -23,23 +23,24 @@
               <table class="cf-permissions"><caption class="cf-visually-hidden">Nødvendige rettigheder til domæner og DNS</caption><thead><tr><th scope="col">Type</th><th scope="col">Rettighed</th><th scope="col">Adgang</th></tr></thead><tbody><tr><td>Zone</td><td>Zone</td><td><code>Read</code></td></tr><tr><td>Zone</td><td>DNS</td><td><code>Edit</code></td></tr></tbody></table>
               <div class="cf-tunnel-note"><strong>Bruger du også tunneler?</strong><p>Tilføj <code>Account → Cloudflare Tunnel → Read</code> til tunneloversigten. Vælg <code>Edit</code>, hvis du også vil redigere tunneladresser.</p></div>
             </div></li>
-            <li><div><h3>Vælg dit domæne, og kopiér tokenet</h3><p>Under <strong>Zone Resources</strong> vælger du <strong>Include → Specific zone</strong> og dit domæne. Bruger du tunneler, skal den tilhørende konto også vælges under <strong>Account Resources</strong>. Opret tokenet, og indsæt det her i FjordHub.</p></div></li>
+            <li><div><h3>Vælg dit domæne, og kopiér tokenet</h3><p>Under <strong>Zone Resources</strong> vælger du <strong>Include → Specific zone</strong> og dit domæne. Bruger du tunneler, skal den tilhørende konto også vælges under <strong>Account Resources</strong>. Opret tokenet, og indsæt det her i FjordHub. Domænet findes automatisk via tokenet.</p></div></li>
           </ol>
           <div class="cf-guide-footer"><a href="https://developers.cloudflare.com/fundamentals/api/get-started/create-token/" target="_blank" rel="noopener noreferrer">Cloudflares vejledning ↗</a><a href="https://developers.cloudflare.com/fundamentals/api/reference/permissions/" target="_blank" rel="noopener noreferrer">Se alle API-rettigheder ↗</a></div>
           <p class="cf-security-note">Brug et API-token. Tokenet gemmes krypteret og vises aldrig igen. En Global API Key eller en tunnels forbindelsestoken kan ikke bruges her. Lokalt styrede tunneler redigeres i deres konfigurationsfil.</p>
         </div>
       </details>
       <form id="cf-connect" class="cf-connect-form" autocomplete="off">
-        <div class="auth-field"><label for="cf-name">Domæne</label><input id="cf-name" placeholder="ditdomæne.dk" required></div>
+        <div class="auth-field"><label for="cf-token-label">Navn på forbindelse</label><input id="cf-token-label" placeholder="Fx Privat eller Arbejde" maxlength="80" required></div>
         <div class="auth-field"><label for="cf-token">API-token</label><input id="cf-token" type="password" autocomplete="new-password" required></div>
-        <div class="cf-connect-footer"><p class="field-hint">Tilknyt samme domæne igen for at udskifte tokenet.</p><button class="btn-settings cf-primary" type="submit">Tilknyt domæne</button></div>
+        <div id="cf-zone-choice" class="auth-field" hidden><label for="cf-name">Vælg domæne fra tokenet</label><select id="cf-name" disabled></select></div>
+        <div class="cf-connect-footer"><p class="field-hint">Giver tokenet adgang til flere domæner, vælger du et fra listen. Tilføjer du samme domæne igen, opdateres navn og token på den eksisterende forbindelse.</p><button class="btn-settings cf-primary" type="submit">Tilføj forbindelse</button></div>
       </form>
     </div>
     <div class="settings-card">
-      <div class="settings-card-head"><h2>Tilknyttede domæner</h2></div>
-      <p class="field-hint">Vælg et domæne for at se og administrere DNS-poster og tunneler.</p>
-      <div class="cf-grid cf-domain-picker"><div class="auth-field"><label for="cf-domains">Domæne</label><select id="cf-domains"></select></div><button id="cf-refresh" class="btn-settings" type="button">Genindlæs</button><button id="cf-disconnect" class="btn-settings cf-remove" type="button">Fjern tilknytning</button></div>
-      <p id="cf-empty" class="cf-empty">Ingen domæner endnu. Tilknyt dit første domæne ovenfor.</p>
+      <div class="settings-card-head"><h2>Dine forbindelser</h2></div>
+      <p class="field-hint">Vælg en forbindelse for at administrere domænets DNS-poster og tunneler.</p>
+      <div class="cf-grid cf-domain-picker"><div class="auth-field"><label for="cf-domains">Forbindelse</label><select id="cf-domains"></select></div><button id="cf-refresh" class="btn-settings" type="button">Genindlæs</button><button id="cf-disconnect" class="btn-settings cf-remove" type="button">Fjern tilknytning</button></div>
+      <p id="cf-empty" class="cf-empty">Ingen forbindelser endnu. Tilføj dit første API-token ovenfor.</p>
     </div>
     <div id="cf-overview" hidden>
       <div class="settings-card">

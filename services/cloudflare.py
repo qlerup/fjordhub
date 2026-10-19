@@ -94,6 +94,8 @@ class CloudflareService:
                 );
                 INSERT OR IGNORE INTO cloudflare_preferences(id,enabled) VALUES(1,0);
             ''')
+            if 'label' not in {row['name'] for row in db.execute('PRAGMA table_info(cloudflare_domains)')}:
+                db.execute("ALTER TABLE cloudflare_domains ADD COLUMN label TEXT NOT NULL DEFAULT ''")
 
     def conn(self):
         db = sqlite3.connect(self.db_path, timeout=40)
@@ -103,7 +105,7 @@ class CloudflareService:
     def settings(self):
         with closing(self.conn()) as db:
             return {'enabled': bool(db.execute('SELECT enabled FROM cloudflare_preferences WHERE id=1').fetchone()[0]),
-                    'domains': [dict(r) for r in db.execute('SELECT id,name,zone_id,account_id FROM cloudflare_domains ORDER BY name')]}
+                    'domains': [dict(r) for r in db.execute("SELECT id,name,zone_id,account_id,COALESCE(NULLIF(label,''),name) AS label FROM cloudflare_domains ORDER BY label,name")]}
 
     def enable(self, enabled):
         if not isinstance(enabled, bool):
@@ -115,25 +117,35 @@ class CloudflareService:
         if not self.settings()['enabled']:
             raise CloudflareError('Slå Cloudflare-administration til først.')
 
-    def connect(self, name, token):
+    def connect(self, name, token, label=None):
         self.require_enabled()
-        name = hostname(name)
+        name = hostname(name) if name else None
+        if label is not None:
+            if not isinstance(label,str) or not label.strip() or len(label.strip())>80 or any(ord(c)<32 for c in label):
+                raise CloudflareError('Giv forbindelsen et navn på højst 80 tegn.')
+            label=label.strip()
         if not isinstance(token, str) or not token.strip() or len(token) > 2048 or any(c.isspace() for c in token.strip()):
             raise CloudflareError('Indtast et gyldigt Cloudflare API-token.')
         token = token.strip()
         api = CloudflareAPI(token)
-        zones = api.all('/zones', name=name)
-        zones = [z for z in zones if z.get('name', '').lower() == name]
+        zones = api.all('/zones', **({'name':name} if name else {}))
+        zones = [z for z in zones if isinstance(z,dict) and isinstance(z.get('name'),str)
+                 and (name is None or z['name'].lower() == name)]
+        if name is None and len(zones)>1:
+            return {'selection_required':True,'choices':sorted({hostname(z['name']) for z in zones})}
         if len(zones) != 1:
             raise CloudflareError('Domænet blev ikke fundet. Tokenet skal have Zone Read og DNS Edit for domænet.')
         zone = zones[0]
+        name = hostname(zone['name'])
         zone_id, account_id = identifier(zone['id']), identifier(zone['account']['id'])
         api.call('GET', f'/zones/{zone_id}/dns_records', params={'per_page': 1})
         encrypted = self.cipher.encrypt(token.encode()).decode()
         with closing(self.conn()) as db, db:
-            db.execute('INSERT INTO cloudflare_domains(name,zone_id,account_id,token) VALUES(?,?,?,?) '
-                'ON CONFLICT(name) DO UPDATE SET zone_id=excluded.zone_id,account_id=excluded.account_id,token=excluded.token',
-                (name, zone_id, account_id, encrypted))
+            db.execute('INSERT INTO cloudflare_domains(name,zone_id,account_id,token,label) VALUES(?,?,?,?,?) '
+                'ON CONFLICT(name) DO UPDATE SET zone_id=excluded.zone_id,account_id=excluded.account_id,token=excluded.token,'
+                "label=COALESCE(?,NULLIF(cloudflare_domains.label,''),excluded.name)",
+                (name, zone_id, account_id, encrypted,label or name,label))
+        return {'connected_domain':name}
 
     def disconnect(self, domain_id):
         with closing(self.conn()) as db, db:

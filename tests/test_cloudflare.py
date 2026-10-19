@@ -44,6 +44,94 @@ def test_tokens_encrypted_and_replace_persisted(service):
     assert recreated.domain(1)[1].token == 'replacement-token'
 
 
+def test_token_only_connection_detects_domain_and_replaces_token(service):
+    zones=[{'name':'example.com','id':ZONE,'account':{'id':ACCOUNT}}]
+    with patch.object(CloudflareAPI,'all',return_value=zones) as listing, \
+         patch.object(CloudflareAPI,'call',return_value={'result':[]}):
+        result=service.connect(None,'new-token')
+    listing.assert_called_once_with('/zones')
+    assert result=={'connected_domain':'example.com'}
+    assert len(service.settings()['domains'])==1
+    assert service.domain(1)[1].token=='new-token'
+    assert 'new-token' not in str(result)
+
+
+def test_multi_zone_token_requires_selection_without_saving_it(service):
+    zones=[{'name':'example.com','id':ZONE,'account':{'id':ACCOUNT}},
+           {'name':'other.dk','id':'d'*32,'account':{'id':ACCOUNT}}]
+    before=service.settings()
+    with patch.object(CloudflareAPI,'all',return_value=zones),patch.object(CloudflareAPI,'call') as call:
+        result=service.connect(None,'multi-zone-token')
+    assert result=={'selection_required':True,'choices':['example.com','other.dk']}
+    call.assert_not_called()
+    assert service.settings()==before and service.domain(1)[1].token==TOKEN
+    with patch.object(CloudflareAPI,'all',return_value=zones), \
+         patch.object(CloudflareAPI,'call',return_value={'result':[]}):
+        assert service.connect('other.dk','multi-zone-token')=={'connected_domain':'other.dk'}
+    assert len(service.settings()['domains'])==2
+
+
+def test_discovery_with_no_zones_or_inaccessible_choice_preserves_existing_token(service):
+    for name,zones in [(None,[]),('other.dk',[{'name':'example.com','id':ZONE,'account':{'id':ACCOUNT}}])]:
+        with patch.object(CloudflareAPI,'all',return_value=zones),pytest.raises(CloudflareError):
+            service.connect(name,'wrong-token')
+    assert service.domain(1)[1].token==TOKEN
+
+
+def test_api_accepts_token_without_domain(service):
+    app=Flask(__name__);app.secret_key='synthetic-session'
+    app.register_blueprint(create_cloudflare_blueprint(service))
+    manager=LoginManager(app)
+    class User(UserMixin):
+        id='admin'
+        is_admin=True
+    manager.user_loader(lambda uid:User())
+    app.before_request(check_csrf)
+    client=app.test_client()
+    with client.session_transaction() as session:
+        session['_user_id']='admin';session['hub_csrf']='synthetic-csrf'
+    zones=[{'name':'example.com','id':ZONE,'account':{'id':ACCOUNT}}]
+    with patch.object(CloudflareAPI,'all',return_value=zones), \
+         patch.object(CloudflareAPI,'call',return_value={'result':[]}):
+        response=client.post('/api/cloudflare/domains',json={'token':TOKEN},headers={'X-CSRF-Token':'synthetic-csrf'})
+    assert response.status_code==200 and response.json['connected_domain']=='example.com'
+    assert TOKEN not in str(response.json)
+
+
+def test_named_connections_keep_separate_tokens_for_multiple_domains(service):
+    for name,zone,token,label in [('example.com',ZONE,'private-token','Privat'),('other.dk','d'*32,'work-token','Arbejde')]:
+        with patch.object(CloudflareAPI,'all',return_value=[{'name':name,'id':zone,'account':{'id':ACCOUNT}}]), \
+             patch.object(CloudflareAPI,'call',return_value={'result':[]}):
+            service.connect(None,token,label=label)
+    domains={d['name']:d for d in service.settings()['domains']}
+    assert domains['example.com']['label']=='Privat' and domains['other.dk']['label']=='Arbejde'
+    assert service.domain(domains['example.com']['id'])[1].token=='private-token'
+    assert service.domain(domains['other.dk']['id'])[1].token=='work-token'
+    assert 'private-token' not in str(domains) and 'work-token' not in str(domains)
+
+
+@pytest.mark.parametrize('label',['','  ','x'*81,'line\nbreak',True,{}])
+def test_invalid_connection_name_is_rejected_before_provider_calls(service,label):
+    with patch.object(CloudflareAPI,'all') as provider,pytest.raises(CloudflareError):
+        service.connect(None,TOKEN,label=label)
+    provider.assert_not_called()
+
+
+def test_existing_database_is_migrated_without_losing_saved_tokens(tmp_path,service):
+    path=tmp_path/'old-cloudflare.db'
+    encrypted=service.cipher.encrypt(TOKEN.encode()).decode()
+    with sqlite3.connect(path) as db:
+        db.execute('CREATE TABLE cloudflare_domains(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,zone_id TEXT NOT NULL,account_id TEXT NOT NULL,token TEXT NOT NULL)')
+        db.execute('INSERT INTO cloudflare_domains VALUES(?,?,?,?,?)',(1,'example.com',ZONE,ACCOUNT,encrypted))
+        db.execute('CREATE TABLE cloudflare_preferences(id INTEGER PRIMARY KEY,enabled INTEGER NOT NULL)')
+        db.execute('INSERT INTO cloudflare_preferences VALUES(1,1)')
+    migrated=CloudflareService(path,'unit-test-encryption-secret')
+    assert migrated.settings()['domains'][0]['label']=='example.com'
+    assert migrated.domain(1)[1].token==TOKEN
+    with sqlite3.connect(path) as db:
+        assert db.execute('SELECT token FROM cloudflare_domains').fetchone()[0]==encrypted
+
+
 def test_multiple_domains_and_disable(service):
     with patch.object(CloudflareAPI, 'all', return_value=[{'name':'other.dk','id':'d'*32,'account':{'id':ACCOUNT}}]), \
          patch.object(CloudflareAPI, 'call', return_value={'result':[]}):

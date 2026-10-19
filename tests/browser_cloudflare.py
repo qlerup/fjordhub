@@ -35,10 +35,16 @@ with tempfile.TemporaryDirectory() as folder:
                         if request.method=='POST':state['enabled']=payload['enabled']
                         route.fulfill(json=state);return
                     if path.endswith('/domains'):
-                        if payload['token']!='synthetic-test-token':
+                        if payload['token'] not in ('synthetic-test-token','multi-zone-token'):
                             route.fulfill(status=400,json={'ok':False,'error':'Kontrollér API-tokenets rettigheder.'});return
-                        state['domains']=[{'id':1,'name':payload['name']}]
-                        route.fulfill(json=state);return
+                        if payload['token']=='multi-zone-token' and not payload.get('name'):
+                            route.fulfill(json={**state,'selection_required':True,'choices':['example.com','other.dk']});return
+                        name=payload.get('name','example.com')
+                        assert name in ('example.com','other.dk')
+                        existing=next((d for d in state['domains'] if d['name']==name),None)
+                        if existing:existing['label']=payload['label']
+                        else:state['domains'].append({'id':len(state['domains'])+1,'name':name,'label':payload['label']})
+                        route.fulfill(json={**state,'connected_domain':name});return
                     if '/records' in path:
                         if request.method=='POST':records.append({**payload,'id':'record-1'})
                         if request.method=='PATCH':records[0].update(payload)
@@ -61,7 +67,8 @@ with tempfile.TemporaryDirectory() as folder:
             assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
             output=Path(__file__).resolve().parents[1]/'test-results';output.mkdir(exist_ok=True)
             page.screenshot(path=str(output/f'cloudflare-empty-{width}.png'),full_page=True)
-            page.locator('#cf-name').fill('example.com')
+            expect(page.locator('#cf-zone-choice')).to_be_hidden()
+            page.locator('#cf-token-label').fill('Privat')
             page.locator('#cf-token').fill('invalid-synthetic-token')
             page.locator('#cf-connect button[type=submit]').click()
             expect(page.locator('#cf-status')).to_have_attribute('data-error','true')
@@ -71,6 +78,9 @@ with tempfile.TemporaryDirectory() as folder:
             expect(page.locator('#cf-overview')).to_be_visible()
             expect(page.locator('#cf-token')).to_have_value('')
             expect(page.locator('#cf-domains')).to_have_value('1')
+            expect(page.locator('#cf-domains option:checked')).to_have_text('Privat · example.com')
+            expect(page.locator('#cf-token-label')).to_have_value('')
+            expect(page.locator('#cf-zone-choice')).to_be_hidden()
             page.locator('#cf-new').click()
             page.locator('#cf-record-name').fill('media.example.com')
             page.locator('#cf-value').fill('192.0.2.10')
@@ -84,6 +94,16 @@ with tempfile.TemporaryDirectory() as folder:
             page.on('dialog',lambda dialog:dialog.accept())
             page.locator('#cf-records').get_by_role('button',name='Slet',exact=True).click()
             expect(page.locator('#cf-records')).not_to_contain_text('media.example.com')
+            page.locator('#cf-token-label').fill('Arbejde')
+            page.locator('#cf-token').fill('multi-zone-token')
+            page.locator('#cf-connect button[type=submit]').click()
+            expect(page.locator('#cf-zone-choice')).to_be_visible()
+            page.locator('#cf-name').select_option('other.dk')
+            page.locator('#cf-connect button[type=submit]').click()
+            expect(page.locator('#cf-zone-choice')).to_be_hidden()
+            expect(page.locator('#cf-domains option:checked')).to_have_text('Arbejde · other.dk')
+            assert page.locator('#cf-domains option').count()==2
+            expect(page.locator('#cf-token')).to_have_value('')
             page.locator('#cf-enabled').uncheck()
             expect(page.locator('#cf-content')).to_be_hidden()
             page.locator('#cf-enabled').check()

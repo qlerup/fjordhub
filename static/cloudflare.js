@@ -23,7 +23,7 @@
     $('cf-enabled').disabled = false;
     $('cf-content').hidden = !state.enabled;
     const previous = $('cf-domains').value;
-    $('cf-domains').replaceChildren(...state.domains.map(d => { const o = element('option', d.name); o.value = d.id; return o; }));
+    $('cf-domains').replaceChildren(...state.domains.map(d => { const o = element('option', d.label && d.label !== d.name ? d.label + ' · ' + d.name : d.name); o.value = d.id; return o; }));
     if (state.domains.some(d => String(d.id) === previous)) $('cf-domains').value = previous;
     $('cf-empty').hidden = state.domains.length > 0;
     for (const id of ['cf-domains','cf-refresh','cf-disconnect']) $(id).disabled = !state.domains.length;
@@ -115,11 +115,27 @@
     try { renderSettings(await api('settings','POST',{enabled})); await refresh(); status(enabled ? 'Cloudflare-administration aktiveret.' : 'Cloudflare-administration deaktiveret.'); }
     catch(e) { $('cf-enabled').checked = state.enabled; throw e; }
   });
+  function resetZoneChoice() {
+    $('cf-zone-choice').hidden = true; $('cf-name').replaceChildren();
+    $('cf-name').disabled = true; $('cf-name').required = false;
+  }
+  $('cf-token').oninput = resetZoneChoice;
   $('cf-connect').onsubmit = e => { e.preventDefault(); run(e.submitter, async () => {
-    renderSettings(await api('domains','POST',{name:$('cf-name').value,token:$('cf-token').value}));
-    const name = $('cf-name').value.trim().toLowerCase().replace(/\.$/,'');
-    const added = state.domains.find(d => d.name === name); if(added) $('cf-domains').value = added.id;
-    $('cf-token').value = ''; $('cf-name').value = ''; await refresh();
+    const payload = {token:$('cf-token').value,label:$('cf-token-label').value.trim()};
+    if (!$('cf-zone-choice').hidden) payload.name = $('cf-name').value;
+    $('cf-token').disabled = true;
+    try {
+      const result = await api('domains','POST',payload);
+      if (result.selection_required) {
+        $('cf-name').replaceChildren(...result.choices.map(name => {const option = element('option',name); option.value = name; return option;}));
+        $('cf-name').disabled = false; $('cf-name').required = true; $('cf-zone-choice').hidden = false;
+        status('Tokenet giver adgang til flere domæner. Vælg det domæne, du vil tilknytte.');
+        $('cf-name').focus(); return;
+      }
+      renderSettings(result);
+      const added = state.domains.find(d => d.name === result.connected_domain); if(added) $('cf-domains').value = added.id;
+      $('cf-token').value = ''; $('cf-token-label').value = ''; resetZoneChoice(); await refresh();
+    } finally { $('cf-token').disabled = false; }
   }); };
   $('cf-refresh').onclick = () => run($('cf-refresh'), refresh);
   $('cf-domains').onchange = () => refresh().catch(e => status(e.message,true));

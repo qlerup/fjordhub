@@ -40,8 +40,8 @@ def create_cloudflare_blueprint(service):
     @bp.post('/api/cloudflare/domains')
     def connect():
         data = body()
-        service.connect(data.get('name'), data.get('token'))
-        return jsonify(ok=True, **service.settings())
+        result = service.connect(data.get('name'), data.get('token'),label=data.get('label'))
+        return jsonify(ok=True, **service.settings(), **result)
 
     @bp.delete('/api/cloudflare/domains/<int:domain_id>')
     def disconnect(domain_id):
