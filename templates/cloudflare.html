@@ -52,12 +52,20 @@
       <div class="settings-card"><div class="settings-card-head"><h2>Cloudflare Tunnels</h2></div><p class="field-hint">Kontoens tunneler og adresser på det valgte domæne. Brug “Opret domæne” til at tilføje en tunneladresse og dens DNS-post samlet.</p><div id="cf-warnings" role="status"></div><div id="cf-tunnels" class="cf-list"></div></div>
     </div>
   </div>
+  {% macro origin_fields(prefix) %}
+  <details class="cf-origin-settings" {% if prefix == 'cf-route' %}open{% endif %}>
+    <summary>TLS og forbindelsesindstillinger</summary>
+    <div class="auth-field"><label for="{{ prefix }}-tls">Certifikatkontrol</label><select id="{{ prefix }}-tls"><option value="inherit">Brug tunnelens standard</option><option value="verify">Kontrollér certifikatet</option><option value="skip">No TLS Verify · spring kontrollen over</option></select><p class="field-hint">Gælder HTTPS til den lokale service. No TLS Verify bevarer kryptering, men kontrollerer ikke serverens certifikat.</p></div>
+    <div class="auth-field"><label for="{{ prefix }}-server-name">TLS-servernavn (SNI)</label><input id="{{ prefix }}-server-name" maxlength="255" placeholder="Fx server.ditdomæne.dk"><p class="field-hint">Valgfrit navn på serverens certifikat. Tomt felt bruger tunnelens standard.</p></div>
+    <div class="auth-field"><label for="{{ prefix }}-host-header">HTTP Host-header</label><input id="{{ prefix }}-host-header" maxlength="255" placeholder="Fx app.ditdomæne.dk"><p class="field-hint">Valgfri Host-header til den lokale service. Tomt felt bruger tunnelens standard.</p></div>
+  </details>
+  {% endmacro %}
   <dialog id="cf-editor" aria-labelledby="cf-editor-title"><form id="cf-record-form">
     <h2 id="cf-editor-title">DNS-post</h2>
     <p class="cf-form-error" role="alert"></p>
     <div id="cf-create-options" class="cf-modal-grid"><div class="auth-field"><label for="cf-create-kind">Hvad vil du oprette?</label><select id="cf-create-kind"><option value="dns">DNS-post</option><option value="tunnel">Tunneladresse</option></select></div><div class="auth-field"><label for="cf-create-domain">Domæne / forbindelse</label><select id="cf-create-domain"></select></div></div>
     <div class="auth-field"><label for="cf-record-name">Adresse / subdomæne</label><input id="cf-record-name" required placeholder="Fx film eller film.ditdomæne.dk" aria-describedby="cf-address-hint"><p id="cf-address-hint" class="field-hint" aria-live="polite" aria-atomic="true"></p></div>
-    <fieldset id="cf-tunnel-fields" hidden disabled><div class="auth-field"><label for="cf-create-tunnel">Tunnel</label><select id="cf-create-tunnel" required></select><p id="cf-create-tunnel-help" class="field-hint"></p></div><div class="cf-service-grid"><div class="auth-field"><label for="cf-create-protocol">Protokol</label><select id="cf-create-protocol">{% for p in ['http','https','tcp','ssh','rdp','smb'] %}<option>{{ p }}</option>{% endfor %}</select></div><div class="auth-field"><label for="cf-create-host">Lokal IP / værtsnavn</label><input id="cf-create-host" placeholder="192.168.1.20" required></div><div class="auth-field"><label for="cf-create-port">Port</label><input id="cf-create-port" type="number" min="1" max="65535" value="8080" required></div></div><p class="field-hint">Tunnelreglen og den tilhørende DNS-post oprettes sammen.</p></fieldset>
+    <fieldset id="cf-tunnel-fields" hidden disabled><div class="auth-field"><label for="cf-create-tunnel">Tunnel</label><select id="cf-create-tunnel" required></select><p id="cf-create-tunnel-help" class="field-hint"></p></div><div class="cf-service-grid"><div class="auth-field"><label for="cf-create-protocol">Protokol</label><select id="cf-create-protocol">{% for p in ['http','https','tcp','ssh','rdp','smb'] %}<option>{{ p }}</option>{% endfor %}</select></div><div class="auth-field"><label for="cf-create-host">Lokal IP / værtsnavn</label><input id="cf-create-host" placeholder="192.168.1.20" required></div><div class="auth-field"><label for="cf-create-port">Port</label><input id="cf-create-port" type="number" min="1" max="65535" value="8080" required></div></div>{{ origin_fields('cf-create') }}<p class="field-hint">Tunnelreglen og den tilhørende DNS-post oprettes sammen.</p></fieldset>
     <fieldset id="cf-dns-fields">
     <div class="auth-field"><label for="cf-type">DNS-type</label><select id="cf-type">{% for type in ['A','AAAA','CNAME','TXT','MX','SRV','CAA','NS','HTTPS','SVCB','TLSA','SSHFP','DS','DNSKEY','NAPTR','PTR','URI','CERT','SMIMEA','LOC'] %}<option>{{ type }}</option>{% endfor %}</select></div>
     <div class="auth-field"><label for="cf-value">Værdi</label><textarea id="cf-value" required rows="3"></textarea></div>
@@ -69,7 +77,18 @@
     </fieldset>
     <div class="cf-actions"><button id="cf-address-save" class="btn-settings cf-primary" type="submit">Opret domæne</button><button class="btn-settings" type="button" data-close>Fortryd</button></div>
   </form></dialog>
-  <dialog id="cf-route-editor"><form id="cf-route-form"><h2>Tunneladresse</h2><p class="cf-form-error" role="alert"></p><p class="field-hint">Gemmer tunnelreglen. Opret eller ret også den tilhørende DNS-post i oversigten.</p><div class="auth-field"><label for="cf-route-name">Fuldt værtsnavn</label><input id="cf-route-name" required></div><div class="auth-field"><label for="cf-route-service">Lokal serviceadresse</label><input id="cf-route-service" placeholder="http://192.168.1.20:8080" required></div><div class="cf-actions"><button class="btn-settings" type="submit">Gem tunnelregel</button><button class="btn-settings" type="button" data-close>Fortryd</button></div></form></dialog>
+  <dialog id="cf-route-editor" aria-labelledby="cf-route-title"><form id="cf-route-form">
+    <h2 id="cf-route-title">Rediger tunneladresse</h2><p class="cf-form-error" role="alert"></p>
+    <div class="auth-field"><label for="cf-route-name">Domæne / subdomæne</label><input id="cf-route-name" required readonly><p class="field-hint">Indstillingerne gemmes kun for denne adresse.</p></div>
+    <div class="cf-service-grid">
+      <div class="auth-field"><label for="cf-route-protocol">Protokol</label><select id="cf-route-protocol">{% for p in ['http','https','tcp','ssh','rdp','smb'] %}<option>{{ p }}</option>{% endfor %}</select></div>
+      <div class="auth-field"><label for="cf-route-host">Lokal IP / værtsnavn</label><input id="cf-route-host" required placeholder="192.168.1.20"></div>
+      <div class="auth-field"><label for="cf-route-port">Port</label><input id="cf-route-port" type="number" min="1" max="65535" placeholder="Standard"></div>
+    </div>
+    <div class="auth-field"><label for="cf-route-service-path">Lokal sti (valgfri)</label><input id="cf-route-service-path" placeholder="Fx /app"><p id="cf-route-preview" class="field-hint" aria-live="polite"></p></div>
+    {{ origin_fields('cf-route') }}
+    <div class="cf-actions"><button class="btn-settings cf-primary" type="submit">Gem ændringer</button><button class="btn-settings" type="button" data-close>Fortryd</button></div>
+  </form></dialog>
 </div>
 {% endblock %}
 {% block scripts %}<script src="{{ url_for('static', filename='cloudflare.js', v=static_version) }}"></script>{% endblock %}

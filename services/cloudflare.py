@@ -16,6 +16,33 @@ class CloudflareError(ValueError):
     pass
 
 
+def origin_options(data):
+    """Validate explicit per-route overrides; null restores tunnel defaults."""
+    if not isinstance(data, dict) or set(data) - {'noTLSVerify', 'originServerName', 'httpHostHeader'}:
+        raise CloudflareError('Ugyldige forbindelsesindstillinger.')
+    for key, value in data.items():
+        if value is None:
+            continue
+        if key == 'noTLSVerify':
+            if type(value) is not bool:
+                raise CloudflareError('Certifikatkontrol skal være til eller fra.')
+        elif not isinstance(value, str) or not value or len(value) > 255 or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in value) or any(c in value for c in '/\\@?#'):
+            raise CloudflareError('Angiv et gyldigt servernavn eller en Host-header uden protokol og sti.')
+    return data
+
+
+def service_address(value):
+    try:
+        parsed = urlsplit(value) if isinstance(value, str) else None
+        if not parsed or parsed.scheme not in {'http','https','tcp','ssh','rdp','smb'} or not parsed.hostname or parsed.username or parsed.password or any(c.isspace() for c in value):
+            raise ValueError()
+        if parsed.port is not None and not 1 <= parsed.port <= 65535:
+            raise ValueError()
+    except (TypeError, ValueError):
+        raise CloudflareError('Angiv en gyldig lokal adresse og port.') from None
+    return value
+
+
 def identifier(value):
     value = str(value or '')
     if not re.fullmatch(r'[a-fA-F0-9-]{20,40}', value):
@@ -176,7 +203,9 @@ class CloudflareService:
                     try:
                         config = api.call('GET', f'/accounts/{domain["account_id"]}/cfd_tunnel/{identifier(tunnel["id"])}/configurations')['result']
                         item['version'] = config.get('version')
-                        item['routes'] = [{k: r[k] for k in ('hostname', 'service', 'path') if k in r} for r in config.get('config', {}).get('ingress', [])
+                        item['routes'] = [{**{k: r[k] for k in ('hostname', 'service', 'path') if k in r},
+                            'originRequest': {k: v for k, v in (r.get('originRequest') or {}).items() if k in {'noTLSVerify','originServerName','httpHostHeader'}}}
+                            for r in config.get('config', {}).get('ingress', [])
                             if r.get('hostname') and (r['hostname'] == domain['name'] or r['hostname'].endswith('.' + domain['name']))]
                     except CloudflareError as exc:
                         item['error'] = str(exc)
@@ -252,14 +281,8 @@ class CloudflareService:
         domain,api=self.domain(domain_id)
         name=hostname(data.get('name'),domain['name'])
         tunnel=identifier(data.get('tunnel_id'))
-        service=data.get('service','')
-        if not isinstance(service,str):raise CloudflareError('Angiv en gyldig lokal adresse og port.')
-        try:
-            parsed=urlsplit(service)
-            if parsed.scheme not in {'http','https','tcp','ssh','rdp','smb'} or not parsed.hostname or parsed.username or parsed.password or any(c.isspace() for c in service):
-                raise ValueError()
-            if parsed.port is not None and not 1<=parsed.port<=65535:raise ValueError()
-        except (TypeError,ValueError):raise CloudflareError('Angiv en gyldig lokal adresse og port.') from None
+        service=service_address(data.get('service',''))
+        overrides = origin_options(data['originRequest']) if 'originRequest' in data else None
         path=f'/accounts/{domain["account_id"]}/cfd_tunnel/{tunnel}/configurations'
         current=api.call('GET',path)['result']
         if current.get('source')=='local':raise CloudflareError('Lokalt styrede tunneler redigeres i deres konfigurationsfil.')
@@ -276,7 +299,8 @@ class CloudflareService:
         except CloudflareError:
             raise CloudflareError('DNS-posten blev oprettet, men svaret kunne ikke bekræftes. Genindlæs oversigten, før du prøver igen.') from None
         try:
-            self.route(domain_id,tunnel,{'hostname':name,'service':service,'version':data['version']})
+            self.route(domain_id,tunnel,{'hostname':name,'service':service,'version':data['version'],
+                **({'originRequest':overrides} if overrides is not None else {})})
         except CloudflareError as exc:
             try:api.call('DELETE',dns_path+'/'+record_id)
             except CloudflareError:
@@ -289,10 +313,11 @@ class CloudflareService:
         tunnel_id = identifier(tunnel_id)
         name = hostname(data.get('hostname'), domain['name'])
         service = data.get('service', '')
+        overrides = None
         if not delete:
-            parsed = urlsplit(service)
-            if parsed.scheme not in {'http','https','tcp','ssh','rdp','smb'} or not parsed.hostname or parsed.username or parsed.password:
-                raise CloudflareError('Angiv en serviceadresse, fx http://192.168.1.20:8080.')
+            service = service_address(service)
+            if 'originRequest' in data:
+                overrides = origin_options(data['originRequest'])
         path = f'/accounts/{domain["account_id"]}/cfd_tunnel/{tunnel_id}/configurations'
         # Serialize writes from this hub across workers. Version protects edits made
         # since the overview was loaded; external edits during a PUT remain an API limitation.
@@ -315,10 +340,21 @@ class CloudflareService:
                     config['ingress'] = [r for r in ingress if r.get('hostname') != name]
                 elif matches:
                     matches[0]['service'] = service
+                    target = matches[0]
                 else:
                     if not ingress or ingress[-1].get('hostname'):
                         raise CloudflareError('Tunnelen mangler sin afsluttende standardregel. Ret den hos Cloudflare.')
-                    ingress.insert(len(ingress)-1, {'hostname': name, 'service': service})
+                    target = {'hostname': name, 'service': service}
+                    ingress.insert(len(ingress)-1, target)
+                if not delete and overrides is not None:
+                    options = target.setdefault('originRequest', {})
+                    for key, value in overrides.items():
+                        if value is None:
+                            options.pop(key, None)
+                        else:
+                            options[key] = value
+                    if not options:
+                        target.pop('originRequest', None)
                 api.call('PUT', path, json={'config': config})
             finally:
                 db.rollback()

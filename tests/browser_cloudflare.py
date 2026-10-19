@@ -57,9 +57,16 @@ with tempfile.TemporaryDirectory() as folder:
                             assert payload['service']=='http://192.168.1.20:8096'
                             assert payload['tunnel_id']==tunnel_id
                             name=payload['name']+'.example.com'
-                            routes.append({'hostname':name,'service':payload['service']})
+                            routes.append({'hostname':name,'service':payload['service'],'originRequest':{k:v for k,v in payload.get('originRequest',{}).items() if v is not None}})
                             records.append({'id':'new-tunnel-dns','name':name,'type':'CNAME','content':tunnel_id+'.cfargotunnel.com','proxied':True,'ttl':1})
                         else:records.append({**payload,'id':'record-1'})
+                        route.fulfill(json={'ok':True});return
+                    if '/tunnels/' in path and path.endswith('/routes'):
+                        assert request.method == 'POST' and payload['version'] == 7
+                        assert payload['service'] == 'https://192.168.1.205:3443'
+                        assert payload['originRequest'] == {'noTLSVerify': True, 'originServerName': 'server.example.com', 'httpHostHeader': 'code.example.com'}
+                        existing = next(r for r in routes if r['hostname'] == payload['hostname'])
+                        existing.update(service=payload['service'], originRequest=payload['originRequest'])
                         route.fulfill(json={'ok':True});return
                     route.fulfill(json={'ok':True,'records':records,'tunnels':[{'id':tunnel_id,'name':'Home server','config_src':'cloudflare','status':'healthy','version':7,'routes':routes}],'warnings':[]});return
                 if path.startswith('/api/'):
@@ -185,8 +192,27 @@ with tempfile.TemporaryDirectory() as folder:
             expect(page.locator('.cf-tunnel-route')).not_to_contain_text('budget.example.com')
             expect(page.locator('.cf-tunnel-route')).to_contain_text('film.example.com')
             page.locator('#cf-tunnels').screenshot(path=str(output/f'cloudflare-tunnel-groups-{width}.png'))
-            page.locator('#cf-tunnels').get_by_role('button', name='Rediger service').click()
+            page.locator('#cf-tunnels').get_by_role('button', name='Rediger tunneladresse').click()
             assert_centered_dialog('#cf-route-editor')
+            expect(page.locator('#cf-route-host')).to_have_value('192.168.1.20')
+            expect(page.locator('#cf-route-port')).to_have_value('8096')
+            page.locator('#cf-route-protocol-trigger').click()
+            page.locator('#cf-route-protocol-options').get_by_role('option', name='https', exact=True).click()
+            page.locator('#cf-route-host').fill('192.168.1.205')
+            page.locator('#cf-route-port').fill('3443')
+            page.locator('#cf-route-tls-trigger').click()
+            page.locator('#cf-route-tls-options').get_by_role('option', name='No TLS Verify', exact=False).click()
+            page.locator('#cf-route-server-name').fill('server.example.com')
+            page.locator('#cf-route-host-header').fill('code.example.com')
+            expect(page.locator('#cf-route-preview')).to_have_text('Lokal service: https://192.168.1.205:3443')
+            page.locator('#cf-route-editor').screenshot(path=str(output/f'cloudflare-edit-tls-{width}.png'))
+            page.locator('#cf-route-form').get_by_role('button', name='Gem ændringer').click()
+            expect(page.locator('#cf-route-editor')).not_to_be_visible()
+            expect(page.locator('.cf-tunnel-route')).to_contain_text('https://192.168.1.205:3443')
+            page.locator('#cf-tunnels').get_by_role('button', name='Rediger tunneladresse').click()
+            expect(page.locator('#cf-route-tls')).to_have_value('skip')
+            expect(page.locator('#cf-route-server-name')).to_have_value('server.example.com')
+            expect(page.locator('#cf-route-host-header')).to_have_value('code.example.com')
             page.locator('#cf-route-editor [data-close]').click()
             page.locator('#cf-token-label').fill('Arbejde')
             page.locator('#cf-token').fill('multi-zone-token')

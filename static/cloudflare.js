@@ -12,7 +12,7 @@
   }
   function element(tag, value, className) { const node = document.createElement(tag); node.textContent = value; if (className) node.className = className; return node; }
   const customSelects = [];
-  document.querySelectorAll('#cf-editor select').forEach(select => {
+  document.querySelectorAll('.cf-page dialog select').forEach(select => {
     const wrapper = element('div', '', 'cf-select');
     select.before(wrapper); wrapper.append(select); select.classList.add('cf-native-select');
     select.tabIndex = -1; select.setAttribute('aria-hidden', 'true');
@@ -157,6 +157,7 @@
     $('cf-create-domain').replaceChildren(...state.domains.map(d => {const option = element('option',d.label && d.label !== d.name ? d.label + ' · ' + d.name : d.name); option.value = d.id; return option;}));
     $('cf-create-domain').value = $('cf-domains').value;
     $('cf-create-host').value = ''; $('cf-create-port').value = '8080'; $('cf-create-protocol').value = 'http';
+    fillOriginFields('cf-create', {});
     $('cf-record-form').querySelector('.cf-form-error').textContent = '';
     $('cf-type').value = record.type || 'A'; $('cf-type').disabled = Boolean(recordId);
     $('cf-record-name').value = record.name || '';
@@ -212,9 +213,33 @@
     routeTunnel = tunnel;
     $('cf-route-form').querySelector('.cf-form-error').textContent = '';
     $('cf-route-name').value = route.hostname || ''; $('cf-route-name').readOnly = Boolean(route.hostname);
-    $('cf-route-service').value = route.service || '';
+    let address;
+    try { address = new URL(route.service); } catch { address = null; }
+    $('cf-route-protocol').value = address?.protocol.replace(':','') || 'http';
+    $('cf-route-host').value = address?.hostname || '';
+    $('cf-route-port').value = address?.port || '';
+    $('cf-route-service-path').value = address ? (address.pathname === '/' ? '' : address.pathname) + address.search : '';
+    fillOriginFields('cf-route', route.originRequest || {});
+    updateRoutePreview(); customSelects.forEach(item => item.sync());
     $('cf-route-editor').showModal();
   }
+  function fillOriginFields(prefix, options) {
+    $(prefix + '-tls').value = options.noTLSVerify === true ? 'skip' : options.noTLSVerify === false ? 'verify' : 'inherit';
+    $(prefix + '-server-name').value = options.originServerName || '';
+    $(prefix + '-host-header').value = options.httpHostHeader || '';
+  }
+  function readOriginFields(prefix) {
+    const tls = $(prefix + '-tls').value;
+    return {noTLSVerify:tls === 'inherit' ? null : tls === 'skip', originServerName:$(prefix + '-server-name').value.trim() || null, httpHostHeader:$(prefix + '-host-header').value.trim() || null};
+  }
+  function routeService() {
+    let host = $('cf-route-host').value.trim();
+    if (host.includes(':') && !host.startsWith('[')) host = '[' + host + ']';
+    const port = $('cf-route-port').value, path = $('cf-route-service-path').value.trim();
+    return $('cf-route-protocol').value + '://' + host + (port ? ':' + port : '') + (path && !path.startsWith('/') ? '/' : '') + path;
+  }
+  function updateRoutePreview() { $('cf-route-preview').textContent = 'Lokal service: ' + routeService(); }
+  ['cf-route-protocol','cf-route-host','cf-route-port','cf-route-service-path'].forEach(id => { $(id).addEventListener('input',updateRoutePreview); $(id).addEventListener('change',updateRoutePreview); });
   function renderTunnels() {
     $('cf-warnings').replaceChildren(...view.warnings.map(w => element('p', w)));
     const tunnels = view.tunnels.map(t => {
@@ -229,11 +254,13 @@
       const routes = t.routes || [];
       for (const r of routes) {
         const section = element('div', '', 'cf-tunnel-route'); section.append(element('strong', r.hostname), element('p', r.service + (r.path ? ' · Sti: ' + r.path : '')));
+        if (r.service?.startsWith('https://') && r.originRequest?.noTLSVerify === true) section.append(element('p', 'No TLS Verify · certifikatkontrol er slået fra'));
         const dns = view.records.find(d => d.name === r.hostname && d.type === 'CNAME' && d.content.replace(/\.$/, '') === t.id + '.cfargotunnel.com');
         section.append(element('p', dns ? (dns.proxied ? 'DNS og tunnelregel tilknyttet' : 'CNAME findes, men proxy er slået fra') : 'Mangler tilhørende CNAME-post'));
         const actions = element('div', '', 'cf-actions');
+        if (dns) actions.append(button('Rediger DNS-post', () => editRecord(dns)));
         if (!dns) actions.append(button('Ret DNS-tilknytning', () => editRecord({type:'CNAME',name:r.hostname,content:t.id+'.cfargotunnel.com',proxied:true})));
-        if (!r.path) actions.append(button('Rediger service', () => editRoute(t,r)), button('Slet tunnelregel', async () => {
+        if (!r.path) actions.append(button('Rediger tunneladresse', () => editRoute(t,r)), button('Slet tunnelregel', async () => {
           if (!confirm('Slet tunnelreglen for ' + r.hostname + '?\nDNS-posten bevares og kan slettes separat.')) return;
           await api(domainPath() + '/tunnels/' + t.id + '/routes', 'DELETE', {hostname:r.hostname,version:t.version}); await refresh();
         })); section.append(actions); item.append(section);
@@ -304,7 +331,7 @@
       let host = $('cf-create-host').value.trim();
       if (host.includes(':') && !host.startsWith('[')) host = '[' + host + ']';
       const service = $('cf-create-protocol').value + '://' + host + ':' + $('cf-create-port').value;
-      await api('domains/'+selectedDomain+'/addresses','POST',{kind:'tunnel',name:$('cf-record-name').value,tunnel_id:tunnel.id,version:tunnel.version,service});
+      await api('domains/'+selectedDomain+'/addresses','POST',{kind:'tunnel',name:$('cf-record-name').value,tunnel_id:tunnel.id,version:tunnel.version,service,originRequest:readOriginFields('cf-create')});
       $('cf-editor').close(); $('cf-domains').value = selectedDomain; await refresh(); return;
     }
     const data = {type:$('cf-type').value,name:$('cf-record-name').value,ttl:Number($('cf-ttl').value),priority:Number($('cf-priority').value),proxied:$('cf-proxy').checked,comment:$('cf-comment').value};
@@ -314,7 +341,7 @@
     $('cf-editor').close(); $('cf-domains').value = selectedDomain; await refresh();
   });
   $('cf-route-form').onsubmit = e => submitForm(e, async () => {
-    await api(domainPath()+'/tunnels/'+routeTunnel.id+'/routes','POST',{hostname:$('cf-route-name').value,service:$('cf-route-service').value,version:routeTunnel.version});
+    await api(domainPath()+'/tunnels/'+routeTunnel.id+'/routes','POST',{hostname:$('cf-route-name').value,service:routeService(),version:routeTunnel.version,originRequest:readOriginFields('cf-route')});
     $('cf-route-editor').close(); await refresh();
   });
   api('settings').then(async r => { renderSettings(r); await refresh(); }).catch(e => status(e.message,true));

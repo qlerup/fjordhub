@@ -201,6 +201,17 @@ def test_overview_dns_survives_tunnel_permission_failure(service):
     assert result['tunnels'] == []
 
 
+def test_overview_returns_editable_origin_overrides_only_for_current_zone(service):
+    original = config()
+    original['config']['ingress'][0]['originRequest'].update(originServerName='server.example.com', httpHostHeader='app.example.com', caPool='/private/ca.pem')
+    with patch.object(CloudflareAPI, 'all', side_effect=[[], [{'id':TUNNEL,'config_src':'cloudflare'}]]), \
+         patch.object(CloudflareAPI, 'call', return_value={'result':original}):
+        overview = service.overview(1)
+    routes = overview['tunnels'][0]['routes']
+    assert len(routes) == 1
+    assert routes[0]['originRequest'] == {'noTLSVerify':True,'originServerName':'server.example.com','httpHostHeader':'app.example.com'}
+
+
 def config():
     return {'version':7,'source':'cloudflare','config':{'originRequest':{'connectTimeout':30},'ingress':[
         {'hostname':'app.example.com','service':'http://old:8080','originRequest':{'noTLSVerify':True}},
@@ -268,6 +279,50 @@ def test_tunnel_update_preserves_all_other_configuration(service):
     assert written['ingress'][0]['originRequest'] == {'noTLSVerify':True}
     assert written['ingress'][0]['service'] == 'http://new:8080'
     assert written['ingress'][1:] == original['config']['ingress'][1:]
+
+
+@pytest.mark.parametrize('verify', [True, False, None])
+def test_route_tls_overrides_preserve_other_options_and_routes(service, verify):
+    original = config()
+    original['config']['ingress'][0]['originRequest'].update(connectTimeout=12, originServerName='old.example.com')
+    with patch.object(CloudflareAPI, 'call', side_effect=[{'result': copy.deepcopy(original)}, {'result': {}}]) as call:
+        service.route(1, TUNNEL, {'hostname': 'app.example.com', 'service': 'https://192.0.2.5:3443', 'version': 7,
+            'originRequest': {'noTLSVerify': verify, 'originServerName': None, 'httpHostHeader': 'app.example.com'}})
+    written = call.call_args.kwargs['json']['config']
+    assert written['ingress'][1:] == original['config']['ingress'][1:]
+    assert written['originRequest'] == original['config']['originRequest']
+    options = written['ingress'][0]['originRequest']
+    assert options['connectTimeout'] == 12
+    assert options['httpHostHeader'] == 'app.example.com'
+    assert 'originServerName' not in options
+    if verify is None:
+        assert 'noTLSVerify' not in options
+    else:
+        assert options['noTLSVerify'] is verify
+
+
+@pytest.mark.parametrize('overrides', [None, [], {'noTLSVerify': 'true'}, {'noTLSVerify': 1},
+    {'httpHostHeader': 'bad\r\nHeader'}, {'httpHostHeader': 'bad\x00host'}, {'originServerName': 'https://host'}, {'unknown': True}])
+def test_bad_origin_options_rejected_before_any_provider_write(service, overrides):
+    data = {'kind': 'tunnel', 'name': 'new', 'tunnel_id': TUNNEL, 'hostname': 'new.example.com',
+            'service': 'https://192.0.2.5:3443', 'version': 7, 'originRequest': overrides}
+    with patch.object(CloudflareAPI, 'call') as call:
+        with pytest.raises(CloudflareError):
+            service.create_address(1, data)
+        with pytest.raises(CloudflareError):
+            service.route(1, TUNNEL, data)
+    call.assert_not_called()
+
+
+def test_create_address_sends_explicit_tls_options(service):
+    options = {'noTLSVerify': True, 'originServerName': 'server.example.com', 'httpHostHeader': None}
+    with patch.object(CloudflareAPI, 'all', return_value=[]), patch.object(CloudflareAPI, 'call',
+        side_effect=[{'result':config()}, {'result':{'id':RECORD}}, {'result':config()}, {'result':{}}]) as call:
+        service.create_address(1, {'kind':'tunnel','name':'new','tunnel_id':TUNNEL,
+            'service':'https://192.0.2.5:3443','version':7,'originRequest':options})
+    written = call.call_args.kwargs['json']['config']
+    assert written['ingress'][-2]['originRequest'] == {'noTLSVerify': True, 'originServerName': 'server.example.com'}
+    assert written['ingress'][:-2] == config()['config']['ingress'][:-1]
 
 
 def test_tunnel_add_delete_and_stale_version(service):
