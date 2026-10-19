@@ -98,6 +98,7 @@
 .cf-overview-toolbar .field-hint { margin: 4px 0 0; }
 .cf-page fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .cf-modal-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.cf-address-preview { color: var(--text); overflow-wrap: anywhere; }
 .cf-service-grid { display: grid; grid-template-columns: 100px minmax(0,1fr) 82px; gap: 12px; }
 .cf-service-grid input { box-sizing: border-box; width: 100%; }
 .cf-tunnel-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }

@@ -105,12 +105,27 @@
     const tunnel = !recordId && $('cf-create-kind').value === 'tunnel';
     $('cf-tunnel-fields').hidden = !tunnel; $('cf-tunnel-fields').disabled = !tunnel;
     $('cf-dns-fields').hidden = tunnel; $('cf-dns-fields').disabled = tunnel;
-    const zone = state.domains.find(d => String(d.id) === $('cf-create-domain').value);
-    $('cf-address-hint').textContent = zone ? 'Adressen oprettes under ' + zone.name + '. Skriv fx film eller et fuldt subdomæne.' : '';
+    updateAddressPreview();
     const tunnels = (createView?.tunnels || []).filter(t => t.config_src === 'cloudflare' && !t.error && t.version != null);
     $('cf-create-tunnel').replaceChildren(...tunnels.map(t => {const option = element('option',t.name || t.id); option.value = t.id; return option;}));
     $('cf-create-tunnel-help').textContent = tunnels.length ? 'Vælg den tunnel, som kan nå den lokale service.' : 'Ingen redigerbare tunneler fundet. Tunnelen skal være styret hos Cloudflare og tokenet skal have Cloudflare Tunnel Edit.';
   }
+  function updateAddressPreview() {
+    const zone = state.domains.find(d => String(d.id) === $('cf-create-domain').value);
+    const hint = $('cf-address-hint');
+    hint.replaceChildren();
+    if (!zone) return;
+    let name = $('cf-record-name').value.trim().replace(/\.+$/, '').toLowerCase();
+    if (!name) {
+      hint.textContent = 'Skriv fx film eller et fuldt subdomæne under ' + zone.name + '.';
+      return;
+    }
+    if (name === '@') name = zone.name;
+    else if (!name.includes('.') && name !== zone.name) name += '.' + zone.name;
+    hint.append('Adressen bliver: ', element('strong', name, 'cf-address-preview'));
+    if (name !== zone.name && !name.endsWith('.' + zone.name)) hint.append(' · Skal høre til ' + zone.name + '.');
+  }
+  $('cf-record-name').oninput = updateAddressPreview;
   $('cf-create-kind').onchange = createKindChanged;
   $('cf-create-domain').onchange = async () => {
     const epoch = ++createGeneration; createView = null; createKindChanged();
