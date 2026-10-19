@@ -124,7 +124,9 @@
   .cf-dns-actions { grid-area: actions; }
   .cf-dns-table tr:has(.cf-dns-empty) { display: block; }
 }
-.cf-page dialog { box-sizing: border-box; width: min(560px,calc(100vw - 24px)); max-height: 90dvh; overflow: auto; background: var(--surface-2,#20242b); color: var(--text,#fff); border: 1px solid var(--border); border-radius: 14px; padding: 22px; }
+.cf-page dialog { position: fixed; inset: 0; margin: auto; box-sizing: border-box; width: min(560px,calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow: auto; background: var(--surface-2,#20242b); color: var(--text,#fff); border: 1px solid var(--border); border-radius: 14px; padding: 22px; box-shadow: var(--shadow); }
+.cf-page dialog h2 { font-size: 1.2rem; margin-bottom: 18px; }
+.cf-page dialog .cf-actions { justify-content: flex-end; padding-top: 16px; margin-top: 18px; border-top: 1px solid var(--border); }
 .cf-page dialog::backdrop { background: #0009; }
 .cf-form-error { color: var(--danger,#ff8585); }
 .cf-page [hidden] { display: none!important; }

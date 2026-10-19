@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory() as folder:
     with patch.object(hub,'_auth',auth),patch.object(hub,'_install_state',InstallState(Path(folder))),sync_playwright() as pw:
         browser=pw.chromium.launch()
         for width in (1440,390):
-            page=browser.new_page(viewport={'width':width,'height':1100})
+            page=browser.new_page(viewport={'width':width,'height':800})
             errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
             state={'ok':True,'enabled':True,'domains':[]}
             records=[]
@@ -123,6 +123,16 @@ with tempfile.TemporaryDirectory() as folder:
             page.locator('#cf-records').get_by_role('button',name='Slet media.example.com',exact=True).click()
             expect(page.locator('#cf-records')).not_to_contain_text('media.example.com')
             page.locator('#cf-new').click()
+            def assert_centered_dialog(selector):
+                dialog = page.locator(selector)
+                box = dialog.bounding_box()
+                assert box and abs(box['x'] + box['width'] / 2 - width / 2) < 2, box
+                assert abs(box['y'] + box['height'] / 2 - 400) < 2, box
+                assert box['y'] >= 15 and box['y'] + box['height'] <= 785, box
+                assert dialog.evaluate('(el) => el.scrollWidth <= el.clientWidth')
+            assert_centered_dialog('#cf-editor')
+            page.locator('#cf-editor').screenshot(path=str(output/f'cloudflare-create-dns-{width}.png'))
+            page.screenshot(path=str(output/f'cloudflare-create-centered-{width}.png'))
             expect(page.locator('#cf-editor-title')).to_have_text('Opret domæne')
             page.locator('#cf-create-kind').select_option('tunnel')
             expect(page.locator('#cf-dns-fields')).to_be_hidden()
@@ -131,11 +141,15 @@ with tempfile.TemporaryDirectory() as folder:
             page.locator('#cf-create-tunnel').select_option(tunnel_id)
             page.locator('#cf-create-host').fill('192.168.1.20')
             page.locator('#cf-create-port').fill('8096')
+            assert_centered_dialog('#cf-editor')
             page.locator('#cf-editor').screenshot(path=str(output/f'cloudflare-create-{width}.png'))
             page.locator('#cf-address-save').click()
             expect(page.locator('#cf-editor')).not_to_be_visible()
             expect(page.locator('#cf-records')).to_contain_text('film.example.com')
             expect(page.locator('#cf-tunnels')).to_contain_text('http://192.168.1.20:8096')
+            page.locator('#cf-tunnels').get_by_role('button', name='Rediger service').click()
+            assert_centered_dialog('#cf-route-editor')
+            page.locator('#cf-route-editor [data-close]').click()
             page.locator('#cf-token-label').fill('Arbejde')
             page.locator('#cf-token').fill('multi-zone-token')
             page.locator('#cf-connect button[type=submit]').click()
