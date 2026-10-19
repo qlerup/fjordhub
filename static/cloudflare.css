@@ -120,6 +120,13 @@
 .cf-tunnel-route { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 14px; }
 .cf-tunnel-route strong { font-size: .8rem; }
 .cf-tunnel-route .btn-settings { font-size: .7rem; padding: 5px 8px; }
+.cf-tunnel-other-dns { margin-top: 24px; padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }
+.cf-tunnel-other-dns h3 { font-size: .8rem; margin: 0; }
+.cf-tunnel-other-dns > p { font-size: .72rem; color: var(--text-muted); margin: 5px 0 12px; }
+.cf-tunnel-other-dns ul { list-style: none; padding: 0; margin: 0; }
+.cf-tunnel-other-dns li { display: grid; gap: 3px; padding: 10px 0; border-top: 1px solid var(--border); }
+.cf-tunnel-other-dns li strong { font-size: .78rem; }
+.cf-tunnel-other-dns li span { font-size: .7rem; color: var(--text-muted); }
 @media (max-width:600px) {
   .cf-modal-grid { grid-template-columns: minmax(0,1fr); gap: 0; }
   .cf-service-grid { grid-template-columns: minmax(0,1fr); gap: 0; }

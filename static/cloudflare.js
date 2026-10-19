@@ -239,7 +239,18 @@
         })); section.append(actions); item.append(section);
       }
       const linked = view.records.filter(d => d.type === 'CNAME' && d.content.replace(/\.$/, '') === t.id + '.cfargotunnel.com');
-      for (const d of linked.filter(d => !routes.some(r => r.hostname === d.name))) item.append(element('p', d.name + (t.config_src === 'cloudflare' && !t.error ? ' · DNS findes, men tunnelregel mangler' : ' · DNS tilknyttet; kontrollér den lokale tunnelregel')));
+      const otherRecords = linked.filter(d => !routes.some(r => r.hostname === d.name));
+      if (otherRecords.length) {
+        const other = element('section', '', 'cf-tunnel-other-dns');
+        other.append(element('h3', 'Øvrige DNS-tilknytninger'), element('p', 'Separate DNS-poster, som peger på tunnelen uden en synlig tunnelregel.'));
+        const list = element('ul');
+        for (const d of otherRecords) {
+          const entry = element('li');
+          entry.append(element('strong', d.name), element('span', t.config_src === 'cloudflare' && !t.error ? 'Ingen tunnelregel fundet' : 'Kontrollér tunnelreglen i den lokale opsætning'));
+          list.append(entry);
+        }
+        other.append(list); item.append(other);
+      }
       return item;
     });
     $('cf-tunnels').replaceChildren(...(tunnels.length ? tunnels : [element('p', 'Ingen tilgængelige tunneler.') ]));
