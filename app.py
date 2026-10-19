@@ -1,3 +1,5 @@
+from services.cloudflare import CloudflareService
+from services.cloudflare_routes import create_cloudflare_blueprint
 from services.app_identity import canonical_app_id
 import os
 import copy
@@ -128,6 +130,8 @@ _matrix_hub = MatrixHub(DATA_DIR)
 _app_notifications = NotificationStore(DATA_DIR)
 app.register_blueprint(create_matrix_blueprint(_matrix_hub, _auth))
 app.register_blueprint(fjordcode_blueprint)
+_cloudflare = CloudflareService(AUTH_DB_PATH, app.secret_key)
+app.register_blueprint(create_cloudflare_blueprint(_cloudflare))
 
 # Five failed password attempts from the same caller lock authentication for five minutes.
 _LOGIN_FAILURE_LIMIT = 5

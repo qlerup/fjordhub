@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Cloudflare — FjordHub{% endblock %}
+{% block content %}
+<div class="settings-page cf-page">
+  <div class="dashboard-header"><h1>Cloudflare</h1><p class="dashboard-sub">Domæner, DNS og tunneladresser samlet i FjordHub.</p></div>
+  <nav class="settings-tabs"><a class="settings-tab" href="{{ url_for('settings') }}">Tilbage til indstillinger</a><a class="settings-tab active" href="{{ url_for('cloudflare.page') }}">Cloudflare</a></nav>
+  <p id="cf-status" role="status" aria-live="polite"></p>
+  <div class="settings-card">
+    <label><input id="cf-enabled" type="checkbox" disabled> Aktivér Cloudflare-administration</label>
+    <p class="field-hint">Deaktivering bevarer tilknytninger og ændrer ikke noget hos Cloudflare.</p>
+  </div>
+  <div id="cf-content" hidden>
+    <div class="settings-card">
+      <div class="settings-card-head"><h2>Dine domæner</h2></div>
+      <p class="field-hint">Tilføj hvert domæne med sit eget API-token. Tilføj samme domæne igen for at udskifte tokenet.</p>
+      <details><summary>Opsæt et API-token</summary><p>Opret et brugerdefineret <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener noreferrer">Cloudflare API-token</a> med <strong>Zone → Zone → Read</strong> og <strong>Zone → DNS → Edit</strong> for det ønskede domæne. Til tunneloversigten vælges også <strong>Account → Cloudflare Tunnel → Read</strong>; redigering af tunneladresser kræver <strong>Edit</strong>. Brug et API-token, ikke en Global API Key eller tunnelens forbindelsestoken.</p><p>Tokenet gemmes krypteret og vises aldrig igen. Lokalt styrede tunneler ændres fortsat i deres konfigurationsfil.</p></details>
+      <form id="cf-connect" class="cf-grid" autocomplete="off">
+        <div class="auth-field"><label for="cf-name">Domæne</label><input id="cf-name" placeholder="ditdomæne.dk" required></div>
+        <div class="auth-field"><label for="cf-token">API-token</label><input id="cf-token" type="password" autocomplete="new-password" required></div>
+        <button class="btn-settings" type="submit">Tilknyt domæne / udskift token</button>
+      </form>
+      <div class="cf-grid"><div class="auth-field"><label for="cf-domains">Vælg domæne</label><select id="cf-domains"></select></div><button id="cf-refresh" class="btn-settings" type="button">Genindlæs</button><button id="cf-disconnect" class="btn-settings" type="button">Fjern tilknytning</button></div>
+      <p id="cf-empty" class="field-hint">Ingen domæner tilknyttet endnu.</p>
+    </div>
+    <div id="cf-overview" hidden>
+      <div class="settings-card">
+        <div class="settings-card-head"><h2>DNS-poster</h2><button class="btn-settings" id="cf-new" type="button">Opret DNS-post</button></div>
+        <div class="auth-field"><label for="cf-search">Søg i navn, type og værdi</label><input id="cf-search" type="search" placeholder="Fx fjordhub eller A"></div>
+        <div id="cf-records" class="cf-list"></div>
+      </div>
+      <div class="settings-card"><div class="settings-card-head"><h2>Cloudflare Tunnels</h2></div><p class="field-hint">Viser kontoens tunneler og deres adresser på det valgte domæne. En tunneladresse kræver både en tunnelregel og en proxied CNAME-post til tunnelens id.cfargotunnel.com. De to dele gemmes separat, og status vises nedenfor.</p><div id="cf-warnings" role="status"></div><div id="cf-tunnels" class="cf-list"></div></div>
+    </div>
+  </div>
+  <dialog id="cf-editor"><form id="cf-record-form">
+    <h2 id="cf-editor-title">DNS-post</h2>
+    <p class="cf-form-error" role="alert"></p>
+    <div class="auth-field"><label for="cf-type">Type</label><select id="cf-type">{% for type in ['A','AAAA','CNAME','TXT','MX','SRV','CAA','NS','HTTPS','SVCB','TLSA','SSHFP','DS','DNSKEY','NAPTR','PTR','URI','CERT','SMIMEA','LOC'] %}<option>{{ type }}</option>{% endfor %}</select></div>
+    <div class="auth-field"><label for="cf-record-name">Navn</label><input id="cf-record-name" required placeholder="fjordhub.ditdomæne.dk eller @"></div>
+    <div class="auth-field"><label for="cf-value">Værdi</label><textarea id="cf-value" required rows="3"></textarea></div>
+    <label><input id="cf-structured" type="checkbox"> Værdien er strukturerede data (JSON, fx SRV/CAA)</label>
+    <div class="auth-field"><label for="cf-ttl">TTL i sekunder (1 = automatisk)</label><input id="cf-ttl" type="number" min="1" max="86400" value="1" required></div>
+    <div class="auth-field" id="cf-priority-field" hidden><label for="cf-priority">Prioritet</label><input id="cf-priority" type="number" min="0" max="65535" value="10"></div>
+    <label id="cf-proxy-field"><input id="cf-proxy" type="checkbox"> Cloudflare-proxy</label>
+    <div class="auth-field"><label for="cf-comment">Kommentar</label><input id="cf-comment" maxlength="500"></div>
+    <div class="cf-actions"><button class="btn-settings" type="submit">Gem DNS-post</button><button class="btn-settings" type="button" data-close>Fortryd</button></div>
+  </form></dialog>
+  <dialog id="cf-route-editor"><form id="cf-route-form"><h2>Tunneladresse</h2><p class="cf-form-error" role="alert"></p><p class="field-hint">Gemmer tunnelreglen. Opret eller ret også den tilhørende DNS-post i oversigten.</p><div class="auth-field"><label for="cf-route-name">Fuldt værtsnavn</label><input id="cf-route-name" required></div><div class="auth-field"><label for="cf-route-service">Lokal serviceadresse</label><input id="cf-route-service" placeholder="http://192.168.1.20:8080" required></div><div class="cf-actions"><button class="btn-settings" type="submit">Gem tunnelregel</button><button class="btn-settings" type="button" data-close>Fortryd</button></div></form></dialog>
+</div>
+<style>
+.cf-page .settings-card-head{flex-wrap:wrap;gap:12px}.cf-grid{display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin:18px 0}.cf-grid .auth-field{flex:1 1 200px;margin:0}.cf-page select,.cf-page textarea{width:100%;box-sizing:border-box;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px;font:inherit}.cf-list{display:grid;gap:12px}.cf-item{padding:14px;border:1px solid var(--border);border-radius:10px;min-width:0}.cf-item p,.cf-item strong,.cf-page code{overflow-wrap:anywhere;white-space:pre-wrap}.cf-item p{margin:8px 0}.cf-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.cf-page dialog{box-sizing:border-box;width:min(560px,calc(100vw - 24px));max-height:90dvh;overflow:auto;background:var(--surface-2,#20242b);color:var(--text,#fff);border:1px solid var(--border);border-radius:14px;padding:22px}.cf-page dialog::backdrop{background:#0009}.cf-page details{margin:16px 0}.cf-page summary{cursor:pointer}.cf-form-error,#cf-status[data-error="true"]{color:var(--danger,#ff8585)}.cf-page [hidden]{display:none!important}
+</style>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='cloudflare.js', v=static_version) }}"></script>{% endblock %}
