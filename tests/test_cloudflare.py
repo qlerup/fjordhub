@@ -96,6 +96,11 @@ def test_api_accepts_token_without_domain(service):
         response=client.post('/api/cloudflare/domains',json={'token':TOKEN},headers={'X-CSRF-Token':'synthetic-csrf'})
     assert response.status_code==200 and response.json['connected_domain']=='example.com'
     assert TOKEN not in str(response.json)
+    with patch.object(CloudflareAPI,'call',return_value={'result':{'id':RECORD}}):
+        payload={'kind':'dns','type':'A','name':'new','content':'192.0.2.10','ttl':60}
+        assert client.post('/api/cloudflare/domains/1/addresses',json=payload).status_code==403
+        response=client.post('/api/cloudflare/domains/1/addresses',json=payload,headers={'X-CSRF-Token':'synthetic-csrf'})
+        assert response.status_code==200 and response.json['record']['id']==RECORD
 
 
 def test_named_connections_keep_separate_tokens_for_multiple_domains(service):
@@ -202,6 +207,54 @@ def config():
         {'hostname':'elsewhere.dk','service':'http://private:80'},
         {'service':'http_status:404'},
     ]}}
+
+
+def test_create_tunnel_address_creates_proxied_dns_and_preserves_other_routes(service):
+    data={'kind':'tunnel','name':'new','tunnel_id':TUNNEL,'service':'http://192.168.1.20:8096','version':7}
+    with patch.object(CloudflareAPI,'all',return_value=[]) as listing, \
+         patch.object(CloudflareAPI,'call',side_effect=[{'result':config()},{'result':{'id':RECORD}}, {'result':config()},{'result':{}}]) as call:
+        assert service.create_address(1,data)['id']==RECORD
+    listing.assert_called_once_with(f'/zones/{ZONE}/dns_records',name='new.example.com')
+    created=call.call_args_list[1].kwargs['json']
+    assert created=={'type':'CNAME','name':'new.example.com','content':TUNNEL+'.cfargotunnel.com','proxied':True,'ttl':1}
+    written=call.call_args.kwargs['json']['config']
+    assert written['ingress'][-2]=={'hostname':'new.example.com','service':data['service']}
+    assert written['ingress'][:-2]==config()['config']['ingress'][:-1]
+    assert written['originRequest']==config()['config']['originRequest']
+
+
+def test_create_tunnel_refuses_existing_dns_and_route_and_stale_version(service):
+    base={'kind':'tunnel','name':'new','tunnel_id':TUNNEL,'service':'http://192.168.1.20:80','version':7}
+    for data,existing in [(base,[{'id':RECORD}]),({**base,'name':'app'},[]),({**base,'version':6},[])]:
+        with patch.object(CloudflareAPI,'all',return_value=existing), \
+             patch.object(CloudflareAPI,'call',return_value={'result':config()}) as call, pytest.raises(CloudflareError):
+            service.create_address(1,data)
+        assert all(c.args[0]=='GET' for c in call.call_args_list)
+
+
+@pytest.mark.parametrize('rollback_fails',[False,True])
+def test_tunnel_failure_rolls_back_only_new_dns_or_reports_partial_state(service,rollback_fails):
+    data={'kind':'tunnel','name':'new','tunnel_id':TUNNEL,'service':'http://192.168.1.20:80','version':7}
+    replies=[{'result':config()},{'result':{'id':RECORD}},CloudflareError('Tunnel Edit mangler'),
+             CloudflareError('DNS kunne ikke fjernes') if rollback_fails else {'result':{}}]
+    with patch.object(CloudflareAPI,'all',return_value=[]),patch.object(CloudflareAPI,'call',side_effect=replies) as call,pytest.raises(CloudflareError) as error:
+        service.create_address(1,data)
+    assert call.call_args.args==('DELETE',f'/zones/{ZONE}/dns_records/{RECORD}')
+    assert ('ikke fjernes' in str(error.value)) is rollback_fails
+
+
+def test_create_normal_dns_uses_same_payload_validation(service):
+    with patch.object(CloudflareAPI,'call',return_value={'result':{'id':RECORD}}) as call:
+        service.create_address(1,{'kind':'dns','type':'A','name':'media','content':'192.0.2.10','ttl':60})
+    assert call.call_args.args==('POST',f'/zones/{ZONE}/dns_records')
+    assert call.call_args.kwargs['json']['name']=='media.example.com'
+
+
+@pytest.mark.parametrize('address',[None,123,'http://192.168.1.20:99999','http://user:password@192.168.1.20','http://host with spaces:80'])
+def test_invalid_tunnel_service_never_creates_dns(service,address):
+    with patch.object(CloudflareAPI,'call') as call,pytest.raises(CloudflareError):
+        service.create_address(1,{'kind':'tunnel','name':'new','tunnel_id':TUNNEL,'service':address,'version':7})
+    call.assert_not_called()
 
 
 def test_tunnel_update_preserves_all_other_configuration(service):

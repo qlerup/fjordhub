@@ -245,6 +245,45 @@ class CloudflareService:
         domain, api = self.domain(domain_id)
         api.call('DELETE', f'/zones/{domain["zone_id"]}/dns_records/{identifier(record_id)}')
 
+    def create_address(self,domain_id,data):
+        if data.get('kind')=='dns':
+            return self.save_record(domain_id,data)
+        if data.get('kind')!='tunnel':raise CloudflareError('Vælg DNS-post eller tunneladresse.')
+        domain,api=self.domain(domain_id)
+        name=hostname(data.get('name'),domain['name'])
+        tunnel=identifier(data.get('tunnel_id'))
+        service=data.get('service','')
+        if not isinstance(service,str):raise CloudflareError('Angiv en gyldig lokal adresse og port.')
+        try:
+            parsed=urlsplit(service)
+            if parsed.scheme not in {'http','https','tcp','ssh','rdp','smb'} or not parsed.hostname or parsed.username or parsed.password or any(c.isspace() for c in service):
+                raise ValueError()
+            if parsed.port is not None and not 1<=parsed.port<=65535:raise ValueError()
+        except (TypeError,ValueError):raise CloudflareError('Angiv en gyldig lokal adresse og port.') from None
+        path=f'/accounts/{domain["account_id"]}/cfd_tunnel/{tunnel}/configurations'
+        current=api.call('GET',path)['result']
+        if current.get('source')=='local':raise CloudflareError('Lokalt styrede tunneler redigeres i deres konfigurationsfil.')
+        if type(data.get('version')) is not int or current.get('version')!=data['version']:
+            raise CloudflareError('Tunnelopsætningen er ændret. Genindlæs og prøv igen.')
+        ingress=(current.get('config') or {}).get('ingress',[])
+        if any(r.get('hostname')==name for r in ingress):raise CloudflareError('Tunneladressen findes allerede. Rediger den i oversigten.')
+        if not ingress or ingress[-1].get('hostname'):raise CloudflareError('Tunnelen mangler sin afsluttende standardregel.')
+        dns_path=f'/zones/{domain["zone_id"]}/dns_records'
+        if api.all(dns_path,name=name):raise CloudflareError('Der findes allerede en DNS-post på adressen. Rediger den i oversigten.')
+        record=api.call('POST',dns_path,json={'type':'CNAME','name':name,'content':tunnel+'.cfargotunnel.com','proxied':True,'ttl':1})['result']
+        try:
+            record_id=identifier(record.get('id'))
+        except CloudflareError:
+            raise CloudflareError('DNS-posten blev oprettet, men svaret kunne ikke bekræftes. Genindlæs oversigten, før du prøver igen.') from None
+        try:
+            self.route(domain_id,tunnel,{'hostname':name,'service':service,'version':data['version']})
+        except CloudflareError as exc:
+            try:api.call('DELETE',dns_path+'/'+record_id)
+            except CloudflareError:
+                raise CloudflareError('Tunnelreglen kunne ikke gemmes, og DNS-posten kunne ikke fjernes igen. Genindlæs oversigten og kontrollér adressen. '+str(exc)) from None
+            raise CloudflareError('Tunnelreglen kunne ikke bekræftes. Den nye DNS-post er fjernet igen. Genindlæs tunneloversigten, før du prøver igen. '+str(exc)) from None
+        return record
+
     def route(self, domain_id, tunnel_id, data, delete=False):
         domain, api = self.domain(domain_id)
         tunnel_id = identifier(tunnel_id)

@@ -1,4 +1,5 @@
 .cf-page { line-height: 1.6; }
+.cf-page.settings-page { max-width: 1040px; width: 100%; }
 .cf-page .cf-back { display: inline-block; margin-bottom: 20px; color: var(--text-muted); font-size: .8rem; text-decoration: none; }
 .cf-page .cf-back:hover { color: var(--text); }
 .cf-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 18px; margin-bottom: 24px; }
@@ -66,6 +67,63 @@
 .cf-item p,.cf-item strong { overflow-wrap: anywhere; white-space: pre-wrap; }
 .cf-item p { margin: 8px 0; }
 .cf-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.cf-dns-table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 18px; }
+.cf-dns-table th { color: var(--text-muted); font-size: .68rem; font-weight: 500; text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+.cf-dns-table th:first-child { width: 26%; padding-left: 0; }
+.cf-dns-table th:nth-child(2) { width: 9%; }
+.cf-dns-table th:nth-child(3) { width: 26%; }
+.cf-dns-table th:nth-child(4) { width: 17%; }
+.cf-dns-table th:last-child { width: 22%; padding-right: 0; }
+.cf-dns-table td { vertical-align: top; border-bottom: 1px solid var(--border); padding: 16px 8px; font-size: .77rem; overflow-wrap: anywhere; }
+.cf-dns-table td:first-child { padding-left: 0; }
+.cf-dns-table td:last-child { padding-right: 0; }
+.cf-dns-row:last-child td { border-bottom: 0; }
+.cf-dns-row:hover { background: color-mix(in srgb,var(--surface-2) 35%,transparent); }
+.cf-dns-host { font-weight: 600; font-size: .8rem; }
+.cf-dns-comment { margin-top: 5px; font-size: .69rem; color: var(--text-muted); }
+.cf-dns-comment summary { cursor: pointer; }
+.cf-dns-comment p { margin: 5px 0 0; line-height: 1.6; }
+.cf-type-badge { display: inline-block; font-size: .65rem; font-weight: 600; letter-spacing: .02em; border: 1px solid var(--border); background: var(--surface-2); padding: 2px 6px; border-radius: 5px; }
+.cf-dns-value { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.6; }
+.cf-dns-caption { display: block; font-size: .65rem; color: var(--text-muted); margin-top: 5px; }
+.cf-proxy-badge { display: inline-flex; align-items: center; gap: 6px; font-size: .68rem; color: var(--text-muted); white-space: nowrap; }
+.cf-proxy-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); }
+.cf-proxy-badge.is-proxied { color: #f5aa6b; }
+.cf-proxy-badge.is-proxied::before { background: currentColor; }
+.cf-dns-table .cf-dns-actions-heading,.cf-dns-actions { text-align: right; }
+.cf-dns-actions .btn-settings { padding: 5px 9px; font-size: .7rem; margin: 0 0 4px 6px; }
+.cf-dns-empty { color: var(--text-muted); text-align: center; padding: 24px!important; }
+.cf-overview-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin: 26px 0 18px; }
+.cf-overview-toolbar h2 { margin: 0; font-size: 1.05rem; }
+.cf-overview-toolbar .field-hint { margin: 4px 0 0; }
+.cf-page fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.cf-modal-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.cf-service-grid { display: grid; grid-template-columns: 100px minmax(0,1fr) 82px; gap: 12px; }
+.cf-service-grid input { box-sizing: border-box; width: 100%; }
+.cf-tunnel-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.cf-tunnel-state { border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; font-size: .65rem; color: var(--text-muted); }
+.cf-tunnel-card > p,.cf-tunnel-route p { font-size: .75rem; color: var(--text-muted); }
+.cf-tunnel-card > p { margin: 4px 0 8px; }
+.cf-tunnel-route { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 14px; }
+.cf-tunnel-route strong { font-size: .8rem; }
+.cf-tunnel-route .btn-settings { font-size: .7rem; padding: 5px 8px; }
+@media (max-width:600px) {
+  .cf-modal-grid { grid-template-columns: minmax(0,1fr); gap: 0; }
+  .cf-service-grid { grid-template-columns: minmax(0,1fr); gap: 0; }
+}
+@media (max-width:900px) {
+  .cf-dns-table,.cf-dns-table tbody { display: block; }
+  .cf-dns-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .cf-dns-row { display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-areas: 'name type' 'value value' 'proxy actions'; gap: 10px 12px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+  .cf-dns-row:last-child { border-bottom: 0; }
+  .cf-dns-table .cf-dns-row td { display: block; border: 0; padding: 0; min-width: 0; }
+  .cf-dns-name { grid-area: name; }
+  .cf-dns-type { grid-area: type; }
+  .cf-dns-content { grid-area: value; }
+  .cf-dns-proxy { grid-area: proxy; }
+  .cf-dns-actions { grid-area: actions; }
+  .cf-dns-table tr:has(.cf-dns-empty) { display: block; }
+}
 .cf-page dialog { box-sizing: border-box; width: min(560px,calc(100vw - 24px)); max-height: 90dvh; overflow: auto; background: var(--surface-2,#20242b); color: var(--text,#fff); border: 1px solid var(--border); border-radius: 14px; padding: 22px; }
 .cf-page dialog::backdrop { background: #0009; }
 .cf-form-error { color: var(--danger,#ff8585); }

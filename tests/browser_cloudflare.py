@@ -25,6 +25,8 @@ with tempfile.TemporaryDirectory() as folder:
             errors=[];page.on('pageerror',lambda error:errors.append(str(error)))
             state={'ok':True,'enabled':True,'domains':[]}
             records=[]
+            tunnel_id='11111111-2222-3333-4444-555555555555'
+            routes=[]
             def route(route):
                 request=route.request;url=urlsplit(request.url)
                 if url.hostname!='hub.test':route.abort();return
@@ -50,7 +52,16 @@ with tempfile.TemporaryDirectory() as folder:
                         if request.method=='PATCH':records[0].update(payload)
                         if request.method=='DELETE':records.clear()
                         route.fulfill(json={'ok':True});return
-                    route.fulfill(json={'ok':True,'records':records,'tunnels':[],'warnings':[]});return
+                    if path.endswith('/addresses'):
+                        if payload['kind']=='tunnel':
+                            assert payload['service']=='http://192.168.1.20:8096'
+                            assert payload['tunnel_id']==tunnel_id
+                            name=payload['name']+'.example.com'
+                            routes.append({'hostname':name,'service':payload['service']})
+                            records.append({'id':'new-tunnel-dns','name':name,'type':'CNAME','content':tunnel_id+'.cfargotunnel.com','proxied':True,'ttl':1})
+                        else:records.append({**payload,'id':'record-1'})
+                        route.fulfill(json={'ok':True});return
+                    route.fulfill(json={'ok':True,'records':records,'tunnels':[{'id':tunnel_id,'name':'Home server','config_src':'cloudflare','status':'healthy','version':7,'routes':routes}],'warnings':[]});return
                 if path.startswith('/api/'):
                     route.fulfill(json={});return
                 response=client.get(path+('?' + url.query if url.query else ''))
@@ -86,14 +97,45 @@ with tempfile.TemporaryDirectory() as folder:
             page.locator('#cf-value').fill('192.0.2.10')
             page.locator('#cf-record-form button[type=submit]').click()
             expect(page.locator('#cf-records')).to_contain_text('media.example.com')
-            page.locator('#cf-records').get_by_role('button',name='Rediger',exact=True).click()
+            page.locator('#cf-records').get_by_role('button',name='Rediger media.example.com',exact=True).click()
             page.locator('#cf-value').fill('192.0.2.11')
             page.locator('#cf-record-form button[type=submit]').click()
             expect(page.locator('#cf-records')).to_contain_text('192.0.2.11')
+            records.extend([
+                {'id':'film','name':'film.example.com','type':'A','content':'192.0.2.20','proxied':True,'ttl':1,'comment':'FjordVPN gateway synthetic-identifier-1234567890'},
+                {'id':'frame','name':'frame.example.com','type':'A','content':'192.0.2.30','proxied':False,'ttl':60},
+                {'id':'budget','name':'budget.example.com','type':'CNAME','content':'11111111-2222-3333-4444-555555555555.cfargotunnel.com','proxied':True,'ttl':1},
+                {'id':'txt','name':'_verification.example.com','type':'TXT','content':'long-verification-value-'*30,'proxied':False,'ttl':300},
+            ])
+            page.locator('#cf-refresh').click()
+            expect(page.locator('#cf-record-count')).to_have_text('5')
+            expect(page.locator('#cf-records a[href="https://film.example.com"]')).to_be_visible()
+            expect(page.locator('#cf-records .cf-dns-comment p')).to_be_hidden()
+            page.locator('#cf-search').fill('budget')
+            expect(page.locator('#cf-record-count')).to_have_text('1 af 5')
+            assert page.locator('.cf-dns-row').count()==1
+            page.locator('#cf-search').fill('')
+            expect(page.locator('.cf-dns-row')).to_have_count(5)
+            assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
+            page.locator('#cf-overview').screenshot(path=str(output/f'cloudflare-dns-{width}.png'))
             page.screenshot(path=str(output/f'cloudflare-connected-{width}.png'),full_page=True)
             page.on('dialog',lambda dialog:dialog.accept())
-            page.locator('#cf-records').get_by_role('button',name='Slet',exact=True).click()
+            page.locator('#cf-records').get_by_role('button',name='Slet media.example.com',exact=True).click()
             expect(page.locator('#cf-records')).not_to_contain_text('media.example.com')
+            page.locator('#cf-new').click()
+            expect(page.locator('#cf-editor-title')).to_have_text('Opret domæne')
+            page.locator('#cf-create-kind').select_option('tunnel')
+            expect(page.locator('#cf-dns-fields')).to_be_hidden()
+            expect(page.locator('#cf-tunnel-fields')).to_be_visible()
+            page.locator('#cf-record-name').fill('film')
+            page.locator('#cf-create-tunnel').select_option(tunnel_id)
+            page.locator('#cf-create-host').fill('192.168.1.20')
+            page.locator('#cf-create-port').fill('8096')
+            page.locator('#cf-editor').screenshot(path=str(output/f'cloudflare-create-{width}.png'))
+            page.locator('#cf-address-save').click()
+            expect(page.locator('#cf-editor')).not_to_be_visible()
+            expect(page.locator('#cf-records')).to_contain_text('film.example.com')
+            expect(page.locator('#cf-tunnels')).to_contain_text('http://192.168.1.20:8096')
             page.locator('#cf-token-label').fill('Arbejde')
             page.locator('#cf-token').fill('multi-zone-token')
             page.locator('#cf-connect button[type=submit]').click()

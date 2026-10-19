@@ -43,26 +43,31 @@
       <p id="cf-empty" class="cf-empty">Ingen forbindelser endnu. Tilføj dit første API-token ovenfor.</p>
     </div>
     <div id="cf-overview" hidden>
+      <div class="cf-overview-toolbar"><div><h2>DNS og tunneler</h2><p class="field-hint">Opret en DNS-post eller forbind en adresse til en tunnel.</p></div><button class="btn-settings cf-primary" id="cf-new" type="button">Opret domæne</button></div>
       <div class="settings-card">
-        <div class="settings-card-head"><h2>DNS-poster</h2><button class="btn-settings" id="cf-new" type="button">Opret DNS-post</button></div>
+        <div class="settings-card-head"><h2>DNS-poster <span id="cf-record-count" class="cf-tag">0</span></h2></div>
         <div class="auth-field"><label for="cf-search">Søg i navn, type og værdi</label><input id="cf-search" type="search" placeholder="Fx fjordhub eller A"></div>
-        <div id="cf-records" class="cf-list"></div>
+        <table class="cf-dns-table"><caption class="cf-visually-hidden">DNS-poster på det valgte domæne</caption><thead><tr><th scope="col">Navn</th><th scope="col">Type</th><th scope="col">Værdi</th><th scope="col">Proxy / TTL</th><th scope="col" class="cf-dns-actions-heading">Handlinger</th></tr></thead><tbody id="cf-records"></tbody></table>
       </div>
-      <div class="settings-card"><div class="settings-card-head"><h2>Cloudflare Tunnels</h2></div><p class="field-hint">Viser kontoens tunneler og deres adresser på det valgte domæne. En tunneladresse kræver både en tunnelregel og en proxied CNAME-post til tunnelens id.cfargotunnel.com. De to dele gemmes separat, og status vises nedenfor.</p><div id="cf-warnings" role="status"></div><div id="cf-tunnels" class="cf-list"></div></div>
+      <div class="settings-card"><div class="settings-card-head"><h2>Cloudflare Tunnels</h2></div><p class="field-hint">Kontoens tunneler og adresser på det valgte domæne. Brug “Opret domæne” til at tilføje en tunneladresse og dens DNS-post samlet.</p><div id="cf-warnings" role="status"></div><div id="cf-tunnels" class="cf-list"></div></div>
     </div>
   </div>
-  <dialog id="cf-editor"><form id="cf-record-form">
+  <dialog id="cf-editor" aria-labelledby="cf-editor-title"><form id="cf-record-form">
     <h2 id="cf-editor-title">DNS-post</h2>
     <p class="cf-form-error" role="alert"></p>
-    <div class="auth-field"><label for="cf-type">Type</label><select id="cf-type">{% for type in ['A','AAAA','CNAME','TXT','MX','SRV','CAA','NS','HTTPS','SVCB','TLSA','SSHFP','DS','DNSKEY','NAPTR','PTR','URI','CERT','SMIMEA','LOC'] %}<option>{{ type }}</option>{% endfor %}</select></div>
-    <div class="auth-field"><label for="cf-record-name">Navn</label><input id="cf-record-name" required placeholder="fjordhub.ditdomæne.dk eller @"></div>
+    <div id="cf-create-options" class="cf-modal-grid"><div class="auth-field"><label for="cf-create-kind">Hvad vil du oprette?</label><select id="cf-create-kind"><option value="dns">DNS-post</option><option value="tunnel">Tunneladresse</option></select></div><div class="auth-field"><label for="cf-create-domain">Domæne / forbindelse</label><select id="cf-create-domain"></select></div></div>
+    <div class="auth-field"><label for="cf-record-name">Adresse / subdomæne</label><input id="cf-record-name" required placeholder="Fx film eller film.ditdomæne.dk"><p id="cf-address-hint" class="field-hint"></p></div>
+    <fieldset id="cf-tunnel-fields" hidden disabled><div class="auth-field"><label for="cf-create-tunnel">Tunnel</label><select id="cf-create-tunnel" required></select><p id="cf-create-tunnel-help" class="field-hint"></p></div><div class="cf-service-grid"><div class="auth-field"><label for="cf-create-protocol">Protokol</label><select id="cf-create-protocol">{% for p in ['http','https','tcp','ssh','rdp','smb'] %}<option>{{ p }}</option>{% endfor %}</select></div><div class="auth-field"><label for="cf-create-host">Lokal IP / værtsnavn</label><input id="cf-create-host" placeholder="192.168.1.20" required></div><div class="auth-field"><label for="cf-create-port">Port</label><input id="cf-create-port" type="number" min="1" max="65535" value="8080" required></div></div><p class="field-hint">Tunnelreglen og den tilhørende DNS-post oprettes sammen.</p></fieldset>
+    <fieldset id="cf-dns-fields">
+    <div class="auth-field"><label for="cf-type">DNS-type</label><select id="cf-type">{% for type in ['A','AAAA','CNAME','TXT','MX','SRV','CAA','NS','HTTPS','SVCB','TLSA','SSHFP','DS','DNSKEY','NAPTR','PTR','URI','CERT','SMIMEA','LOC'] %}<option>{{ type }}</option>{% endfor %}</select></div>
     <div class="auth-field"><label for="cf-value">Værdi</label><textarea id="cf-value" required rows="3"></textarea></div>
     <label><input id="cf-structured" type="checkbox"> Værdien er strukturerede data (JSON, fx SRV/CAA)</label>
     <div class="auth-field"><label for="cf-ttl">TTL i sekunder (1 = automatisk)</label><input id="cf-ttl" type="number" min="1" max="86400" value="1" required></div>
     <div class="auth-field" id="cf-priority-field" hidden><label for="cf-priority">Prioritet</label><input id="cf-priority" type="number" min="0" max="65535" value="10"></div>
     <label id="cf-proxy-field"><input id="cf-proxy" type="checkbox"> Cloudflare-proxy</label>
     <div class="auth-field"><label for="cf-comment">Kommentar</label><input id="cf-comment" maxlength="500"></div>
-    <div class="cf-actions"><button class="btn-settings" type="submit">Gem DNS-post</button><button class="btn-settings" type="button" data-close>Fortryd</button></div>
+    </fieldset>
+    <div class="cf-actions"><button id="cf-address-save" class="btn-settings cf-primary" type="submit">Opret domæne</button><button class="btn-settings" type="button" data-close>Fortryd</button></div>
   </form></dialog>
   <dialog id="cf-route-editor"><form id="cf-route-form"><h2>Tunneladresse</h2><p class="cf-form-error" role="alert"></p><p class="field-hint">Gemmer tunnelreglen. Opret eller ret også den tilhørende DNS-post i oversigten.</p><div class="auth-field"><label for="cf-route-name">Fuldt værtsnavn</label><input id="cf-route-name" required></div><div class="auth-field"><label for="cf-route-service">Lokal serviceadresse</label><input id="cf-route-service" placeholder="http://192.168.1.20:8080" required></div><div class="cf-actions"><button class="btn-settings" type="submit">Gem tunnelregel</button><button class="btn-settings" type="button" data-close>Fortryd</button></div></form></dialog>
 </div>

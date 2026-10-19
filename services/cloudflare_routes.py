@@ -56,6 +56,10 @@ def create_cloudflare_blueprint(service):
     def create_record(domain_id):
         return jsonify(ok=True, record=service.save_record(domain_id, body()))
 
+    @bp.post('/api/cloudflare/domains/<int:domain_id>/addresses')
+    def create_address(domain_id):
+        return jsonify(ok=True,record=service.create_address(domain_id,body()))
+
     @bp.route('/api/cloudflare/domains/<int:domain_id>/records/<record_id>', methods=['PATCH', 'DELETE'])
     def record(domain_id, record_id):
         if request.method == 'DELETE':
