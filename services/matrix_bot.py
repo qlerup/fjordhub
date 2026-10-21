@@ -14,7 +14,7 @@ from pathlib import Path
 
 import requests
 from nio import (AsyncClient, ClientConfig, InviteEvent, LoginResponse, MatrixRoom,
-                 RoomMessageText, RoomMessagesResponse, RoomRedactResponse)
+                 RoomMessageText, RoomMessagesResponse, RoomRedactResponse, RoomSendError)
 if __package__:
     from .bot_identity import ensure_identity
     from .bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages
@@ -28,6 +28,7 @@ ROOT = Path("/config")
 CONFIG = ROOT / "config.json"
 HEALTH = ROOT / "health.json"
 SESSION = ROOT / "session.json"
+ALERTS = ROOT / "status-alerts.json"
 SERVER = os.environ.get("MATRIX_HOMESERVER", "")
 API = os.environ.get("FJORDHUB_RESOURCE_API", "")
 HELP_TEXT = "\n".join((
@@ -179,9 +180,19 @@ class FjordBot:
         self.saved = saved
         self.client.add_event_callback(self.on_invite, InviteEvent)
         self.client.add_event_callback(self.on_message, RoomMessageText)
-        self.old_status = {}
         self.pending_status = {}
         self.alerted_users = {}
+        saved_alerts = read(ALERTS)
+        entries = saved_alerts.get('apps', {}) if isinstance(saved_alerts, dict) else {}
+        if isinstance(entries, dict):
+            for name, users in entries.items():
+                if isinstance(name, str) and isinstance(users, list):
+                    recipients = {user for user in users if isinstance(user, str) and user}
+                    if recipients:
+                        self.alerted_users[name] = recipients
+        # Only delivered outages need to survive a process/container restart.
+        # All other apps retain the silent healthy baseline at first observation.
+        self.old_status = {name: False for name in self.alerted_users}
         self.next_health = 0
         self.cleaning_rooms = set()
         self.identity_state = {"status":"pending","message":"Klargør bottens identitet."}
@@ -232,9 +243,14 @@ class FjordBot:
         content = {"msgtype": "m.text", "body": body[:8000]}
         if body.startswith(('FjordSeed · Seeding', 'FjordSeed · Downloads')):
             content.update(format='org.matrix.custom.html', formatted_body=torrent_message_html(body[:8000]))
-        await self.client.room_send(
+        response = await self.client.room_send(
             room_id, "m.room.message", content,
             ignore_unverified_devices=True)
+        if isinstance(response, RoomSendError):
+            raise RuntimeError('Matrix kunne ikke levere botbeskeden.')
+
+    def save_status_alerts(self):
+        write(ALERTS, {'apps': {name: sorted(users) for name, users in self.alerted_users.items() if users}})
 
     async def clear_bot_messages(self, room, requester):
         # This is intentionally limited to the requester's private bot chat.
@@ -435,15 +451,18 @@ class FjordBot:
             snapshot = await asyncio.to_thread(resources)
             if not snapshot.get("ok"):
                 raise RuntimeError("Invalid health snapshot")
-            state = {a["name"]: a["running"] == a["total"]
-                     for a in running_apps(snapshot) if a["total"] > 0}
+            apps = {a['name']: a for a in running_apps(snapshot) if a['total'] > 0}
+            state = {name: a['running'] == a['total'] for name, a in apps.items()}
             # Missing app data is unknown, not a stopped or recovered app.
             self.pending_status = {name: value for name, value in self.pending_status.items()
                                    if name in state}
+            recipients = set(read(CONFIG).get("allowed_users", []))
             for app_name, healthy in state.items():
                 if app_name not in self.old_status and healthy:
                     self.old_status[app_name] = True
-                if self.old_status.get(app_name) == healthy:
+                alerted = self.alerted_users.get(app_name, set())
+                outstanding = recipients & alerted if healthy else recipients - alerted
+                if self.old_status.get(app_name) == healthy and not outstanding:
                     self.pending_status.pop(app_name, None)
                     continue
                 previous, count = self.pending_status.get(app_name, (None, 0))
@@ -453,7 +472,6 @@ class FjordBot:
                 # Polls are one minute apart: require confirmation in both directions.
                 if count < 2:
                     continue
-                recipients = set(read(CONFIG).get("allowed_users", []))
                 alerted = self.alerted_users.setdefault(app_name, set())
                 targets = recipients & alerted if healthy else recipients - alerted
                 for recipient in targets:
@@ -461,16 +479,23 @@ class FjordBot:
                     if not rooms:
                         continue
                     text = (("✅ " if healthy else "🚨 ") + app_name +
-                            (" kører igen." if healthy else " har stoppede containere."))
+                            (f" kører igen. Alle containere er startet ({apps[app_name]['running']}/{apps[app_name]['total']})."
+                             if healthy else " har stoppede containere."))
                     await self.send(rooms[0], text)
                     if healthy:
                         alerted.discard(recipient)
                     else:
                         alerted.add(recipient)
+                    self.save_status_alerts()
                 self.old_status[app_name] = healthy
                 self.pending_status.pop(app_name, None)
                 if healthy:
-                    self.alerted_users.pop(app_name, None)
+                    # Keep undelivered recoveries until the recipient's encrypted
+                    # room is available; removed users must never receive them.
+                    alerted.intersection_update(recipients)
+                    if not alerted:
+                        self.alerted_users.pop(app_name, None)
+                    self.save_status_alerts()
                 log.info("Confirmed health change %s: running=%s", app_name, healthy)
         except Exception:
             self.pending_status.clear()

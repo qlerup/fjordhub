@@ -600,6 +600,11 @@ This is a built-in system integration, not a catalog application.
    Synapse itself is self-hosted.
 
 Security and operations:
+- The bot follows a confirmed stopped-container alert with a recovery message
+  after all app containers are running in two consecutive checks. Delivered
+  alerts are stored under `DATA_DIR/matrix/bot/status-alerts.json`, so recovery
+  survives bot restarts and temporary chat/send failures. Only recipients of
+  the original alert who are still authorized receive that recovery message.
 - The bot has no Docker socket, shell access or admin privileges. It uses
   a read-only FjordHub resource API token shown in Settings → Access tokens.
 - Self-registration and federation are disabled on Synapse. The bot joins
