@@ -77,5 +77,57 @@ class ResourceMonitorCpuTests(unittest.TestCase):
         self.assertEqual(stats[container.id]["status"], "exited")
 
 
+class ResourceMonitorVpnHealthTests(unittest.TestCase):
+    def setUp(self):
+        self.containers = [FakeContainer(str(i), name) for i, name in enumerate((
+            'fjordvpn', 'fjordvpn-one-vpn', 'fjordvpn-one-relay',
+            'fjordvpn-two-vpn', 'fjordvpn-two-relay'))]
+        self.helper = FakeContainer('helper', 'fjordvpn-hub-vpn-image-1')
+        self.helper.status = 'exited'
+        self.helper.labels = {'com.docker.compose.project':'fjordvpn-hub',
+                              'com.docker.compose.service':'vpn-image'}
+        self.helper.attrs = {'State': {'ExitCode':0},
+                             'Config': {'Entrypoint':['/bin/sh','-c','exit 0']}}
+        self.containers.append(self.helper)
+        self.monitor = ResourceMonitor(SimpleNamespace(client=SimpleNamespace(
+            containers=SimpleNamespace(list=lambda **kwargs:self.containers))))
+
+    def snapshot(self):
+        stats = {c.id:self.monitor._container_snapshot(c, None) for c in self.containers}
+        with patch.object(self.monitor,'_capacity',return_value={'cpus':4,'memory_total':1024}), patch.object(
+                self.monitor,'_system_summary',return_value={'available':False}), patch.object(
+                self.monitor,'_stats_by_container',return_value=stats):
+            return self.monitor.collect([{'id':'fjordvpn','name':'FjordVPN','container_name':'fjordvpn'}])
+
+    def test_successful_image_preparation_does_not_mark_app_offline(self):
+        snapshot = self.snapshot()
+        group = snapshot['apps'][0]
+        self.assertEqual((group['running_count'],group['container_count']),(5,5))
+        self.assertNotIn(self.helper.name,[c['name'] for c in group['containers']])
+        self.assertEqual(snapshot['hub']['container_count'],5)
+
+    def test_failed_or_unknown_preparation_still_reports_unhealthy(self):
+        for state in ({'ExitCode':1},{},{'ExitCode':0,'OOMKilled':True},{'ExitCode':0,'Error':'failure'}):
+            with self.subTest(state=state):
+                self.helper.attrs['State']=state
+                group=self.snapshot()['apps'][0]
+                self.assertEqual((group['running_count'],group['container_count']),(5,6))
+
+    def test_stopped_real_service_is_not_hidden_even_after_clean_exit(self):
+        for container in self.containers[:5]:
+            with self.subTest(container=container.name):
+                container.status='exited'
+                container.attrs={'State':{'ExitCode':0}}
+                group=self.snapshot()['apps'][0]
+                self.assertEqual((group['running_count'],group['container_count']),(4,5))
+                container.status='running'
+
+    def test_unrecognized_job_or_application_is_not_ignored(self):
+        self.assertFalse(self.monitor._completed_vpn_image('other-app',self.helper))
+        self.helper.attrs['Config']['Entrypoint']=['/gluetun-entrypoint']
+        group=self.snapshot()['apps'][0]
+        self.assertEqual((group['running_count'],group['container_count']),(5,6))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -6,6 +6,8 @@ on:
       - 'services/matrix_bot.py'
       - 'services/bot_queries.py'
       - 'services/seed_status.py'
+      - 'services/resource_monitor.py'
+      - 'tests/test_resource_monitor.py'
       - 'services/matrix_hub.py'
       - 'tests/test_matrix_bot_session.py'
       - 'tests/test_matrix_bot_health.py'
@@ -27,4 +29,4 @@ jobs:
           python-version: '3.11'
       - run: pip install -r requirements.txt pytest tzdata 'matrix-nio>=0.25,<0.27'
       - run: python -m compileall -q app.py services
-      - run: pytest -q tests/test_app_notifications.py tests/test_matrix_status_resilience.py tests/test_bot_queries.py tests/test_bot_upload.py tests/test_seed_status.py tests/test_matrix_bot_session.py tests/test_matrix_bot_health.py tests/test_matrix_bot_cleanup.py
+      - run: pytest -q tests/test_resource_monitor.py tests/test_app_notifications.py tests/test_matrix_status_resilience.py tests/test_bot_queries.py tests/test_bot_upload.py tests/test_seed_status.py tests/test_matrix_bot_session.py tests/test_matrix_bot_health.py tests/test_matrix_bot_cleanup.py

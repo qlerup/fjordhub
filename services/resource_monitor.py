@@ -742,6 +742,8 @@ class ResourceMonitor:
         install_dir = str(app_def.get("compose_dir") or "")
         matched = []
         for container in containers:
+            if self._completed_vpn_image(app_id, container):
+                continue
             name = _container_name(container)
             project = _compose_project(container)
             working_dir = _compose_working_dir(container)
@@ -754,6 +756,26 @@ class ResourceMonitor:
             elif app_id and (name == app_id or name.startswith(f"{app_id}-") or name.startswith(f"{app_id}_")):
                 matched.append(container)
         return sorted({container.id: container for container in matched}.values(), key=_container_name)
+
+    @staticmethod
+    def _completed_vpn_image(app_id: str, container) -> bool:
+        """The known Compose image-preparation job is not a running service.
+
+        Only its intentional successful exit is excluded. Failed preparation,
+        unknown metadata and stopped application/VPN/relay containers continue
+        to count towards app health. Do not generally ignore exit-code-zero
+        containers: an ordinary service can stop cleanly and still be offline.
+        """
+        if app_id != 'fjordvpn' or getattr(container, 'status', '') != 'exited':
+            return False
+        labels = getattr(container, 'labels', {}) or {}
+        attrs = getattr(container, 'attrs', {}) or {}
+        state = attrs.get('State', {})
+        return (labels.get('com.docker.compose.service') == 'vpn-image' and
+                labels.get('com.docker.compose.project') in ('fjordvpn', 'fjordvpn-hub') and
+                attrs.get('Config', {}).get('Entrypoint') == ['/bin/sh', '-c', 'exit 0'] and
+                type(state.get('ExitCode')) is int and state['ExitCode'] == 0 and
+                not state.get('OOMKilled') and not state.get('Error'))
 
     def _core_containers(self, containers: list) -> list:
         core_names = {"fjordhub", "fjordhub-traefik"}
