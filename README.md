@@ -640,8 +640,8 @@ in `DATA_DIR/matrix-app-events.sqlite3`; notifications enter the existing
 Matrix bot outbox only for previously linked/allowlisted Matrix users.
 
 FjordVPN warns after a sustained failure and lists affected VPN profile names,
-including recovery notifications. FjordSeed only pushes actual RSS download
-*starts*, with the torrent name; completion events and manual downloads are
+including recovery notifications. FjordSeed pushes actual RSS download
+starts and completions, with the torrent name and feed. Manual downloads are
 recorded for on-demand queries without causing notification noise.
 
 The encrypted bot can answer questions such as "Er der downloadet noget nyt i

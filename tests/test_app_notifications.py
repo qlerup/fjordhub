@@ -48,7 +48,10 @@ def test_events_enqueue_once_for_allowlisted_matrix_user_and_query_downloads():
                                     "filename": "new Linux.iso", "feed": "Linux RSS"}, matrix)
         store.record("fjordseed", {"type": "download_completed", "event_id": "a3",
                                     "filename": "manual.mp4"}, matrix)
-        assert len(list((matrix.bot_dir / "outbox").glob("*.json"))) == 1
+        assert len(list((matrix.bot_dir / "outbox").glob("*.json"))) == 2
+        assert store.record("fjordseed", {"type": "rss_completed", "event_id": "a2",
+                                    "filename": "new Linux.iso", "feed": "Linux RSS"}, matrix)["duplicate"]
+        assert len(list((matrix.bot_dir / "outbox").glob("*.json"))) == 2
         report = store.downloads_today()
         assert {row["filename"] for row in report["completed"]} == {"new Linux.iso", "manual.mp4"}
         assert not report["started"]

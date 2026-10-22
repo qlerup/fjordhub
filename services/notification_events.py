@@ -130,7 +130,7 @@ class NotificationStore:
             row = con.execute("SELECT queued FROM events WHERE app_id=? AND event_id=?",
                               (app_id, entry["event_id"])).fetchone()
             # Not installed yet: still keep history for "what downloaded today?".
-            notify = entry["type"] in {"vpn_failed", "vpn_recovered", "rss_started", "upload_finished"}
+            notify = entry["type"] in {"vpn_failed", "vpn_recovered", "rss_started", "rss_completed", "upload_finished"}
             if row["queued"] == 0 and notify and matrix_hub._state().get("phase") == "ready":
                 allowed = matrix_hub._load(matrix_hub.bot_dir / "config.json").get("allowed_users", [])
                 for recipient in allowed[:50]:
