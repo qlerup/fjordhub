@@ -17,10 +17,10 @@ from nio import (AsyncClient, ClientConfig, InviteEvent, LoginResponse, MatrixRo
                  RoomMessageText, RoomMessagesResponse, RoomRedactResponse, RoomSendError)
 if __package__:
     from .bot_identity import ensure_identity
-    from .bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages
+    from .bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages, upload_question, upload_menu, upload_answer
 else:
     from bot_identity import ensure_identity
-    from bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages
+    from bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages, upload_question, upload_menu, upload_answer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("fjordhub.matrix")
@@ -40,6 +40,7 @@ HELP_TEXT = "\n".join((
     "• opdateringer – tjek hvilke apps der kan opdateres",
     "",
     "Du kan også spørge:",
+    "• Kan du sende mit krediterede upload?",
     "• Hvad seeder nu?",
     "• Hvad downloader nu?",
     "• Er der downloadet noget nyt i dag?",
@@ -147,6 +148,19 @@ def seeding_snapshot(intent='seeding'):
     if not payload.get('ok') or not isinstance(payload.get('torrents'), list):
         raise RuntimeError('FjordSeed-status er ikke tilgængelig.')
     return payload
+
+
+def credit_snapshot():
+    token = read(CONFIG).get('monitor_token')
+    if not token:
+        raise RuntimeError('FjordHub-bottens læseadgang mangler.')
+    response = requests.get('http://fjordhub:8080/api/matrix/bot/upload',
+                            headers={'Authorization': 'Bearer ' + token}, timeout=20)
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get('ok') is not True or not isinstance(payload.get('options'), list):
+        raise RuntimeError('Uploadtal er ikke tilgængelige.')
+    return payload['options']
 
 
 def download_history(period='today'):
@@ -374,6 +388,49 @@ class FjordBot:
         blocks.append('Dette tjek gælder installerede apps. FjordHub og selve botten opdateres fra FjordHub.')
         await self.send(room.room_id, '\n\n'.join(blocks))
 
+    async def handle_upload(self, room_id, sender, command):
+        menus = getattr(self, 'upload_menus', None)
+        if menus is None:
+            menus = self.upload_menus = {}
+        key = sender, room_id
+        if upload_question(command):
+            options = await asyncio.to_thread(credit_snapshot)
+            now = time.time()
+            for expired in [k for k, v in menus.items() if v['expires'] <= now]:
+                menus.pop(expired, None)
+            if options:
+                if len(menus) >= 200 and key not in menus:
+                    menus.pop(next(iter(menus)))
+                menus[key] = {'expires': now + 300,
+                              'choices': [(o['kind'], o['id']) for o in options]}
+            else:
+                menus.pop(key, None)
+            await self.send(room_id, upload_menu(options))
+            return True
+        menu = menus.get(key)
+        if menu is None or not (re.fullmatch(r'[0-9]{1,3}\.?', command) or command in {'annuller', 'annullér'}):
+            return False
+        if command in {'annuller', 'annullér'}:
+            menus.pop(key, None)
+            await self.send(room_id, 'Uploadmenuen er lukket.')
+            return True
+        if menu['expires'] <= time.time():
+            menus.pop(key, None)
+            await self.send(room_id, 'Uploadmenuen er udløbet. Spørg om krediteret upload igen.')
+            return True
+        index = int(command.rstrip('.')) - 1
+        if not 0 <= index < len(menu['choices']):
+            await self.send(room_id, f"Vælg et nummer fra 1 til {len(menu['choices'])}.")
+            return True
+        identity = menu['choices'][index]
+        # Resolve stable IDs against a fresh snapshot, never against a reordered
+        # list or another user's conversation. Selection remains retryable.
+        options = await asyncio.to_thread(credit_snapshot)
+        option = next((o for o in options if (o['kind'], o['id']) == identity), None)
+        await self.send(room_id, upload_answer(option) if option else
+                        'Valget findes ikke længere. Spørg om krediteret upload igen.')
+        return True
+
     async def on_message(self, room: MatrixRoom, event: RoomMessageText):
         if not room.encrypted or not event.decrypted or not allowed(event.sender):
             return
@@ -383,6 +440,8 @@ class FjordBot:
         try:
             if update_question(command) or (command in {'ja', 'ja opdater', 'ja opdatér', 'bekræft opdatering', 'nej', 'annuller', 'annullér'} and (event.sender, room.room_id) in getattr(self, 'pending_updates', {})):
                 await self.handle_updates(room, event.sender, command)
+            elif await self.handle_upload(room.room_id, event.sender, command):
+                pass
             elif command in CLEAR_BOT_COMMANDS:
                 await self.clear_bot_messages(room, event.sender)
             elif command in COMMANDS:

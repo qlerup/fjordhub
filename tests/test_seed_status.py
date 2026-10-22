@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from services.app_integration import AppDataError
-from services.seed_status import fetch_seed_status
+from services.seed_status import fetch_seed_status, fetch_seed_upload
 
 
 def response(status=200, chunks=None):
@@ -46,3 +46,18 @@ def test_requests_filtered_activity_before_server_limit(activity):
     with patch('services.seed_status.requests.Session',return_value=client):
         fetch_seed_status('http://seed','secret',activity=activity)
     assert client.get.call_args.args[0] == 'http://seed/api/hub/bot/seeding?activity='+activity
+
+
+def test_upload_projection_validates_values_and_strips_unexpected_fields():
+    import json
+    choice={'kind':'rss','id':'f1','name':'Film','credited_uploaded':1024,'api_key':'private'}
+    client=client_for(response(chunks=[json.dumps({'ok':True,'options':[choice]}).encode()]))
+    with patch('services.seed_status.requests.Session',return_value=client):
+        result=fetch_seed_upload('http://seed','secret')
+    assert result['options'][0]['credited_uploaded']==1024
+    assert 'private' not in str(result)
+    assert client.get.call_args.args[0]=='http://seed/api/hub/bot/upload'
+    for value in (-1,True,'1024',float('nan')):
+        item=response(chunks=[json.dumps({'ok':True,'options':[dict(choice,credited_uploaded=value)]}).encode()])
+        with patch('services.seed_status.requests.Session',return_value=client_for(item)):
+            with pytest.raises(AppDataError):fetch_seed_upload('http://seed','secret')

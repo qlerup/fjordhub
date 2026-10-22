@@ -236,6 +236,7 @@ _AUTH_EXEMPT = {
     "api_matrix_bot_downloads_today",
     "api_matrix_bot_downloads",
     "api_matrix_bot_seeding",
+    "api_matrix_bot_upload",
     "api_matrix_bot_updates",
 }
 
@@ -3676,6 +3677,22 @@ def api_matrix_bot_updates():
     response = jsonify(payload)
     response.headers['Cache-Control'] = 'no-store'
     return response, code
+
+
+@app.get('/api/matrix/bot/upload')
+def api_matrix_bot_upload():
+    error = _matrix_bot_access_error()
+    if error:
+        return error
+    from services.seed_status import fetch_seed_upload
+    try:
+        base_url, key = _integration_app_connection('fjordseed', allow_seed=True)
+        payload = fetch_seed_upload(base_url, key)
+    except app_integration.AppDataError as exc:
+        return jsonify(ok=False, error=str(exc)), exc.status
+    response = jsonify(payload)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 @app.get('/api/matrix/bot/seeding')

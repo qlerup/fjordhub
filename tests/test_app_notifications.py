@@ -109,6 +109,18 @@ def test_hub_notifications_use_existing_per_app_key_and_bot_token():
                 assert client.get(endpoint, headers={'Authorization': 'Bearer '+token},
                                   environ_overrides={'REMOTE_ADDR':'8.8.8.8'}).status_code == 403
 
+            endpoint = '/api/matrix/bot/upload'
+            assert client.get(endpoint).status_code == 401
+            assert client.get(endpoint,headers={'Authorization':'Bearer seed-app-secret'}).status_code == 401
+            with patch.object(fjordhub,'_integration_app_connection',return_value=('http://seed','key')), patch(
+                'services.seed_status.fetch_seed_upload',return_value={'ok':True,'options':[]}) as fetch:
+                response=client.get(endpoint,headers={'Authorization':'Bearer '+token})
+                assert response.status_code==200 and response.json=={'ok':True,'options':[]}
+                assert response.headers['Cache-Control']=='no-store'
+                fetch.assert_called_once_with('http://seed','key')
+                assert client.get(endpoint,headers={'Authorization':'Bearer '+token},
+                    environ_overrides={'REMOTE_ADDR':'8.8.8.8'}).status_code==403
+
 
 def test_seed_notification_uses_readable_title():
     from services.notification_events import notification_text

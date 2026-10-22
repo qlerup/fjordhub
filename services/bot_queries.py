@@ -11,6 +11,52 @@ def words(message):
     return re.findall(r'[a-z0-9]+', text)
 
 
+def upload_question(message):
+    tokens = set(words(message))
+    if tokens & {'stop', 'stoppe', 'slet', 'slette', 'fjern', 'pause', 'start'}:
+        return False
+    return tokens == {'upload'} or (bool(tokens & {'upload', 'uploadet', 'uploads', 'uploadsaldo'}) and
+           any(token.startswith(('krediter', 'crediter', 'credited')) for token in tokens))
+
+
+def upload_menu(options):
+    if not options:
+        return 'FjordSeed: Der er ingen RSS-feeds eller trackere at vælge imellem.'
+    lines = ['FjordSeed · Krediteret upload', 'Vælg et RSS-feed eller en tracker:']
+    for index, option in enumerate(options, 1):
+        label = 'RSS-feed' if option['kind'] == 'rss' else 'Tracker'
+        lines.append(f"{index}. {label}: {option['name']}")
+    lines.append('Svar med nummeret, fx 1. Menuen gælder i 5 minutter. Skriv annuller for at lukke den.')
+    return '\n\n'.join(lines)
+
+
+def upload_answer(option):
+    label = 'RSS-feed' if option['kind'] == 'rss' else 'Tracker'
+    title = f"FjordSeed · Krediteret upload\n{label}: {option['name']}"
+    amount = option.get('credited_uploaded')
+    if type(amount) not in (int, float) or not math.isfinite(amount) or amount < 0:
+        return title + '\n\nUploadtallet er ikke tilgængeligt lige nu. Prøv igen om lidt.'
+    units = ('B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB')
+    value, unit = amount, 0
+    while value >= 1024 and unit < len(units) - 1:
+        value /= 1024
+        unit += 1
+    text = title + f'\n\nKrediteret upload: {decimal(value)} {units[unit]}'
+    text += ('\nTrackerens registrerede uploadsaldo for hele kontoen.' if option['kind'] == 'tracker' else
+             '\nSamlet registreret krediteret upload for dette RSS-feed, også fra fjernede torrents.')
+    if option.get('estimated'):
+        text += '\nTallet indeholder estimeret historik.'
+    if option['kind'] == 'tracker' and option.get('updated_at'):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        try:
+            date = datetime.fromtimestamp(option['updated_at'], ZoneInfo('Europe/Copenhagen'))
+            text += '\nSenest opdateret: ' + date.strftime('%d-%m-%Y kl. %H:%M')
+        except (OverflowError, OSError, ValueError):
+            pass
+    return text
+
+
 def torrent_query(message):
     tokens = words(message)
     # A status question must never pretend to execute a requested change.

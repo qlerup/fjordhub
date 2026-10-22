@@ -660,3 +660,18 @@ login state, encrypted key store or previous conversation.
 Allowlisted users in encrypted chats can ask ?Hvad seeder jeg??, ?Hvor mange seeder jeg p? lige nu?? or ?Hvor langt er mine downloads??. Common spelling errors and alternative torrent/download wording are recognized locally without an AI service. The bot lists active seeders (including those waiting for peers), titles, download percentage, credited ratio, seed time and progress toward the configured ratio-or-time goal. Paused torrents are excluded from active seeding counts but included in a general download overview. Unlimited seeding is labelled explicitly. Long lists arrive across multiple messages, up to 500 torrents per snapshot; unavailable live data is reported as an error rather than zero seeders.
 
 Update both FjordHub and FjordSeed, then update the Matrix bot under integrations. This uses a bot-specific internal endpoint with the existing bot token and an authenticated, bounded read from the installed FjordSeed port. It grants no torrent controls or additional access to other integration tokens.
+
+
+### Credited upload in the Matrix bot
+
+Ask "Kan du sende mit krediterede upload?" (or `upload`). The bot lists all
+configured RSS feeds and tracker accounts as numbered choices. Reply `1` or `1.`
+to retrieve that choice. Menus belong to one user and room, expire after five
+minutes, and can be closed with `annuller`. A reply resolves the stored ID against
+a fresh snapshot, so reordered or removed feeds cannot select a different feed.
+
+RSS totals use FjordSeed's persistent credited-upload history, including removed
+torrents. Tracker choices show the account's API-reported uploaded balance and
+its last refresh time; cached tracker data older than ten minutes is unavailable.
+Estimated RSS history is labelled. Missing data is never shown as zero.
+Update FjordSeed, FjordHub and then the Matrix bot to enable this feature.
