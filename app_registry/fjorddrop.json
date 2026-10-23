@@ -2,7 +2,7 @@
   "id": "fjorddrop",
   "name": "FjordDrop",
   "tagline": "Store filer. En lille genvej.",
-  "description": "Privat fildeling i krypterede WebRTC-bidder. Del en monteret mappe med et tidsbegrænset link, hent direkte til pc eller modtag filer i destinationsmappen. Lokal HTTP kan parres udad med en offentlig HTTPS-instans. Coturn installeres automatisk til forbindelser bag NAT/firewall. Routerporte skal videresendes ved internetdeling. Linux Docker med host-netværk; administration via FjordHub-admin.",
+  "description": "Forbind to personer med en kode. Begge kan lægge pc-filer klar uden upload til serveren; filen sendes krypteret, når modtageren vælger Hent. Vælg en FjordVPN-gateway i appen for automatiske VPN-porte uden portåbning i routeren. Servermapper og indbygget Coturn er også inkluderet.",
   "icon": "upload",
   "accent": "#b5adff",
   "container_name": "fjorddrop",
@@ -81,14 +81,14 @@
     },
     {
       "id": "network",
-      "title": "Indbygget TURN – installeres automatisk",
+      "title": "Forbindelse: FjordVPN eller indbygget TURN",
       "fields": [
         {
           "key": "TURN_PUBLIC_IP",
           "label": "Offentlig IPv4-adresse (valgfri)",
           "type": "text",
           "default": "",
-          "hint": "Tomt felt: find automatisk ved opstart. Bag router: videresend TCP+UDP 3478 og UDP 49160-49200 til FjordDrop-serveren. HTTPS-tunnel alene er ikke nok. Ved CGNAT kræves en offentligt tilgængelig TURN-server."
+          "hint": "Bruger du FjordVPN? Vælg en forbindelse inde i appen efter installation; routerporte skal da ikke åbnes. Uden VPN: tom IP findes automatisk, og TCP+UDP 3478 samt UDP 49160-49200 skal videresendes ved internetdeling."
         },
         {
           "key": "TURN_PORT",
@@ -108,7 +108,14 @@
           "label": "Sidste relæport (UDP)",
           "type": "number",
           "default": "49200",
-          "hint": "Videresend hele dette UDP-interval til FjordDrop-serveren. Coturn installeres og opdateres sammen med appen."
+          "hint": "Kun ved brug uden FjordVPN: videresend intervallet til serveren. Coturn installeres automatisk."
+        },
+        {
+          "key": "FJORDVPN_CONTAINER",
+          "label": "FjordVPN-containernavn",
+          "type": "text",
+          "default": "fjordvpn",
+          "hint": "Normalt fjordvpn. Vælg selve VPN-forbindelsen inde i appen."
         }
       ]
     }
