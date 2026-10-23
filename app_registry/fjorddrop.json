@@ -2,7 +2,7 @@
   "id": "fjorddrop",
   "name": "FjordDrop",
   "tagline": "Store filer. En lille genvej.",
-  "description": "Privat fildeling i krypterede WebRTC-bidder. Del en monteret mappe med et tidsbegrænset link, hent direkte til pc eller modtag filer i destinationsmappen. Lokal HTTP kan parres udad med en offentlig HTTPS-instans. Kræver TURN ved blokeret direkte forbindelse. Linux Docker med host-netværk; administration via FjordHub-admin.",
+  "description": "Privat fildeling i krypterede WebRTC-bidder. Del en monteret mappe med et tidsbegrænset link, hent direkte til pc eller modtag filer i destinationsmappen. Lokal HTTP kan parres udad med en offentlig HTTPS-instans. Coturn installeres automatisk til forbindelser bag NAT/firewall. Routerporte skal videresendes ved internetdeling. Linux Docker med host-netværk; administration via FjordHub-admin.",
   "icon": "upload",
   "accent": "#b5adff",
   "container_name": "fjorddrop",
@@ -14,23 +14,103 @@
   "icon_url": "https://raw.githubusercontent.com/qlerup/fjorddrop/main/static/icons/icon-512.png",
   "sort_order": 12,
   "setup_steps": [
-    {"id":"basic","title":"FjordDrop og forbindelse","fields":[
-      {"key":"APP_PORT","label":"Web-port","type":"number","default":"8102","hint":"Linux host-netværk bruges til WebRTC. Vælg en ledig port."},
-      {"key":"PUBLIC_URL","label":"Offentlig HTTPS-adresse (valgfri)","type":"text","default":"","hint":"F.eks. https://drop.ditdomæne.dk. Lokal HTTP kan i stedet parres med en offentlig FjordDrop inde i appen."},
-      {"key":"MAX_UPLOAD_GB","label":"Maksimal størrelse pr. modtaget fil (GB)","type":"number","default":"100"}
-    ]},
-    {"id":"storage","title":"Bibliotek og destination","fields":[
-      {"key":"DATA_DIR","label":"Appdata","type":"path","default":"/opt/fjorddrop/data","hint":"Indstillinger, delinger og parringsnøgler. Skal være skrivbar for valgt UID/GID."},
-      {"key":"SHARED_DIR","label":"Mappe der kan deles","type":"path","default":"/opt/fjorddrop/shared","hint":"Lokal mappe eller allerede monteret NAS. Monteres kun til læsning."},
-      {"key":"RECEIVED_DIR","label":"Destinationsmappe","type":"path","default":"/opt/fjorddrop/received","hint":"Modtagne filer samles her. Skal være skrivbar for valgt UID/GID. Eksisterende filer overskrives aldrig."},
-      {"key":"PUID","label":"Filbruger (UID)","type":"number","default":"1000"},
-      {"key":"PGID","label":"Filgruppe (GID)","type":"number","default":"1000"}
-    ]},
-    {"id":"network","title":"STUN / TURN (kan også sættes i appen)","fields":[
-      {"key":"STUN_URL","label":"STUN-adresse","type":"text","default":"","hint":"F.eks. stun:turn.ditdomæne.dk:3478"},
-      {"key":"TURN_URL","label":"TURN-adresse","type":"text","default":"","hint":"Kræves på begrænsede netværk. F.eks. turns:turn.ditdomæne.dk:5349"},
-      {"key":"TURN_USERNAME","label":"TURN-brugernavn","type":"text","default":""},
-      {"key":"TURN_PASSWORD","label":"TURN-adgangskode","type":"password","default":""}
-    ]}
+    {
+      "id": "basic",
+      "title": "FjordDrop og forbindelse",
+      "fields": [
+        {
+          "key": "APP_PORT",
+          "label": "Web-port",
+          "type": "number",
+          "default": "8102",
+          "hint": "Linux host-netværk bruges til WebRTC. Vælg en ledig port."
+        },
+        {
+          "key": "PUBLIC_URL",
+          "label": "Offentlig HTTPS-adresse (valgfri)",
+          "type": "text",
+          "default": "",
+          "hint": "F.eks. https://drop.ditdomæne.dk. Lokal HTTP kan i stedet parres med en offentlig FjordDrop inde i appen."
+        },
+        {
+          "key": "MAX_UPLOAD_GB",
+          "label": "Maksimal størrelse pr. modtaget fil (GB)",
+          "type": "number",
+          "default": "100"
+        }
+      ]
+    },
+    {
+      "id": "storage",
+      "title": "Bibliotek og destination",
+      "fields": [
+        {
+          "key": "DATA_DIR",
+          "label": "Appdata",
+          "type": "path",
+          "default": "/opt/fjorddrop/data",
+          "hint": "Indstillinger, delinger og parringsnøgler. Skal være skrivbar for valgt UID/GID."
+        },
+        {
+          "key": "SHARED_DIR",
+          "label": "Mappe der kan deles",
+          "type": "path",
+          "default": "/opt/fjorddrop/shared",
+          "hint": "Lokal mappe eller allerede monteret NAS. Monteres kun til læsning."
+        },
+        {
+          "key": "RECEIVED_DIR",
+          "label": "Destinationsmappe",
+          "type": "path",
+          "default": "/opt/fjorddrop/received",
+          "hint": "Modtagne filer samles her. Skal være skrivbar for valgt UID/GID. Eksisterende filer overskrives aldrig."
+        },
+        {
+          "key": "PUID",
+          "label": "Filbruger (UID)",
+          "type": "number",
+          "default": "1000"
+        },
+        {
+          "key": "PGID",
+          "label": "Filgruppe (GID)",
+          "type": "number",
+          "default": "1000"
+        }
+      ]
+    },
+    {
+      "id": "network",
+      "title": "Indbygget TURN – installeres automatisk",
+      "fields": [
+        {
+          "key": "TURN_PUBLIC_IP",
+          "label": "Offentlig IPv4-adresse (valgfri)",
+          "type": "text",
+          "default": "",
+          "hint": "Tomt felt: find automatisk ved opstart. Bag router: videresend TCP+UDP 3478 og UDP 49160-49200 til FjordDrop-serveren. HTTPS-tunnel alene er ikke nok. Ved CGNAT kræves en offentligt tilgængelig TURN-server."
+        },
+        {
+          "key": "TURN_PORT",
+          "label": "TURN-port (TCP og UDP)",
+          "type": "number",
+          "default": "3478",
+          "hint": "Videresend samme port udefra. Vælg en ledig port; adresse og login sættes automatisk i appen."
+        },
+        {
+          "key": "TURN_MIN_PORT",
+          "label": "Første relæport (UDP)",
+          "type": "number",
+          "default": "49160"
+        },
+        {
+          "key": "TURN_MAX_PORT",
+          "label": "Sidste relæport (UDP)",
+          "type": "number",
+          "default": "49200",
+          "hint": "Videresend hele dette UDP-interval til FjordDrop-serveren. Coturn installeres og opdateres sammen med appen."
+        }
+      ]
+    }
   ]
 }
