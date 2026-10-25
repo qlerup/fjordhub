@@ -327,6 +327,14 @@ class Installer:
                 if check.returncode:
                     raise RuntimeError('Appen startede, men NVENC-testen fejlede: ' + (check.stderr or check.stdout)[-1600:])
                 log('NVENC-test bestået i appens container.')
+                if app_def.get('gpu_nvenc_check'):
+                    check = subprocess.run(
+                        ['docker','compose','exec','-T',service,'python3','/app/converter_worker.py','--check-gpu'],
+                        cwd=str(install_dir),env=build_compose_env(env_values),
+                        capture_output=True,text=True,timeout=120)
+                    if check.returncode:
+                        raise RuntimeError('NVEncC HEVC-test fejlede: '+(check.stderr or check.stdout)[-1600:])
+                    log('NVEncC HEVC-test bestået. Konvertering kan vælges i FjordSeed.')
 
             log(f"{app_def['name']} er installeret og koerer!")
             self.state.set_installed(app_id)
