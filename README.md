@@ -632,7 +632,7 @@ Security and operations:
 FjordHub receives authenticated, typed app events at
 `POST /api/hub/apps/notifications` using each app's existing
 `X-Hub-Key` and `app_id`. Only `fjordvpn` can submit
-`vpn_failed`/`vpn_recovered`; only `fjordseed` can submit
+`vpn_failed`, `vpn_recovered` and `vpn_port_changed`; only `fjordseed` can submit
 `rss_started`, `rss_completed`, `download_started` and
 `download_completed`. Arbitrary chat messages or recipient addresses
 are intentionally not supported. Event IDs are deduplicated across retries
@@ -643,6 +643,11 @@ FjordVPN warns after a sustained failure and lists affected VPN profile names,
 including recovery notifications. FjordSeed pushes actual RSS download
 starts and completions, with the torrent name and feed. Manual downloads are
 recorded for on-demand queries without causing notification noise.
+
+VPN port changes include the profile name and previous/new public port. Update
+FjordHub before FjordVPN to enable these events; the existing bot outbox delivers
+them without rebuilding the Matrix bot. First observation of an existing port
+is silent, and repeated checks/restarts do not repeat a port-change alert.
 
 The encrypted bot can answer questions such as "Er der downloadet noget nyt i
 dag?" with completed and started file names registered **today in

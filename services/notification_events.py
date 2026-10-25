@@ -4,6 +4,7 @@ Applications can submit *typed* events using their existing FjordHub app key.
 No app controls the recipient, Matrix room, or arbitrary bot instructions.
 """
 from .bot_queries import download_title
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
@@ -14,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 ALLOWED_TYPES = {
     "fjordlens": {"upload_finished"},
-    "fjordvpn": {"vpn_failed", "vpn_recovered"},
+    "fjordvpn": {"vpn_failed", "vpn_recovered", "vpn_port_changed"},
     "fjordseed": {"rss_started", "rss_completed", "download_started", "download_completed"},
 }
 EVENT_ID = re.compile(r"[A-Za-z0-9_.:-]{1,120}\Z")
@@ -41,6 +42,15 @@ def clean_event(app_id, value):
     if kind not in ALLOWED_TYPES.get(app_id, set()) or not isinstance(event_id, str) or not EVENT_ID.fullmatch(event_id):
         raise NotificationError("Ugyldig hændelsestype eller id.")
     if app_id == "fjordvpn":
+        if kind == "vpn_port_changed":
+            profile = safe_label(value.get("profile"), 90)
+            port, previous = value.get("port"), value.get("previous_port")
+            if (not profile or type(port) is not int or not 1 <= port <= 65535 or
+                    (previous is not None and (type(previous) is not int or not 1 <= previous <= 65535)) or
+                    previous == port):
+                raise NotificationError("Ugyldig VPN-portændring.")
+            return {"type": kind, "event_id": event_id, "profile": profile,
+                    "port": port, "previous_port": previous}
         profiles = value.get("profiles")
         if not isinstance(profiles, list) or not 1 <= len(profiles) <= 20 or any(
                 not safe_label(x, 90) for x in profiles):
@@ -70,6 +80,10 @@ def clean_event(app_id, value):
 def notification_text(app_id, entry):
     kind = entry["type"]
     if app_id == "fjordvpn":
+        if kind == "vpn_port_changed":
+            previous = entry["previous_port"]
+            change = f"{previous} → {entry['port']}" if previous is not None else str(entry["port"])
+            return f"🔌 FjordVPN: Ny offentlig port\n\n{entry['profile']}\nPort: {change}"
         heading = ("🚨 FjordVPN: Forbindelsesfejl" if kind == "vpn_failed" else
                    "✅ FjordVPN: Forbindelsen virker igen")
         return heading + "\n" + "\n".join("• " + n for n in entry["profiles"])
@@ -114,10 +128,15 @@ class NotificationStore:
                  PRIMARY KEY(app_id, event_id))""")
             con.execute("CREATE INDEX IF NOT EXISTS idx_events_day ON events(app_id,kind,occurred_at)")
 
+    @contextmanager
     def _connect(self):
         con = sqlite3.connect(self.path, timeout=10)
         con.row_factory = sqlite3.Row
-        return con
+        try:
+            with con:
+                yield con
+        finally:
+            con.close()
 
     def record(self, app_id, raw_event, matrix_hub):
         entry = clean_event(app_id, raw_event)
@@ -130,7 +149,7 @@ class NotificationStore:
             row = con.execute("SELECT queued FROM events WHERE app_id=? AND event_id=?",
                               (app_id, entry["event_id"])).fetchone()
             # Not installed yet: still keep history for "what downloaded today?".
-            notify = entry["type"] in {"vpn_failed", "vpn_recovered", "rss_started", "rss_completed", "upload_finished"}
+            notify = entry["type"] in {"vpn_failed", "vpn_recovered", "vpn_port_changed", "rss_started", "rss_completed", "upload_finished"}
             if row["queued"] == 0 and notify and matrix_hub._state().get("phase") == "ready":
                 allowed = matrix_hub._load(matrix_hub.bot_dir / "config.json").get("allowed_users", [])
                 for recipient in allowed[:50]:

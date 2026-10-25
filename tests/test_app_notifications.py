@@ -10,6 +10,29 @@ from services.matrix_hub import MatrixHub
 from services.notification_events import NotificationError, NotificationStore, clean_event
 
 
+def test_vpn_port_notification_validation_and_durable_deduplication(tmp_path):
+    import pytest
+    matrix = MatrixHub(tmp_path)
+    matrix._save_state(phase="ready", domain="matrix.example.dk")
+    matrix._save(matrix.bot_dir / "config.json", {"allowed_users": ["@owner:matrix.example.dk"]})
+    event = dict(type="vpn_port_changed", event_id="port-1", profile="Proton A",
+                 previous_port=12345, port=23456)
+    store = NotificationStore(tmp_path)
+    assert store.record("fjordvpn", event, matrix)["ok"]
+    assert NotificationStore(tmp_path).record("fjordvpn", event, matrix)["duplicate"]
+    queued = list((matrix.bot_dir / "outbox").glob("*.json"))
+    assert len(queued) == 1
+    text = matrix._load(queued[0])["text"]
+    assert "Proton A" in text and "12345 → 23456" in text
+    for changes in ({"port": True}, {"port": "23456"}, {"port": 0}, {"port": 65536},
+                    {"previous_port": -1}, {"previous_port": False}, {"port": 12345}, {"profile": ""}):
+        with pytest.raises(NotificationError):
+            clean_event("fjordvpn", dict(event, **changes))
+    with pytest.raises(NotificationError):
+        clean_event("fjordseed", event)
+    assert clean_event("fjordvpn", dict(event, previous_port=None))["previous_port"] is None
+
+
 def test_validation_rejects_arbitrary_commands_and_overlong_filenames():
     for event in (
         {"type": "shell", "event_id": "x", "text": "rm -rf /"},
