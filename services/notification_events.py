@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 ALLOWED_TYPES = {
     "fjordlens": {"upload_finished"},
     "fjordvpn": {"vpn_failed", "vpn_recovered", "vpn_port_changed"},
-    "fjordseed": {"rss_started", "rss_completed", "download_started", "download_completed"},
+    "fjordseed": {"rss_started", "rss_completed", "download_started", "download_completed", "download_deleted"},
 }
 EVENT_ID = re.compile(r"[A-Za-z0-9_.:-]{1,120}\Z")
 COPENHAGEN = ZoneInfo("Europe/Copenhagen")
@@ -73,6 +73,18 @@ def clean_event(app_id, value):
     filename = safe_label(value.get("filename"), 200)
     if not filename:
         raise NotificationError("Angiv filnavnet.")
+    if kind == 'download_deleted':
+        reason = value.get('reason')
+        ratio, hours = value.get('ratio_limit'), value.get('seed_hours')
+        import math
+        if (reason not in {'ratio', 'time'} or
+                any(type(v) not in (int, float) or not math.isfinite(v) or v < 1
+                    for v in (ratio, hours)) or hours > 8809 or
+                type(value.get('library_retained')) is not bool):
+            raise NotificationError('Ugyldig automatisk sletning.')
+        return {'type': kind, 'event_id': event_id, 'filename': filename,
+                'reason': reason, 'ratio_limit': ratio, 'seed_hours': hours,
+                'library_retained': value['library_retained']}
     return {"type": kind, "event_id": event_id, "filename": filename,
             "feed": safe_label(value.get("feed", ""), 90)}
 
@@ -107,6 +119,14 @@ def notification_text(app_id, entry):
         if count or entry['status'] != 'completed':
             blocks.append('Se fejl og mulighed for genkørsel i FjordLens.')
         return '\n\n'.join(blocks)
+    if kind == 'download_deleted':
+        from .bot_queries import decimal
+        reason = ('Ratio-mål nået: ' + decimal(entry['ratio_limit']) + ':1' if entry['reason'] == 'ratio' else
+                  decimal(entry['seed_hours']) + ' timers seeding nået')
+        text = '🗑️ FjordSeed · Automatisk slettet\n\n' + download_title(entry['filename']) + '\n\nÅrsag: ' + reason
+        if entry['library_retained']:
+            text += '\nDen konverterede kopi i biblioteket er bevaret.'
+        return text
     heading = ("⬇️ FjordSeed: RSS-download startet" if kind == "rss_started" else
                "✅ FjordSeed: Download færdig")
     text = heading + "\n\n" + download_title(entry["filename"])
@@ -149,7 +169,7 @@ class NotificationStore:
             row = con.execute("SELECT queued FROM events WHERE app_id=? AND event_id=?",
                               (app_id, entry["event_id"])).fetchone()
             # Not installed yet: still keep history for "what downloaded today?".
-            notify = entry["type"] in {"vpn_failed", "vpn_recovered", "vpn_port_changed", "rss_started", "rss_completed", "upload_finished"}
+            notify = entry["type"] in {"vpn_failed", "vpn_recovered", "vpn_port_changed", "rss_started", "rss_completed", "download_deleted", "upload_finished"}
             if row["queued"] == 0 and notify and matrix_hub._state().get("phase") == "ready":
                 allowed = matrix_hub._load(matrix_hub.bot_dir / "config.json").get("allowed_users", [])
                 for recipient in allowed[:50]:

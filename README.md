@@ -684,3 +684,7 @@ Update FjordSeed, FjordHub and then the Matrix bot to enable this feature.
 ### RSS temporary storage in the Matrix bot
 
 Ask “Hvor meget midlertidig plads bruger RSS?” to read allocated RSS buffer bytes and total temporary buffer bytes. The measurement shares FjordSeed’s 30-second storage cache, excludes permanent media, and counts hardlinks once. Unknown RSS attribution is shown as unknown. Update FjordSeed, FjordHub and the Matrix bot together. The dedicated storage endpoints use the existing app key and bot-only token; no paths or torrent controls are exposed.
+
+### Automatic deletion notifications
+
+The Matrix bot announces confirmed automatic torrent/file deletions with the readable title and the actual reason: ratio target reached or seed-time target reached (normally 49 hours, including configured extensions). Converted downloads also state that the library copy was retained. Worker receipts are persisted before removal and confirmed on a subsequent successful torrent snapshot after original content disappears. Delivery retries survive restarts and use stable event IDs for Hub deduplication. Manual removals and reaching a goal without deletion do not emit this event. Update Hub before Seed so `download_deleted` events are accepted.
