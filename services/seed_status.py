@@ -72,3 +72,30 @@ def fetch_seed_status(base_url, key, activity='all'):
                 'torrents': [{k: row[k] for k in FIELDS if k in row} for row in data['torrents']]}
     except (requests.RequestException, ValueError):
         raise AppDataError('Kunne ikke hente en gyldig torrentstatus fra FjordSeed.') from None
+
+
+def fetch_seed_storage(base_url, key):
+    try:
+        with requests.Session() as client:
+            client.trust_env = False
+            with client.get(base_url + '/api/hub/bot/storage', headers={'X-Hub-Key': key},
+                            timeout=(2, 40), allow_redirects=False, stream=True) as response:
+                if response.status_code != 200:
+                    raise ValueError('Storage unavailable')
+                body = bytearray()
+                for chunk in response.iter_content(4096):
+                    body.extend(chunk)
+                    if len(body) > 8192:
+                        raise ValueError('Response too large')
+        data = json.loads(body)
+        if not isinstance(data, dict) or data.get('ok') is not True:
+            raise ValueError('Invalid storage data')
+        result = {'ok': True}
+        for field in ('temporary_bytes', 'rss_temporary_bytes'):
+            value = data[field]
+            if value is not None and (type(value) is not int or value < 0):
+                raise ValueError('Invalid storage amount')
+            result[field] = value
+        return result
+    except (requests.RequestException, ValueError, KeyError):
+        raise AppDataError('Kunne ikke måle pladsforbrug. Kontrollér at FjordSeed er startet og opdateret.') from None

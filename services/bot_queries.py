@@ -242,3 +242,29 @@ def torrent_messages(payload, intent='seeding'):
     heading = 'FjordSeed · Seeding' if intent == 'seeding' else 'FjordSeed · Downloads'
     return [heading + (f' · {i}/{len(pages)}' if len(pages) > 1 else '') + '\n' + count + '\n\n' + page
             for i, page in enumerate(pages, 1)]
+
+
+def storage_question(message):
+    tokens = set(words(message))
+    if tokens & {'slet', 'slette', 'fjern', 'ryd', 'stop', 'start'}:
+        return False
+    return bool(tokens & {'plads', 'pladsforbrug', 'lagerplads', 'diskplads', 'storage', 'fylder'}) and (
+        bool(tokens & {'rss', 'rssfeed', 'rssfeeds', 'buffer', 'autoslettes'}) or
+        any(token.startswith('midlertidig') for token in tokens))
+
+
+def storage_answer(payload):
+    def amount(value):
+        if type(value) is not int or value < 0:
+            return 'Ukendt – kunne ikke opgøres'
+        units = ('B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB')
+        index = 0
+        while value >= 1024 and index < len(units) - 1:
+            value /= 1024
+            index += 1
+        return decimal(value) + ' ' + units[index]
+    return ('FjordSeed · Midlertidig plads\n\nRSS-filer: ' + amount(payload.get('rss_temporary_bytes')) +
+            '\nAlle midlertidige filer: ' + amount(payload.get('temporary_bytes')) +
+            '\n\nRSS-tallet viser bufferfiler, som ryddes automatisk efter FjordSeeds regler for færdigbehandling og seeding.' +
+            '\nPermanent gemte mediefiler er ikke med. Hardlinks tælles kun én gang.' +
+            '\nMålingen kan være op til 30 sekunder gammel.')

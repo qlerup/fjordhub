@@ -680,3 +680,7 @@ torrents. Tracker choices show the account's API-reported uploaded balance and
 its last refresh time; cached tracker data older than ten minutes is unavailable.
 Estimated RSS history is labelled. Missing data is never shown as zero.
 Update FjordSeed, FjordHub and then the Matrix bot to enable this feature.
+
+### RSS temporary storage in the Matrix bot
+
+Ask “Hvor meget midlertidig plads bruger RSS?” to read allocated RSS buffer bytes and total temporary buffer bytes. The measurement shares FjordSeed’s 30-second storage cache, excludes permanent media, and counts hardlinks once. Unknown RSS attribution is shown as unknown. Update FjordSeed, FjordHub and the Matrix bot together. The dedicated storage endpoints use the existing app key and bot-only token; no paths or torrent controls are exposed.

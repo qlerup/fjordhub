@@ -17,10 +17,10 @@ from nio import (AsyncClient, ClientConfig, InviteEvent, LoginResponse, MatrixRo
                  RoomMessageText, RoomMessagesResponse, RoomRedactResponse, RoomSendError)
 if __package__:
     from .bot_identity import ensure_identity
-    from .bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages, upload_question, upload_menu, upload_answer
+    from .bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages, upload_question, upload_menu, upload_answer, storage_question, storage_answer
 else:
     from bot_identity import ensure_identity
-    from bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages, upload_question, upload_menu, upload_answer
+    from bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages, upload_question, upload_menu, upload_answer, storage_question, storage_answer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("fjordhub.matrix")
@@ -41,6 +41,7 @@ HELP_TEXT = "\n".join((
     "",
     "Du kan også spørge:",
     "• Kan du sende mit krediterede upload?",
+    "• Hvor meget midlertidig plads bruger RSS?",
     "• Hvad seeder nu?",
     "• Hvad downloader nu?",
     "• Er der downloadet noget nyt i dag?",
@@ -147,6 +148,19 @@ def seeding_snapshot(intent='seeding'):
     payload = response.json()
     if not payload.get('ok') or not isinstance(payload.get('torrents'), list):
         raise RuntimeError('FjordSeed-status er ikke tilgængelig.')
+    return payload
+
+
+def storage_snapshot():
+    token = read(CONFIG).get('monitor_token')
+    if not token:
+        raise RuntimeError('FjordHub-bottens læseadgang mangler.')
+    response = requests.get('http://fjordhub:8080/api/matrix/bot/storage',
+                            headers={'Authorization': 'Bearer ' + token}, timeout=50)
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get('ok') is not True:
+        raise RuntimeError('Pladsforbruget er ikke tilgængeligt.')
     return payload
 
 
@@ -446,6 +460,9 @@ class FjordBot:
                 await self.clear_bot_messages(room, event.sender)
             elif command in COMMANDS:
                 await self.send(room.room_id, COMMANDS[command])
+            elif storage_question(command):
+                payload = await asyncio.to_thread(storage_snapshot)
+                await self.send(room.room_id, storage_answer(payload))
             elif (period := download_period(command)):
                 for answer in await asyncio.to_thread(download_history, period):
                     await self.send(room.room_id, answer)
