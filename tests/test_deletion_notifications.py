@@ -56,3 +56,29 @@ def test_invalid_size(size):
 
 def test_old_event_remains_supported():
     assert 'Frigjort plads: ukendt' in notification_text('fjordseed',clean_event('fjordseed',event()))
+
+
+def test_transfer_values_and_achieved_ratio_are_distinct_from_target(tmp_path):
+    data=event(app_id='fjordseed',freed_bytes=10**9,transfer={'uploaded':2350000000,'credited_uploaded':850000000,'ratio':2.35})
+    cleaned=clean_event('fjordseed',data)
+    text=notification_text('fjordseed',cleaned)
+    assert 'Reel upload: 2,35 GB' in text
+    assert 'Krediteret upload: 850 MB' in text
+    assert 'Opnået ratio: 2,35:1' in text
+    matrix=MatrixHub(tmp_path);matrix._save_state(phase='ready')
+    matrix._save(matrix.bot_dir/'config.json',{'allowed_users':['@owner:test']})
+    NotificationStore(tmp_path).record('fjordseed',data,matrix)
+    assert json.loads(next((matrix.bot_dir/'outbox').glob('*.json')).read_text())['text']==text
+
+
+@pytest.mark.parametrize('transfer',[None,[],{'uploaded':-1},{'ratio':True},{'credited_uploaded':'123'},
+                                      {'ratio':float('nan')},{'uploaded':float('inf')},{'unknown':1}])
+def test_invalid_transfer_rejected(transfer):
+    with pytest.raises(NotificationError):clean_event('fjordseed',event(transfer=transfer))
+
+
+def test_old_receipts_and_zero_transfer():
+    text=notification_text('fjordseed',clean_event('fjordseed',event()))
+    assert 'Reel upload: ukendt' in text and 'Opnået ratio: ukendt' in text
+    text=notification_text('fjordseed',clean_event('fjordseed',event(transfer={'uploaded':0,'credited_uploaded':0,'ratio':0})))
+    assert 'Reel upload: 0 B' in text and 'Krediteret upload: 0 B' in text and 'Opnået ratio: 0:1' in text
