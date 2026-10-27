@@ -688,3 +688,5 @@ Ask “Hvor meget midlertidig plads bruger RSS?” to read allocated RSS buffer 
 ### Automatic deletion notifications
 
 The Matrix bot announces confirmed automatic torrent/file deletions with the readable title and the actual reason: ratio target reached or seed-time target reached (normally 49 hours, including configured extensions). Converted downloads also state that the library copy was retained. Worker receipts are persisted before removal and confirmed on a subsequent successful torrent snapshot after original content disappears. Delivery retries survive restarts and use stable event IDs for Hub deduplication. Manual removals and reaching a goal without deletion do not emit this event. Update Hub before Seed so `download_deleted` events are accepted.
+
+Deletion notifications include estimated freed space in decimal GB/MB, measured from allocated file blocks before deletion. Hardlinks outside the deleted content are excluded, internal hardlinks count once, and sparse-file holes are not counted. Snapshots, reflinks or open files may retain blocks, so this is an estimate. Missing measurements and receipts from older versions display unknown.

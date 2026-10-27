@@ -35,7 +35,7 @@ class NotificationError(ValueError):
 
 
 def clean_event(app_id, value):
-    if not isinstance(value, dict) or len(value) > 8:
+    if not isinstance(value, dict) or len(value) > 9:
         raise NotificationError("Ugyldig notifikationshændelse.")
     kind = value.get("type")
     event_id = value.get("event_id")
@@ -82,9 +82,12 @@ def clean_event(app_id, value):
                     for v in (ratio, hours)) or hours > 8809 or
                 type(value.get('library_retained')) is not bool):
             raise NotificationError('Ugyldig automatisk sletning.')
+        freed = value.get('freed_bytes')
+        if freed is not None and (type(freed) is not int or not 0 <= freed <= 2**63 - 1):
+            raise NotificationError('Ugyldig filstørrelse.')
         return {'type': kind, 'event_id': event_id, 'filename': filename,
                 'reason': reason, 'ratio_limit': ratio, 'seed_hours': hours,
-                'library_retained': value['library_retained']}
+                'library_retained': value['library_retained'], 'freed_bytes': freed}
     return {"type": kind, "event_id": event_id, "filename": filename,
             "feed": safe_label(value.get("feed", ""), 90)}
 
@@ -124,6 +127,13 @@ def notification_text(app_id, entry):
         reason = ('Ratio-mål nået: ' + decimal(entry['ratio_limit']) + ':1' if entry['reason'] == 'ratio' else
                   decimal(entry['seed_hours']) + ' timers seeding nået')
         text = '🗑️ FjordSeed · Automatisk slettet\n\n' + download_title(entry['filename']) + '\n\nÅrsag: ' + reason
+        freed = entry.get('freed_bytes')
+        if freed is None:
+            text += '\nFrigjort plads: ukendt'
+        else:
+            unit = 'GB' if freed >= 10**9 else 'MB' if freed >= 10**6 else 'kB' if freed >= 1000 else 'B'
+            divisor = {'GB': 10**9, 'MB': 10**6, 'kB': 1000, 'B': 1}[unit]
+            text += '\nFrigjort plads: ca. ' + decimal(freed / divisor) + ' ' + unit
         if entry['library_retained']:
             text += '\nDen konverterede kopi i biblioteket er bevaret.'
         return text

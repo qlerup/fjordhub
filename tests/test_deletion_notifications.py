@@ -40,3 +40,19 @@ def test_retries_deduplicate_and_do_not_pollute_download_history(tmp_path):
     assert store.record('fjordseed',event(),matrix)['duplicate']
     assert not list((matrix.bot_dir/'outbox').glob('*.json'))
     assert not store.downloads_today()['completed']
+
+
+@pytest.mark.parametrize('size,text',[(2350000000,'ca. 2,35 GB'),(850000000,'ca. 850 MB'),(0,'ca. 0 B'),(None,'ukendt')])
+def test_freed_space_format_and_app_id_payload(size,text):
+    data=event(freed_bytes=size,app_id='fjordseed')
+    cleaned=clean_event('fjordseed',data)
+    assert 'Frigjort plads: '+text in notification_text('fjordseed',cleaned)
+
+
+@pytest.mark.parametrize('size',[-1,True,'1024',1.5,2**63])
+def test_invalid_size(size):
+    with pytest.raises(NotificationError):clean_event('fjordseed',event(freed_bytes=size))
+
+
+def test_old_event_remains_supported():
+    assert 'Frigjort plads: ukendt' in notification_text('fjordseed',clean_event('fjordseed',event()))
