@@ -19,6 +19,48 @@ def upload_question(message):
            any(token.startswith(('krediter', 'crediter', 'credited')) for token in tokens))
 
 
+def ratio_question(message):
+    tokens = set(words(message))
+    if tokens & {'stop', 'stoppe', 'slet', 'slette', 'fjern', 'pause', 'start', 'ret', 'skift', 'ndr', 'ndre', 'juster', 'indstil', 'st', 'stte'}:
+        return False
+    return bool(tokens & {'ratio', 'ratioen', 'ratioer', 'ratios', 'minratio'})
+
+
+def ratio_answer(options):
+    def valid(value):
+        return type(value) in (int, float) and math.isfinite(value) and value >= 0
+
+    trackers = [option for option in options if option.get('kind') == 'tracker']
+    if not trackers:
+        return 'FjordSeed: Tilføj en tracker i FjordSeed for at se din kontoratio.'
+    blocks = ['FjordSeed · Din ratio']
+    for tracker in trackers:
+        ratio = tracker.get('ratio')
+        upload, download = tracker.get('credited_uploaded'), tracker.get('credited_downloaded')
+        if valid(ratio):
+            value = decimal(ratio)
+        elif valid(upload) and valid(download) and download > 0:
+            calculated = upload / download
+            value = decimal(calculated) if math.isfinite(calculated) else 'ikke tilgængelig lige nu'
+        elif valid(upload) and upload > 0 and download == 0 and type(download) in (int, float):
+            value = '∞ (ingen krediteret download)'
+        else:
+            value = 'ikke tilgængelig lige nu'
+        text = tracker['name'] + '\nRatio: ' + value
+        updated = tracker.get('updated_at')
+        if valid(updated):
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            try:
+                date = datetime.fromtimestamp(updated, ZoneInfo('Europe/Copenhagen'))
+                text += '\nSenest opdateret: ' + date.strftime('%d-%m-%Y kl. %H:%M')
+            except (OverflowError, OSError, ValueError):
+                pass
+        blocks.append(text)
+    blocks.append('Trackerens ratio for hele kontoen fra seneste opdatering i FjordSeed.')
+    return '\n\n'.join(blocks)
+
+
 def upload_menu(options):
     if not options:
         return 'FjordSeed: Der er ingen RSS-feeds eller trackere at vælge imellem.'

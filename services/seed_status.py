@@ -33,9 +33,11 @@ def fetch_seed_upload(base_url, key):
                 raise ValueError('Duplicate upload choice')
             seen.add(identity)
             item = {k: row.get(k) for k in ('kind', 'id', 'name', 'credited_uploaded', 'estimated', 'updated_at')}
+            if row['kind'] == 'tracker':
+                item.update({k: row[k] for k in ('ratio', 'credited_downloaded') if k in row})
             item['name'] = ' '.join(row['name'].split())[:90]
-            for key in ('credited_uploaded', 'updated_at'):
-                value = item[key]
+            for key in ('credited_uploaded', 'credited_downloaded', 'ratio', 'updated_at'):
+                value = item.get(key)
                 if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or value < 0):
                     raise ValueError('Invalid upload amount')
             item['estimated'] = row.get('estimated') is True

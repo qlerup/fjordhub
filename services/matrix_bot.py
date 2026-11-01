@@ -17,10 +17,10 @@ from nio import (AsyncClient, ClientConfig, InviteEvent, LoginResponse, MatrixRo
                  RoomMessageText, RoomMessagesResponse, RoomRedactResponse, RoomSendError)
 if __package__:
     from .bot_identity import ensure_identity
-    from .bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages, upload_question, upload_menu, upload_answer, storage_question, storage_answer
+    from .bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages, upload_question, upload_menu, upload_answer, storage_question, storage_answer, ratio_question, ratio_answer
 else:
     from bot_identity import ensure_identity
-    from bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages, upload_question, upload_menu, upload_answer, storage_question, storage_answer
+    from bot_queries import torrent_query, torrent_messages, torrent_message_html, download_period, download_history_messages, upload_question, upload_menu, upload_answer, storage_question, storage_answer, ratio_question, ratio_answer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("fjordhub.matrix")
@@ -41,6 +41,7 @@ HELP_TEXT = "\n".join((
     "",
     "Du kan også spørge:",
     "• Kan du sende mit krediterede upload?",
+    "• ratio – eller: Hvad er min ratio lige nu?",
     "• Hvor meget midlertidig plads bruger RSS?",
     "• Hvad seeder nu?",
     "• Hvad downloader nu?",
@@ -452,7 +453,10 @@ class FjordBot:
             return
         command = event.body.strip().lower().lstrip("/")
         try:
-            if update_question(command) or (command in {'ja', 'ja opdater', 'ja opdatér', 'bekræft opdatering', 'nej', 'annuller', 'annullér'} and (event.sender, room.room_id) in getattr(self, 'pending_updates', {})):
+            if ratio_question(command):
+                options = await asyncio.to_thread(credit_snapshot)
+                await self.send(room.room_id, ratio_answer(options))
+            elif update_question(command) or (command in {'ja', 'ja opdater', 'ja opdatér', 'bekræft opdatering', 'nej', 'annuller', 'annullér'} and (event.sender, room.room_id) in getattr(self, 'pending_updates', {})):
                 await self.handle_updates(room, event.sender, command)
             elif await self.handle_upload(room.room_id, event.sender, command):
                 pass

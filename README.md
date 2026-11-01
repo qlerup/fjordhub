@@ -692,3 +692,5 @@ The Matrix bot announces confirmed automatic torrent/file deletions with the rea
 Deletion notifications include estimated freed space in decimal GB/MB, measured from allocated file blocks before deletion. Hardlinks outside the deleted content are excluded, internal hardlinks count once, and sparse-file holes are not counted. Snapshots, reflinks or open files may retain blocks, so this is an estimate. Missing measurements and receipts from older versions display unknown.
 
 Deletion receipts also preserve real uploaded bytes, credited uploaded bytes and the achieved real ratio from the durable seeding ledger immediately before deletion. The bot shows these separately from the target ratio; missing values in older receipts display unknown.
+
+Matrix-botten understøtter `ratio` eller “Hvad er min ratio lige nu?”. Svaret viser kontoratioen for trackere tilføjet i FjordSeed samt tidspunktet for seneste opdatering. Det bruger samme krypterede chat og tilladelsesliste som uploadkommandoen.
