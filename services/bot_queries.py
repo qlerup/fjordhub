@@ -204,7 +204,7 @@ def torrent_message_html(body):
     return '<br>'.join(output)
 
 
-ACTIVE_SEEDS = {'uploading', 'stalledUP', 'forcedUP'}
+ACTIVE_SEEDS = {'uploading', 'forcedUP'}
 ACTIVE_DOWNLOADS = {'downloading', 'forcedDL', 'stalledDL', 'metaDL', 'forcedMetaDL'}
 STATE_NAMES = {
     'uploading': 'Seeder – uploader', 'stalledUP': 'Seeder – venter på downloadere',
@@ -222,12 +222,10 @@ STATE_NAMES = {
 
 def torrent_messages(payload, intent='seeding'):
     rows = payload['torrents']
-    seeds = [row for row in rows if row.get('state') in ACTIVE_SEEDS]
+    seeds = [row for row in rows if row.get('state') in ACTIVE_SEEDS and number(row.get('upspeed')) > 0]
     downloads = [row for row in rows if row.get('state') in ACTIVE_DOWNLOADS and number(row.get('progress')) < 1]
     selected = seeds if intent == 'seeding' else downloads if intent == 'downloading' else rows
-    count = ('Mindst ' if payload.get('more') else '') + str(len(seeds)) + ' seeder'
-    uploading = sum(number(row.get('upspeed')) > 0 for row in seeds)
-    count += f' · {uploading} uploader lige nu'
+    count = ('Mindst ' if payload.get('more') else '') + str(len(seeds)) + ' uploader lige nu'
     if intent == 'downloading':
         count = ('Mindst ' if payload.get('more') else '') + str(len(downloads)) + ' downloader lige nu'
     elif intent != 'seeding':

@@ -43,7 +43,7 @@ HELP_TEXT = "\n".join((
     "• Kan du sende mit krediterede upload?",
     "• ratio – eller: Hvad er min ratio lige nu?",
     "• Hvor meget midlertidig plads bruger RSS?",
-    "• Hvad seeder nu?",
+    "• Hvad seeder nu? – kun aktive uploads",
     "• Hvad downloader nu?",
     "• Er der downloadet noget nyt i dag?",
     "• Har du downloadet noget nyt siden i går?",

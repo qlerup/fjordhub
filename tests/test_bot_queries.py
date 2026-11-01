@@ -14,14 +14,14 @@ def test_flexible_queries_and_typing_errors():
 
 
 def test_summary_separates_active_seeds_and_reports_goal_alternatives():
-    row = dict(name='Test ISO', state='stalledUP', progress=1, credited_ratio=.5,
+    row = dict(name='Test ISO', state='uploading', upspeed=1024, progress=1, credited_ratio=.5,
                ratio=2, ratio_limit=1, seeding_time=49*3600, seeding_time_limit=49*60,
                seeding_unlimited=False, seeding_goal_reached=True)
     payload = dict(torrents=[row, dict(name='Paused', state='stoppedUP'),
                              dict(name='Next ISO', state='downloading', progress=.25)], more=False)
     text = '\n'.join(torrent_messages(payload))
-    assert '1 seeder' in text
-    assert 'venter på downloadere' in text
+    assert '1 uploader lige nu' in text
+    assert 'Seeder – uploader' in text
     assert '100 % af seedingmålet' in text
     assert 'Ratio: 0,5 / 1' in text and '49 t 00 min / 49 t 00 min' in text
     assert 'Paused' not in text and 'Next ISO' not in text
@@ -33,7 +33,7 @@ def test_summary_separates_active_seeds_and_reports_goal_alternatives():
 
 
 def test_all_titles_are_delivered_across_bounded_messages():
-    rows = [dict(name=f'Title {i} ' + 'x'*180, state='uploading', progress=1,
+    rows = [dict(name=f'Title {i} ' + 'x'*180, state='uploading', upspeed=1024, progress=1,
                  seeding_unlimited=True) for i in range(120)]
     messages = torrent_messages(dict(torrents=rows))
     assert len(messages) > 1
@@ -107,3 +107,21 @@ def test_readable_download_history():
     assert '\n\n2. Luksusfaelden\n   Sæson 32' in text
     assert 'WEB-DL' not in text
     assert '2 færdige downloads' in text
+
+
+def test_seeding_only_lists_torrents_actually_uploading():
+    rows=[dict(name='Active',state='uploading',upspeed=4096),
+          dict(name='Forced active',state='forcedUP',upspeed=2048)]
+    rows += [dict(name='Hidden '+str(i),state=state,upspeed=speed)
+             for i,(state,speed) in enumerate([
+                 ('stalledUP',0),('stalledUP',1024),('uploading',0),('forcedUP',0),
+                 ('uploading',None),('uploading',-1),('uploading',True),
+                 ('uploading',float('nan')),('uploading',float('inf')),
+                 ('pausedUP',2048),('stoppedUP',2048),('queuedUP',2048),('downloading',2048)])]
+    text='\n'.join(torrent_messages({'torrents':rows}))
+    assert '2 uploader lige nu' in text
+    assert '1. Active' in text and '2. Forced active' in text and 'Hidden' not in text
+    assert '4 KiB/s' in text and '2 KiB/s' in text
+    idle=torrent_messages({'torrents':[dict(name='Waiting',state='stalledUP',upspeed=0)]})[0]
+    assert '0 uploader lige nu' in idle and 'Ingen aktive seedinger' in idle and 'Waiting' not in idle
+    assert 'Hidden' in '\n'.join(torrent_messages({'torrents':rows},'transfers'))
