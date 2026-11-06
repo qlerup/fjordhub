@@ -14,6 +14,7 @@ import uuid
 from zoneinfo import ZoneInfo
 
 ALLOWED_TYPES = {
+    "fjordparcel": {"tracking_added", "tracking_event"},
     "fjordlens": {"upload_finished"},
     "fjordvpn": {"vpn_failed", "vpn_recovered", "vpn_port_changed"},
     "fjordseed": {"rss_started", "rss_completed", "download_started", "download_completed", "download_deleted"},
@@ -41,6 +42,15 @@ def clean_event(app_id, value):
     event_id = value.get("event_id")
     if kind not in ALLOWED_TYPES.get(app_id, set()) or not isinstance(event_id, str) or not EVENT_ID.fullmatch(event_id):
         raise NotificationError("Ugyldig hændelsestype eller id.")
+    if app_id == 'fjordparcel':
+        number = value.get('tracking_number')
+        if not isinstance(number, str) or not re.fullmatch(r'[A-Za-z0-9]{5,50}', number):
+            raise NotificationError('Ugyldigt trackingnummer.')
+        fields = {'label':120, 'carrier':120, 'description':500, 'occurred_at':80, 'location':220}
+        result = {key:safe_label(value.get(key, ''), limit) for key,limit in fields.items()}
+        if kind == 'tracking_event' and not result['description']:
+            raise NotificationError('Hændelsen mangler en beskrivelse.')
+        return dict(type=kind, event_id=event_id, tracking_number=number, **result)
     if app_id == "fjordvpn":
         if kind == "vpn_port_changed":
             profile = safe_label(value.get("profile"), 90)
@@ -101,6 +111,25 @@ def clean_event(app_id, value):
 
 def notification_text(app_id, entry):
     kind = entry["type"]
+    if app_id == 'fjordparcel':
+        heading = '📦 FjordParcel · Ny pakke' if kind == 'tracking_added' else '🚚 FjordParcel · Ny hændelse'
+        parts = [heading, entry['label'] or entry['tracking_number']]
+        parts.append('Tracking: ' + entry['tracking_number'])
+        if entry['carrier'] not in ('', 'Unknown', 'Ukendt'):
+            parts.append('Fragtfirma: ' + entry['carrier'])
+        if entry['description']:
+            parts.append(entry['description'])
+        if entry['occurred_at']:
+            try:
+                dt = datetime.fromisoformat(entry['occurred_at'].replace('Z','+00:00'))
+                stamp = dt.astimezone(COPENHAGEN).strftime('%d-%m-%Y kl. %H:%M') if dt.tzinfo else entry['occurred_at']
+            except ValueError:
+                stamp = entry['occurred_at']
+            parts.append('Tid: ' + stamp)
+        if entry['location']:
+            parts.append('Sted: ' + entry['location'])
+        parts.append('https://t.17track.net/da#nums=' + entry['tracking_number'])
+        return '\n'.join(parts)
     if app_id == "fjordvpn":
         if kind == "vpn_port_changed":
             previous = entry["previous_port"]
@@ -195,9 +224,11 @@ class NotificationStore:
             row = con.execute("SELECT queued FROM events WHERE app_id=? AND event_id=?",
                               (app_id, entry["event_id"])).fetchone()
             # Not installed yet: still keep history for "what downloaded today?".
-            notify = entry["type"] in {"vpn_failed", "vpn_recovered", "vpn_port_changed", "rss_started", "rss_completed", "download_deleted", "upload_finished"}
+            notify = entry["type"] in {"vpn_failed", "vpn_recovered", "vpn_port_changed", "rss_started", "rss_completed", "download_deleted", "upload_finished", "tracking_added", "tracking_event"}
             if row["queued"] == 0 and notify and matrix_hub._state().get("phase") == "ready":
                 allowed = matrix_hub._load(matrix_hub.bot_dir / "config.json").get("allowed_users", [])
+                if app_id == 'fjordparcel' and not any(isinstance(r, str) and r.startswith('@') for r in allowed[:50]):
+                    return {"ok": True, "queued": False, "duplicate": False}
                 for recipient in allowed[:50]:
                     if not isinstance(recipient, str) or not recipient.startswith("@"):
                         continue
@@ -209,7 +240,8 @@ class NotificationStore:
                                              "text": notification_text(app_id, entry)})
                 con.execute("UPDATE events SET queued=1 WHERE app_id=? AND event_id=?",
                             (app_id, entry["event_id"]))
-            return {"ok": True, "duplicate": bool(row["queued"])}
+            queued = con.execute("SELECT queued FROM events WHERE app_id=? AND event_id=?", (app_id, entry['event_id'])).fetchone()['queued']
+            return {"ok": True, "queued": bool(queued), "duplicate": bool(row["queued"])}
 
     def downloads_today(self):
         return self.downloads_period('today')
