@@ -50,6 +50,21 @@ def clean_event(app_id, value):
         result = {key:safe_label(value.get(key, ''), limit) for key,limit in fields.items()}
         if kind == 'tracking_event' and not result['description']:
             raise NotificationError('Hændelsen mangler en beskrivelse.')
+        image = value.get('map_png')
+        if image is not None:
+            import base64
+            import binascii
+            import struct
+            if kind != 'tracking_event' or not isinstance(image, str) or len(image) > 700000:
+                raise NotificationError('Ugyldigt rutekort.')
+            try:
+                raw = base64.b64decode(image, validate=True)
+                if (len(raw) < 33 or not raw.startswith(b'\x89PNG\r\n\x1a\n') or
+                        raw[12:16] != b'IHDR' or struct.unpack('>II', raw[16:24]) != (960, 460)):
+                    raise ValueError('Invalid PNG')
+            except (ValueError, binascii.Error):
+                raise NotificationError('Ugyldigt rutekort.')
+            result['map_png'] = image
         return dict(type=kind, event_id=event_id, tracking_number=number, **result)
     if app_id == "fjordvpn":
         if kind == "vpn_port_changed":
@@ -237,7 +252,8 @@ class NotificationStore:
                         __import__("hashlib").sha256(
                             (app_id + ":" + entry["event_id"] + ":" + recipient).encode()).hexdigest() + ".json")
                     matrix_hub._save(path, {"recipient": recipient,
-                                             "text": notification_text(app_id, entry)})
+                                             "text": notification_text(app_id, entry),
+                                             **({'map_png': entry['map_png']} if entry.get('map_png') else {})})
                 con.execute("UPDATE events SET queued=1 WHERE app_id=? AND event_id=?",
                             (app_id, entry["event_id"]))
             queued = con.execute("SELECT queued FROM events WHERE app_id=? AND event_id=?", (app_id, entry['event_id'])).fetchone()['queued']

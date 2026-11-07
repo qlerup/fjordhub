@@ -502,6 +502,23 @@ class FjordBot:
              "info": {"mimetype": "application/json", "size": len(content)}},
             ignore_unverified_devices=True)
 
+    async def send_parcel_map(self, room_id, encoded, transaction_id):
+        import base64
+        content = base64.b64decode(encoded, validate=True)
+        response, keys = await self.client.upload(
+            io.BytesIO(content), content_type="image/png",
+            filename="pakkens-rute.png", filesize=len(content), encrypt=True)
+        if not hasattr(response, 'content_uri') or not keys:
+            raise RuntimeError('Kunne ikke uploade rutekortet.')
+        response = await self.client.room_send(
+            room_id, "m.room.message",
+            {"msgtype": "m.image", "body": "Pakkens rute",
+             "file": {**keys, "url": response.content_uri},
+             "info": {"mimetype": "image/png", "size": len(content), "w": 960, "h": 460}},
+            tx_id=transaction_id, ignore_unverified_devices=True)
+        if isinstance(response, RoomSendError):
+            raise RuntimeError('Kunne ikke levere rutekortet.')
+
     async def poll_outbox(self):
         queue = ROOT / "outbox"
         queue.mkdir(exist_ok=True)
@@ -513,7 +530,12 @@ class FjordBot:
                 if not rooms:
                     continue  # Keep queued until user has started an encrypted chat.
                 try:
-                    await self.send(rooms[0], data.get("text", ""))
+                    if not data.get('text_delivered'):
+                        await self.send(rooms[0], data.get("text", ""))
+                        data['text_delivered'] = True
+                        write(path, data)
+                    if data.get('map_png'):
+                        await self.send_parcel_map(rooms[0], data['map_png'], 'parcel-map-' + path.stem)
                     path.unlink(missing_ok=True)
                 except Exception:
                     log.exception("Could not deliver Matrix notification")
