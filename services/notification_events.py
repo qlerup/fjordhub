@@ -14,7 +14,7 @@ import uuid
 from zoneinfo import ZoneInfo
 
 ALLOWED_TYPES = {
-    "fjordparcel": {"tracking_added", "tracking_event"},
+    "fjordparcel": {"tracking_added", "tracking_event", "tracking_snapshot"},
     "fjordlens": {"upload_finished"},
     "fjordvpn": {"vpn_failed", "vpn_recovered", "vpn_port_changed"},
     "fjordseed": {"rss_started", "rss_completed", "download_started", "download_completed", "download_deleted"},
@@ -48,14 +48,14 @@ def clean_event(app_id, value):
             raise NotificationError('Ugyldigt trackingnummer.')
         fields = {'label':120, 'carrier':120, 'description':500, 'occurred_at':80, 'location':220}
         result = {key:safe_label(value.get(key, ''), limit) for key,limit in fields.items()}
-        if kind == 'tracking_event' and not result['description']:
+        if kind in {'tracking_event', 'tracking_snapshot'} and not result['description']:
             raise NotificationError('Hændelsen mangler en beskrivelse.')
         image = value.get('map_png')
         if image is not None:
             import base64
             import binascii
             import struct
-            if kind != 'tracking_event' or not isinstance(image, str) or len(image) > 700000:
+            if kind not in {'tracking_event', 'tracking_snapshot'} or not isinstance(image, str) or len(image) > 700000:
                 raise NotificationError('Ugyldigt rutekort.')
             try:
                 raw = base64.b64decode(image, validate=True)
@@ -127,7 +127,9 @@ def clean_event(app_id, value):
 def notification_text(app_id, entry):
     kind = entry["type"]
     if app_id == 'fjordparcel':
-        heading = '📦 FjordParcel · Ny pakke' if kind == 'tracking_added' else '🚚 FjordParcel · Ny hændelse'
+        heading = {'tracking_added': '📦 FjordParcel · Ny pakke',
+                   'tracking_event': '🚚 FjordParcel · Ny hændelse',
+                   'tracking_snapshot': '📍 FjordParcel · Opdateret status'}[kind]
         parts = [heading, entry['label'] or entry['tracking_number']]
         parts.append('Tracking: ' + entry['tracking_number'])
         if entry['carrier'] not in ('', 'Unknown', 'Ukendt'):
@@ -239,7 +241,7 @@ class NotificationStore:
             row = con.execute("SELECT queued FROM events WHERE app_id=? AND event_id=?",
                               (app_id, entry["event_id"])).fetchone()
             # Not installed yet: still keep history for "what downloaded today?".
-            notify = entry["type"] in {"vpn_failed", "vpn_recovered", "vpn_port_changed", "rss_started", "rss_completed", "download_deleted", "upload_finished", "tracking_added", "tracking_event"}
+            notify = entry["type"] in {"vpn_failed", "vpn_recovered", "vpn_port_changed", "rss_started", "rss_completed", "download_deleted", "upload_finished", "tracking_added", "tracking_event", "tracking_snapshot"}
             if row["queued"] == 0 and notify and matrix_hub._state().get("phase") == "ready":
                 allowed = matrix_hub._load(matrix_hub.bot_dir / "config.json").get("allowed_users", [])
                 if app_id == 'fjordparcel' and not any(isinstance(r, str) and r.startswith('@') for r in allowed[:50]):

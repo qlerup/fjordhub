@@ -45,13 +45,14 @@ def test_parcel_endpoint_requires_its_own_app_key(tmp_path,monkeypatch):
     assert result.status_code==200 and not result.json['queued']
 
 
-def test_map_is_validated_and_preserved_in_durable_queue(tmp_path):
+@pytest.mark.parametrize('kind', ['tracking_event', 'tracking_snapshot'])
+def test_map_is_validated_and_preserved_in_durable_queue(tmp_path, kind):
     import base64
     import struct
     import json
     raw = b'\x89PNG\r\n\x1a\n' + struct.pack('>I', 13) + b'IHDR' + struct.pack('>II', 960, 460) + b'\x08\x02\x00\x00\x00' + b'\x00'*4
     image = base64.b64encode(raw).decode()
-    payload = dict(event(), map_png=image, app_id='fjordparcel')
+    payload = dict(event(kind), map_png=image, app_id='fjordparcel')
     assert clean_event('fjordparcel',payload)['map_png'] == image
     for bad in ('invalid base64!', 'a'*700001, base64.b64encode(b'not a png').decode()):
         with pytest.raises(NotificationError):
@@ -83,3 +84,19 @@ def test_bot_uploads_encrypted_map_and_reports_delivery_failure():
     bot.client.room_send.return_value = RoomSendError('offline','M_UNKNOWN')
     with pytest.raises(RuntimeError):
         asyncio.run(bot.send_parcel_map('!room:test',base64.b64encode(b'png').decode(),'stable-transaction'))
+
+
+def test_snapshot_heading_validation_and_retry_deduplication(tmp_path):
+    payload = event('tracking_snapshot')
+    text = notification_text('fjordparcel', clean_event('fjordparcel', payload))
+    assert 'Opdateret status' in text and 'Sko' in text and 'Aarhus' in text
+    assert 'Ny hændelse' not in text
+    with pytest.raises(NotificationError):
+        clean_event('fjordparcel', dict(payload, description=''))
+    matrix = MatrixHub(tmp_path)
+    matrix._save_state(phase='ready')
+    matrix._save(matrix.bot_dir/'config.json', {'allowed_users':['@owner:example.test']})
+    store = NotificationStore(tmp_path)
+    assert store.record('fjordparcel', payload, matrix)['queued']
+    assert store.record('fjordparcel', payload, matrix)['duplicate']
+    assert len(list((matrix.bot_dir/'outbox').glob('*.json'))) == 1
