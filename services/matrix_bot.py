@@ -505,6 +505,8 @@ class FjordBot:
     async def send_parcel_map(self, room_id, encoded, transaction_id):
         import base64
         content = base64.b64decode(encoded, validate=True)
+        import struct
+        width, height = struct.unpack('>II', content[16:24])
         response, keys = await self.client.upload(
             io.BytesIO(content), content_type="image/png",
             filename="pakkens-rute.png", filesize=len(content), encrypt=True)
@@ -514,7 +516,7 @@ class FjordBot:
             room_id, "m.room.message",
             {"msgtype": "m.image", "body": "Pakkens rute",
              "file": {**keys, "url": response.content_uri},
-             "info": {"mimetype": "image/png", "size": len(content), "w": 960, "h": 460}},
+             "info": {"mimetype": "image/png", "size": len(content), "w": width, "h": height}},
             tx_id=transaction_id, ignore_unverified_devices=True)
         if isinstance(response, RoomSendError):
             raise RuntimeError('Kunne ikke levere rutekortet.')

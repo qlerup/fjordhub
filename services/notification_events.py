@@ -60,8 +60,11 @@ def clean_event(app_id, value):
             try:
                 raw = base64.b64decode(image, validate=True)
                 if (len(raw) < 33 or not raw.startswith(b'\x89PNG\r\n\x1a\n') or
-                        raw[12:16] != b'IHDR' or struct.unpack('>II', raw[16:24]) != (960, 460)):
+                        raw[12:16] != b'IHDR'):
                     raise ValueError('Invalid PNG')
+                width, height = struct.unpack('>II', raw[16:24])
+                if not (240 <= width <= 1280 and 240 <= height <= 1280 and width * height <= 1000000):
+                    raise ValueError('Invalid PNG dimensions')
             except (ValueError, binascii.Error):
                 raise NotificationError('Ugyldigt rutekort.')
             result['map_png'] = image

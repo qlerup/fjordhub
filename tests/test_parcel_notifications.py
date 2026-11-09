@@ -75,15 +75,19 @@ def test_bot_uploads_encrypted_map_and_reports_delivery_failure():
     bot = FjordBot.__new__(FjordBot)
     bot.client = SimpleNamespace(upload=AsyncMock(return_value=(SimpleNamespace(content_uri='mxc://test/map'),{'key': {'k':'secret'}})),
                                  room_send=AsyncMock(return_value=SimpleNamespace(event_id='$sent')))
-    asyncio.run(bot.send_parcel_map('!room:test',base64.b64encode(b'png').decode(),'stable-transaction'))
+    import struct
+    raw = b'\x89PNG\r\n\x1a\n' + struct.pack('>I',13) + b'IHDR' + struct.pack('>II',456,760) + b'\x00'*9
+    encoded = base64.b64encode(raw).decode()
+    asyncio.run(bot.send_parcel_map('!room:test',encoded,'stable-transaction'))
     assert bot.client.upload.call_args.kwargs['encrypt'] is True
     content = bot.client.room_send.call_args.args[2]
+    assert content['info']['w'] == 456 and content['info']['h'] == 760
     assert content['msgtype'] == 'm.image' and content['file']['url'] == 'mxc://test/map'
     assert 'url' not in content
     assert bot.client.room_send.call_args.kwargs['tx_id'] == 'stable-transaction'
     bot.client.room_send.return_value = RoomSendError('offline','M_UNKNOWN')
     with pytest.raises(RuntimeError):
-        asyncio.run(bot.send_parcel_map('!room:test',base64.b64encode(b'png').decode(),'stable-transaction'))
+        asyncio.run(bot.send_parcel_map('!room:test',encoded,'stable-transaction'))
 
 
 def test_snapshot_heading_validation_and_retry_deduplication(tmp_path):
@@ -100,3 +104,14 @@ def test_snapshot_heading_validation_and_retry_deduplication(tmp_path):
     assert store.record('fjordparcel', payload, matrix)['queued']
     assert store.record('fjordparcel', payload, matrix)['duplicate']
     assert len(list((matrix.bot_dir/'outbox').glob('*.json'))) == 1
+
+
+@pytest.mark.parametrize('width,height,accepted', [(456,760,True),(960,533,True),(640,640,True),(960,460,True),(0,760,False),(2000,760,False),(1280,1280,False)])
+def test_route_image_dimensions_follow_route_orientation(width,height,accepted):
+    import base64,struct
+    raw=b'\x89PNG\r\n\x1a\n'+struct.pack('>I',13)+b'IHDR'+struct.pack('>II',width,height)+b'\x00'*9
+    payload=dict(event(),map_png=base64.b64encode(raw).decode())
+    if accepted:
+        assert clean_event('fjordparcel',payload)['map_png']==payload['map_png']
+    else:
+        with pytest.raises(NotificationError):clean_event('fjordparcel',payload)
